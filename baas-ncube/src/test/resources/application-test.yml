@@ -1,0 +1,9 @@
+baas:
+  engine:
+    base-url: http://localhost:9999
+  nps:
+    signing:
+      enabled: false
+    encryption:
+      enabled: false
+    live: false

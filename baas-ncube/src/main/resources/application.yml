@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: baas-ncube
+
+server:
+  port: 8082
+
+baas:
+  engine:
+    base-url: ${BAAS_ENGINE_URL:http://localhost:8080}
+  nps:
+    endpoint: ${NPS_ENDPOINT:http://localhost:9022}
+    member-id: ${NPS_MEMBER_ID:999058}
+    bicfi: ${NPS_BICFI:999058}
+    institution-name: ${NPS_INSTITUTION_NAME:NubBank BaaS}
+    signing:
+      enabled: ${NPS_SIGNING_ENABLED:false}
+    encryption:
+      enabled: ${NPS_ENCRYPTION_ENABLED:false}
+    live: ${NPS_LIVE:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.nubbank.baas.ncube: INFO
