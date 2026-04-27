@@ -139,13 +139,13 @@ INSERT INTO virtual_account_pool (account_number, bank_code)
 SELECT
     '058' ||
     LPAD(gs::text, 6, '0') ||
-    CAST((10 - (
-        (3 * CAST(SUBSTRING(LPAD(gs::text, 6, '0'), 1, 1) AS INT) +
-         7 * CAST(SUBSTRING(LPAD(gs::text, 6, '0'), 2, 1) AS INT) +
-         3 * CAST(SUBSTRING(LPAD(gs::text, 6, '0'), 3, 1) AS INT) +
-         3 * CAST(SUBSTRING(LPAD(gs::text, 6, '0'), 4, 1) AS INT) +
-         7 * CAST(SUBSTRING(LPAD(gs::text, 6, '0'), 5, 1) AS INT) +
-         3 * CAST(SUBSTRING(LPAD(gs::text, 6, '0'), 6, 1) AS INT)) % 10
-    ) % 10 AS TEXT),
+    (((10 - (
+        (3 * SUBSTRING(LPAD(gs::text, 6, '0'), 1, 1)::INT +
+         7 * SUBSTRING(LPAD(gs::text, 6, '0'), 2, 1)::INT +
+         3 * SUBSTRING(LPAD(gs::text, 6, '0'), 3, 1)::INT +
+         3 * SUBSTRING(LPAD(gs::text, 6, '0'), 4, 1)::INT +
+         7 * SUBSTRING(LPAD(gs::text, 6, '0'), 5, 1)::INT +
+         3 * SUBSTRING(LPAD(gs::text, 6, '0'), 6, 1)::INT) % 10
+    ) % 10))::TEXT),
     '058'
 FROM generate_series(100000, 109999) gs;
