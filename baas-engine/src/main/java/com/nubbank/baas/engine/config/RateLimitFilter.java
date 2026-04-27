@@ -12,7 +12,6 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
-import java.util.Optional;
 
 @Slf4j
 @Component
@@ -20,11 +19,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    // Optional injection — RateLimitService is @ConditionalOnBean(StringRedisTemplate.class)
-    // so it won't exist when Redis autoconfiguration is excluded (e.g. in tests).
-    // Using Optional<> here means the filter is always registered but simply skips
-    // rate limiting when Redis is not available — fail-open behaviour.
-    private final Optional<RateLimitService> rateLimitService;
+    // RateLimitService is always a bean; it handles Redis-unavailable internally (fail-open).
+    private final RateLimitService rateLimitService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -33,33 +29,25 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
         PartnerContext ctx = PartnerContext.get();
         if (ctx != null) {
-            if (rateLimitService.isPresent()) {
-                try {
-                    var result = rateLimitService.get().check(
-                        ctx.partnerId(), ctx.tier(), ctx.environment());
-                    response.setHeader("X-RateLimit-Limit", String.valueOf(result.limit()));
-                    response.setHeader("X-RateLimit-Remaining",
-                        String.valueOf(Math.max(0, result.limit() - result.current())));
-                    response.setHeader("X-RateLimit-Reset",
-                        String.valueOf(System.currentTimeMillis() / 1000L + result.resetInSeconds()));
-                    if (!result.allowed()) {
-                        response.setStatus(429);
-                        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                        response.setHeader("Retry-After", "60");
-                        response.getWriter().write(objectMapper.writeValueAsString(
-                            ApiResponse.error("RATE_LIMIT_EXCEEDED",
-                                "API rate limit exceeded. Retry after 60 seconds.")));
-                        return;
-                    }
-                } catch (Exception ex) {
-                    log.debug("Rate limit check failed, allowing request: {}", ex.getMessage());
-                    // Fail open — set fallback headers
-                    response.setHeader("X-RateLimit-Limit", "-1");
-                    response.setHeader("X-RateLimit-Remaining", "-1");
-                    response.setHeader("X-RateLimit-Reset", "0");
+            try {
+                RateLimitService.RateLimitResult result = rateLimitService.check(
+                    ctx.partnerId(), ctx.tier(), ctx.environment());
+                response.setHeader("X-RateLimit-Limit", String.valueOf(result.limit()));
+                response.setHeader("X-RateLimit-Remaining",
+                    String.valueOf(Math.max(0, result.limit() - result.current())));
+                response.setHeader("X-RateLimit-Reset",
+                    String.valueOf(System.currentTimeMillis() / 1000L + result.resetInSeconds()));
+                if (!result.allowed()) {
+                    response.setStatus(429);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setHeader("Retry-After", "60");
+                    response.getWriter().write(objectMapper.writeValueAsString(
+                        ApiResponse.error("RATE_LIMIT_EXCEEDED",
+                            "API rate limit exceeded. Retry after 60 seconds.")));
+                    return;
                 }
-            } else {
-                // Redis unavailable — fail open with informational headers
+            } catch (Exception ex) {
+                log.debug("Rate limit check failed, allowing request: {}", ex.getMessage());
                 response.setHeader("X-RateLimit-Limit", "-1");
                 response.setHeader("X-RateLimit-Remaining", "-1");
                 response.setHeader("X-RateLimit-Reset", "0");

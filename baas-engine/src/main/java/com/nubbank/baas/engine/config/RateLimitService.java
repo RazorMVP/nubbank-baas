@@ -1,20 +1,22 @@
 package com.nubbank.baas.engine.config;
 
 import com.nubbank.baas.engine.partner.PartnerTier;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import java.util.List;
 
+@Slf4j
 @Service
-@ConditionalOnBean(StringRedisTemplate.class)
-@RequiredArgsConstructor
 public class RateLimitService {
 
-    private final StringRedisTemplate redis;
+    // Optional injection: StringRedisTemplate is auto-configured but this bean is registered
+    // before auto-config runs. Using @Autowired(required=false) ensures we never fail to start.
+    @Autowired(required = false)
+    private StringRedisTemplate redis;
 
     @Value("${app.rate-limit.sandbox-rpm:30}")     private int sandboxRpm;
     @Value("${app.rate-limit.basic-rpm:100}")       private int basicRpm;
@@ -30,15 +32,23 @@ public class RateLimitService {
 
     public record RateLimitResult(boolean allowed, long current, long limit, long resetInSeconds) {}
 
+    public boolean isAvailable() {
+        return redis != null;
+    }
+
     public RateLimitResult check(String partnerId, String tier, String environment) {
         int limit = resolveLimit(tier, environment);
+        if (redis == null) {
+            // Redis not wired — fail open
+            return new RateLimitResult(true, 0, limit, 60);
+        }
         String key = "rl:baas:" + partnerId;
-        DefaultRedisScript<List> script = new DefaultRedisScript<>(LUA, List.class);
         @SuppressWarnings("unchecked")
-        List<Long> result = (List<Long>) redis.execute(script, List.of(key),
+        DefaultRedisScript<List<Long>> script = new DefaultRedisScript<>(LUA, (Class<List<Long>>) (Class<?>) List.class);
+        List<Long> result = redis.execute(script, List.of(key),
             String.valueOf(limit));
         if (result == null) {
-            // Redis unavailable — fail open (allow the request)
+            // Redis returned null — fail open (allow the request)
             return new RateLimitResult(true, 0, limit, 60);
         }
         long current = result.get(0);

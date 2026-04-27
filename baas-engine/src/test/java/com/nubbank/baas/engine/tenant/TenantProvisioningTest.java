@@ -1,6 +1,11 @@
 package com.nubbank.baas.engine.tenant;
 
 import com.nubbank.baas.engine.AbstractIntegrationTest;
+import com.nubbank.baas.engine.partner.PartnerEnvironment;
+import com.nubbank.baas.engine.partner.PartnerOrganization;
+import com.nubbank.baas.engine.partner.PartnerOrganizationRepository;
+import com.nubbank.baas.engine.partner.PartnerStatus;
+import com.nubbank.baas.engine.partner.PartnerTier;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import javax.sql.DataSource;
@@ -15,12 +20,28 @@ class TenantProvisioningTest extends AbstractIntegrationTest {
     private TenantProvisioningService provisioningService;
 
     @Autowired
+    private PartnerOrganizationRepository partnerRepo;
+
+    @Autowired
     private DataSource dataSource;
+
+    /** Create a minimal PartnerOrganization row so that schema_provision_log FK is satisfied. */
+    private PartnerOrganization createPartner(String schemaName) {
+        PartnerOrganization org = PartnerOrganization.builder()
+            .name("Test Partner " + UUID.randomUUID())
+            .status(PartnerStatus.SANDBOX)
+            .tier(PartnerTier.BASIC)
+            .environment(PartnerEnvironment.SANDBOX)
+            .schemaName(schemaName)
+            .build();
+        return partnerRepo.save(org);
+    }
 
     @Test
     void provision_createsSchemaWithTenantTables() throws Exception {
         String schemaName = "partner_" + UUID.randomUUID().toString().replace("-", "");
-        UUID partnerId = UUID.randomUUID();
+        PartnerOrganization partner = createPartner(schemaName);
+        UUID partnerId = partner.getId();
 
         provisioningService.provision(partnerId, schemaName);
 
@@ -48,8 +69,8 @@ class TenantProvisioningTest extends AbstractIntegrationTest {
     void provision_isolatesDataBetweenPartners() throws Exception {
         String schema1 = "partner_" + UUID.randomUUID().toString().replace("-", "");
         String schema2 = "partner_" + UUID.randomUUID().toString().replace("-", "");
-        provisioningService.provision(UUID.randomUUID(), schema1);
-        provisioningService.provision(UUID.randomUUID(), schema2);
+        provisioningService.provision(createPartner(schema1).getId(), schema1);
+        provisioningService.provision(createPartner(schema2).getId(), schema2);
 
         // Insert a row in schema1
         try (Connection conn = dataSource.getConnection()) {

@@ -18,6 +18,183 @@
 
 ---
 
+## System Architecture
+
+### Complete Service Map
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                           NubBank BaaS Platform                                   │
+│                      github.com/RazorMVP/nubbank-baas                            │
+│                                                                                   │
+│  ┌──────────────────┐  ┌──────────────────────┐  ┌────────────────────────────┐ │
+│  │  baas-portal/    │  │  baas-backoffice/     │  │  baas-backoffice/          │ │
+│  │  React 19 + Vite │  │  React 19 + Vite      │  │  /platform-admin/*         │ │
+│  │  Developer Portal│  │  Operations Backoffice│  │  NubBank Platform Admin    │ │
+│  │  portal.nubbank  │  │  app.nubbank.com       │  │  Role: NUBBANK_PLATFORM_   │ │
+│  │  API keys, sandbox│  │  Customers, accounts, │  │  ADMIN only (role-gated)   │ │
+│  │  webhooks, billing│  │  loans, payments,     │  │  Partners, schemas,        │ │
+│  │  usage analytics  │  │  compliance, reports  │  │  billing oversight,        │ │
+│  └────────┬─────────┘  └──────────┬────────────┘  └──────────────┬─────────────┘ │
+│           └────────────────────────┴─────────────────────────────┘              │
+│                                     │ HTTPS + Partner JWT / API Key / FAPI 2.0  │
+│  ┌──────────────────────────────────▼─────────────────────────────────────────┐ │
+│  │                        Security & Gateway Layer                              │ │
+│  │                                                                              │ │
+│  │  PartnerContextFilter (OncePerRequestFilter)                                 │ │
+│  │    ApiKey header → SHA-256(key) → lookup public.partner_api_keys             │ │
+│  │    Bearer JWT   → HMAC-SHA256 verify → extract {partnerId, schemaName, tier} │ │
+│  │    FAPI 2.0     → Keycloak JWT → extract {azp=partnerId}                    │ │
+│  │    → sets PartnerContext (ThreadLocal) → clears in finally block             │ │
+│  │                                                                              │ │
+│  │  RateLimitFilter (@Order 1)                                                  │ │
+│  │    Redis Lua INCR+EXPIRE → SANDBOX:30rpm / BASIC:100rpm / PRO:500rpm        │ │
+│  │    → X-RateLimit-Limit / X-RateLimit-Remaining / X-RateLimit-Reset headers  │ │
+│  │    → fail-open when Redis unavailable (headers show -1)                     │ │
+│  └──────────┬──────────────────────┬──────────────────────┬─────────────────────┘ │
+│             │                      │                      │                      │
+│  ┌──────────▼──────┐  ┌────────────▼───────┐  ┌──────────▼─────────────────┐   │
+│  │  baas-engine    │  │  baas-card          │  │  baas-ncube                │   │
+│  │  Port 8080      │  │  Port 8081          │  │  Port 8082                 │   │
+│  │  Spring Boot 3.5│  │  Spring Boot 3.5    │  │  Spring Boot 3.5           │   │
+│  │  Java 21        │  │  Java 21            │  │  Java 21                   │   │
+│  │  ─────────────  │  │  ──────────────     │  │  ─────────────────         │   │
+│  │  Partner mgmt   │  │  Card issuance      │  │  CBN format adapter        │   │
+│  │  Customers      │  │  Authorisation      │  │  Accept: application/vnd.  │   │
+│  │  Accounts       │  │  Fraud engine       │  │  cbn.openbanking.v1+json   │   │
+│  │  Loans          │  │  Settlement         │  │  Ncube consent registry    │   │
+│  │  Payments       │  │  Disputes           │  │  BVN/NIN verification      │   │
+│  │  Open Banking   │  │  Per-tenant config  │  │  NIP payment routing       │   │
+│  │  Virtual account│  │  ISO 8583 (via FEP) │  │  CBN OBR registration      │   │
+│  │  KYC delegation │  │                     │  │  ISO 20022 mapping         │   │
+│  │  Metering/billing│  │                    │  │  CBN regulatory reports    │   │
+│  │  Sandbox engine │  │                     │  │                            │   │
+│  │  Rate limiting  │  │                     │  │                            │   │
+│  └──────────┬──────┘  └────────────┬────────┘  └──────────┬─────────────────┘   │
+│             └──────────────────────┴──────────────────────┘                     │
+│                                      │                                           │
+│  ┌───────────────────────────────────▼────────────────────────────────────────┐ │
+│  │                              Data Layer                                     │ │
+│  │                                                                             │ │
+│  │  PostgreSQL 16               Redis 7             Keycloak 26                │ │
+│  │  ─────────────               ───────             ───────────────────        │ │
+│  │  public schema               Rate limiting       BaaS realm                 │ │
+│  │  ├─ partner_organizations    rl:baas:{partnerId} ├─ Per-partner clients     │ │
+│  │  ├─ partner_api_keys         Session cache       ├─ FAPI 2.0 flows          │ │
+│  │  ├─ virtual_account_pool     BIN cache           └─ Model C: own realm      │ │
+│  │  ├─ billing_events                                                          │ │
+│  │  └─ schema_provision_log                                                    │ │
+│  │                                                                             │ │
+│  │  partner_abc123 schema       sandbox_abc123 schema                          │ │
+│  │  ├─ customers                ├─ customers (test data)                       │ │
+│  │  ├─ accounts                 ├─ accounts                                    │ │
+│  │  ├─ transactions             ├─ transactions                                │ │
+│  │  ├─ payments                 └─ payments                                    │ │
+│  │  ├─ loan_products (own)                                                     │ │
+│  │  ├─ deposit_products (own)                                                  │ │
+│  │  ├─ exchange_rates (own)                                                    │ │
+│  │  └─ audit_log                                                               │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                   │
+│  External Integrations (Phase 2+):                                               │
+│    NIBSS Ncube ←→ baas-ncube  (consent registry, BVN/NIN, NIP payments)         │
+│    CBN OBR    ←→ baas-ncube  (Open Banking Registry participant management)      │
+│    Card Schemes ←→ baas-card (Visa/Mastercard/Verve/Afrigo via ISO 8583 FEP)    │
+│    MailHog    ←→ baas-engine (dev email; SMTP in production)                    │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Multi-Tenancy Request Flow
+
+```
+Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
+
+    PartnerContextFilter
+         │ SHA-256(rawKey) → lookup public.partner_api_keys
+         │ → PartnerContext{partnerId="abc", schema="partner_abc", tier="PRO"}
+         ▼
+    RateLimitFilter
+         │ Redis: INCR rl:baas:abc → 47/500 → allowed
+         │ Response headers: X-RateLimit-Limit:500, Remaining:453
+         ▼
+    AccountController.open()
+         │ AccountService.requireContext() → PartnerContext.get() ≠ null ✓
+         │ VirtualAccountService.assignNext("partner_abc") ← PESSIMISTIC_WRITE
+         │    → UPDATE virtual_account_pool SET assigned=true WHERE id=... [public schema]
+         │    → returns "0581000042"
+         │ PartnerTenantResolver → returns "partner_abc"
+         │ PartnerSchemaProvider → SET search_path TO partner_abc, public
+         │ INSERT INTO accounts ... [runs in partner_abc schema automatically]
+         │ INSERT INTO public.billing_events ...
+         ▼
+    201 Created { data: { accountNumber: "0581000042", balance: 0 } }
+
+    finally { PartnerContext.clear() }  ← ThreadLocal cleanup
+```
+
+### Partner Onboarding & Provisioning Flow
+
+```
+1. SANDBOX REGISTRATION (immediate)
+   POST /baas/v1/auth/register
+   { orgName, adminEmail, password }
+        │
+        ├─ INSERT public.partner_organizations
+        │    (status=SANDBOX, tier=SANDBOX, schemaName=partner_32hex)
+        ├─ INSERT public.partner_users (role=PARTNER_ADMIN, BCrypt password)
+        ├─ Issue Partner JWT (HMAC-SHA256, 24h)
+        ├─ [Async] CREATE SCHEMA partner_32hex
+        ├─ [Async] CREATE SCHEMA sandbox_32hex
+        ├─ [Async] Flyway.migrate(tenant V1) on both schemas
+        └─ [Async] INSERT public.schema_provision_log (SUCCESS)
+        │
+        ▼
+   201 { token, partnerId, schemaName, tier: "SANDBOX" }
+   Partner can call sandbox APIs immediately
+
+2. PRODUCTION UPGRADE (requires NubBank approval)
+   POST /baas/v1/org/applications
+   { businessType, useCase, estimatedMonthlyCalls }
+        │
+        ├─ NubBank Platform Admin reviews
+        ├─ POST /baas/v1/admin/partners/{id}/approve
+        │    → status: SANDBOX → BASIC
+        │    → Issue production API key
+        │    → Trigger Ncube OBR registration (Phase 2)
+        └─ Partner notified via webhook (APPLICATION.APPROVED)
+
+3. MODEL C ENTERPRISE (dedicated isolation)
+   On ENTERPRISE tier approval:
+   ├─ Provision dedicated PostgreSQL database (not just schema)
+   ├─ Provision dedicated Keycloak realm
+   ├─ Configure dedicated HikariCP connection pool
+   └─ AbstractRoutingDataSource routes by partner to dedicated DB
+```
+
+### CBN Open Banking Compliance Status
+
+**Reference:** `docs/regulatory/CBN-Open-Banking-Compliance-Gap-Analysis.md`
+**Framework:** CBN Operational Guidelines for Open Banking in Nigeria (March 2023)
+
+| Category | Phase 1A Status | Phase 2 Target |
+|----------|----------------|---------------|
+| REST/JSON interface | ✅ Complete | — |
+| OAuth 2.0 / FAPI 2.0 | ✅ Complete | — |
+| Consent lifecycle (basic) | ✅ Complete | Ncube sync |
+| BVN/NIN fields | ✅ Fields present | Live verification |
+| Rate limiting | ✅ Complete | — |
+| CBN OBR Registration | ❌ Gap | Phase 2 blocker |
+| CAC number on partner model | ❌ Gap | Phase 2 blocker |
+| Asymmetric JWT (JWS RSA/EC) | ❌ Gap | Phase 2 blocker |
+| Ncube consent registry sync | ❌ Gap | Phase 2 blocker |
+| ISO 20022 data format | ⚠️ Partial | Phase 2 (NIP) |
+| 12 CBN KPI metrics | ❌ Gap | Phase 2 |
+| mTLS machine auth | ❌ Gap | Phase 3 |
+| Jasypt PII encryption (active) | ⚠️ Wired, not active | Phase 2 |
+| Annual consent re-validation | ❌ Gap | Phase 3 |
+
+---
+
 ## Change History
 
 ### Session 1 — 2026-04-27

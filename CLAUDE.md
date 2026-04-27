@@ -6,6 +6,214 @@ NubBank BaaS is a **completely separate product** from NubBank SaaS (`cba-platfo
 
 ---
 
+## Full System Architecture
+
+### Service Map
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          NubBank BaaS Platform                                   │
+│                    github.com/RazorMVP/nubbank-baas                              │
+│                                                                                   │
+│  ┌─────────────────────┐  ┌─────────────────────┐  ┌────────────────────────┐  │
+│  │   Partner Dev Team  │  │  Partner Ops Staff  │  │  NubBank Platform Admin│  │
+│  │   (baas-portal/)    │  │  (baas-backoffice/) │  │  (baas-backoffice/     │  │
+│  │   React 19 + Vite   │  │  React 19 + Vite    │  │   /platform-admin/*)   │  │
+│  │   portal.nubbank.com│  │  app.nubbank.com    │  │  NUBBANK_PLATFORM_ADMIN│  │
+│  └──────────┬──────────┘  └──────────┬──────────┘  └────────────┬───────────┘  │
+│             └────────────────────────┴─────────────────────────-┘               │
+│                                      │ HTTPS                                     │
+│  ┌───────────────────────────────────▼────────────────────────────────────────┐ │
+│  │                        Security & Gateway Layer                             │ │
+│  │  PartnerContextFilter → resolves API key / JWT → sets PartnerContext       │ │
+│  │  RateLimitFilter → Redis Lua INCR+EXPIRE → X-RateLimit-* headers           │ │
+│  │  FAPI 2.0 (Keycloak) → Open Banking consent flows                          │ │
+│  └──────────┬──────────────────────┬──────────────────────┬────────────────────┘ │
+│             │                      │                      │                     │
+│  ┌──────────▼──────┐  ┌───────────▼───────┐  ┌──────────▼────────────────┐   │
+│  │  baas-engine    │  │   baas-card        │  │   baas-ncube              │   │
+│  │  Port 8080      │  │   Port 8081        │  │   Port 8082               │   │
+│  │                 │  │                    │  │                           │   │
+│  │ Partner mgmt    │  │ Card issuance      │  │ CBN format adapter        │   │
+│  │ Customers       │  │ Authorisation      │  │ Ncube consent registry    │   │
+│  │ Accounts        │  │ Fraud engine       │  │ BVN/NIN verification      │   │
+│  │ Loans           │  │ Settlement         │  │ NIP payment routing       │   │
+│  │ Payments        │  │ Disputes           │  │ CBN OBR registration      │   │
+│  │ Open Banking    │  │ Per-tenant rules   │  │ ISO 20022 mapping         │   │
+│  │ Virtual accounts│  │                    │  │ CBN regulatory reports    │   │
+│  │ KYC delegation  │  │                    │  │                           │   │
+│  │ Metering/billing│  │                    │  │                           │   │
+│  │ Sandbox engine  │  │                    │  │                           │   │
+│  └──────────┬──────┘  └───────────┬────────┘  └──────────┬────────────────┘   │
+│             └──────────────────────┴──────────────────────┘                    │
+│                                      │                                          │
+│  ┌───────────────────────────────────▼───────────────────────────────────────┐ │
+│  │                              Data Layer                                    │ │
+│  │                                                                            │ │
+│  │  PostgreSQL 16          Redis              Keycloak 26                     │ │
+│  │  ─────────────          ─────              ──────────────                  │ │
+│  │  public schema          Rate limiting      BaaS realm                      │ │
+│  │  + partner_abc123       Session cache      Per-partner client apps         │ │
+│  │  + partner_xyz456       BIN cache          FAPI 2.0 flows                  │ │
+│  │  + sandbox_abc123                          Model C: dedicated realm        │ │
+│  │  (schema-per-partner)                                                      │ │
+│  └───────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+External Integrations:
+  NIBSS Ncube ←→ baas-ncube  (consent registry, BVN/NIN, NIP payments)
+  CBN OBR     ←→ baas-ncube  (Open Banking Registry participant management)
+  Card Schemes ←→ baas-card  (Visa/Mastercard/Verve/Afrigo — ISO 8583 via FEP)
+```
+
+### Multi-Tenancy Architecture
+
+```
+HTTP Request: Authorization: ApiKey cba_baas_xxx OR Bearer {jwt}
+    │
+    ▼
+PartnerContextFilter (OncePerRequestFilter)
+    │  ├─ ApiKey → SHA-256 hash → lookup public.partner_api_keys
+    │  └─ JWT → HMAC-SHA256 verify → extract claims
+    │
+    ▼
+PartnerContext (ThreadLocal)
+    fields: partnerId, schemaName, tier, environment, authMode
+    │
+    ▼
+PartnerTenantResolver (CurrentTenantIdentifierResolver<String>)
+    returns: schemaName  OR  "public"  (when no context)
+    │
+    ▼
+PartnerSchemaProvider (MultiTenantConnectionProvider<String>)
+    executes: SET search_path TO partner_abc123, public
+    │
+    ▼
+JPA queries execute in partner_abc123 schema automatically
+No WHERE partner_id = ? anywhere in application code
+    │
+    ▼
+finally { PartnerContext.clear() }   ← prevents ThreadLocal leaks
+
+┌─────────────────────────────────────────────────────────────┐
+│  PostgreSQL Schema Structure                                 │
+│                                                             │
+│  public/                  partner_abc123/    sandbox_abc123/ │
+│  ├─ partner_organizations  ├─ customers       ├─ customers   │
+│  ├─ partner_users          ├─ accounts        ├─ accounts    │
+│  ├─ partner_api_keys       ├─ transactions    ├─ transactions│
+│  ├─ virtual_account_pool   ├─ payments        ├─ payments    │
+│  ├─ schema_provision_log   ├─ loans           ├─ loans       │
+│  ├─ billing_events         ├─ exchange_rates  └─ ...        │
+│  ├─ idempotency_keys        ├─ loan_products               │
+│  ├─ partner_webhooks        ├─ deposit_products            │
+│  └─ webhook_deliveries      └─ audit_log                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Partner Provisioning Flow
+
+```
+POST /baas/v1/auth/register
+    │
+    ▼
+1. Insert public.partner_organizations (schemaName = partner_{32hex})
+2. Insert public.partner_users (PARTNER_ADMIN role, BCrypt password)
+3. provisionAsync(orgId, schemaName) ──────────────────────────────────┐
+4. Issue Partner JWT (HMAC-SHA256, 24h)                                 │
+5. Return 201 { token, partnerId, schemaName, tier: SANDBOX }           │
+                                                                         │
+    [Async in background] ←──────────────────────────────────────────────┘
+    A. CREATE SCHEMA partner_{32hex}
+    B. CREATE SCHEMA sandbox_{32hex}
+    C. Flyway.migrate(schema = partner_{32hex}, location = db/migration/tenant)
+    D. Flyway.migrate(schema = sandbox_{32hex}, location = db/migration/tenant)
+    E. INSERT public.schema_provision_log (status = SUCCESS)
+    F. Issue first sandbox API key
+```
+
+### Request Lifecycle — Full Flow
+
+```
+Partner App sends:
+  POST /baas/v1/accounts
+  Authorization: ApiKey cba_baas_base64key
+  Idempotency-Key: uuid-v4
+  { "customerId": "...", "accountTypeLabel": "Savings" }
+
+  ┌──────────────┐
+  │PartnerContext │ SHA-256(rawKey) → partner_api_keys lookup
+  │Filter        │ → sets PartnerContext{schema="partner_abc",tier="PRO"}
+  └──────┬───────┘
+         │
+  ┌──────▼───────┐
+  │RateLimit     │ Redis INCR rl:baas:partner_abc → 47/500 RPM
+  │Filter        │ → adds X-RateLimit-Limit: 500 header
+  └──────┬───────┘
+         │
+  ┌──────▼───────┐
+  │AccountService│ requireContext() ✅
+  │.open()       │ VirtualAccountService.assignNext("partner_abc") ← PESSIMISTIC_WRITE
+  │              │ → assigns NUBAN 0581000042 from virtual_account_pool
+  │              │ → SET search_path TO partner_abc, public (auto via Hibernate)
+  │              │ → INSERT INTO accounts ... (runs in partner_abc schema)
+  └──────┬───────┘
+         │
+  ┌──────▼───────┐
+  │BillingEvent  │ INSERT public.billing_events(partner_abc, /baas/v1/accounts, POST)
+  └──────┬───────┘
+         │
+  201 Created { data: { id, accountNumber: "0581000042", balance: 0 }, meta, errors }
+```
+
+### CBN/Ncube Integration Flow (Phase 2)
+
+```
+                    Partner App
+                        │
+                POST /baas/v1/ncube/identity/verify-bvn
+                        │
+                    baas-ncube
+                        │
+              ┌─────────▼──────────┐
+              │  NIBSS Ncube API   │
+              │  BVN Verification  │ ←── Nigeria national identity rails
+              └─────────┬──────────┘
+                        │
+                  BVN verified → update customer.kyc_level = STANDARD
+                        │
+                    Account can now be opened
+
+Consent Flow (FAPI 2.0 + Ncube):
+  Partner App → POST /baas/v1/open-banking/consents
+              → Customer authorises via Keycloak PKCE
+              → PUT /baas/v1/open-banking/consents/{id}/authorise
+              → baas-ncube pushes consent to CBN Ncube consent registry ←── [Phase 2]
+              → AISP/PISP endpoints now available with consent token
+```
+
+### Three Commercial Models
+
+```
+Model A — Fintech/Neobank          Model B — Embedded Finance        Model C — Licensed Bank
+────────────────────────────       ─────────────────────────────     ──────────────────────────
+Credpal, Carbon, FairMoney         Logistics cos, Marketplaces       MFBs, Cooperative banks
+       │                                     │                               │
+Partner API keys + Portal          Partner API keys + Portal          Full backoffice + APIs
+       │                                     │                               │
+Schema isolation                   Schema isolation                   Database isolation
+(partner_abc schema)               (partner_xyz schema)               (dedicated PostgreSQL)
+       │                                     │                               │
+Under NubBank licence              Lighter compliance                 Full regulatory autonomy
+       │                                     │                               │
+KYC delegated or partner-owned     Virtual accounts primary           Own products + rates
+BVN/NIN via Ncube mandatory        NIP disbursements primary          Own Keycloak realm
+Ncube OBR registration required    Ncube optional                     White-label throughout
+Revenue: per-API + per-account     Revenue: per-transaction           Revenue: monthly licence
+```
+
+---
+
 ## ⛔ SESSION COMPLETION GATE — READ BEFORE SAYING "DONE"
 
 **You MUST NOT close a session, summarise completion, or push to GitHub until every item below is checked.**
@@ -82,12 +290,31 @@ NubBank BaaS is a **completely separate product** from NubBank SaaS (`cba-platfo
 | **B — Embedded Finance** | Enterprises | Schema isolation | Lighter compliance |
 | **C — Licensed Bank** | Licensed institutions | Database isolation | Full regulatory autonomy |
 
+### Regulatory Reference Documents
+
+| Document | Location | Purpose |
+|----------|---------|---------|
+| CBN Open Banking Guidelines (March 2023) | `docs/regulatory/CBN-Open-Banking-Operational-Guidelines-2023.md` | The authoritative CBN regulatory framework. Read before any Open Banking work. |
+| CBN Compliance Gap Analysis | `docs/regulatory/CBN-Open-Banking-Compliance-Gap-Analysis.md` | Full table of what's compliant ✅, partial ⚠️, and gaps ❌ with planned phases. Updated each session. |
+
+**Critical CBN Blockers for Nigerian Market Go-Live (Phase 2 targets):**
+- OBR Registration + CAC number on PartnerOrganization
+- Asymmetric JWT keys (RSA/EC — JWS RFC 7515) replacing HMAC-SHA256
+- BVN/NIN live verification via Ncube rails
+- Ncube consent registry sync
+- Customer: add middle_name_encrypted + state_of_residence fields
+
 ### Repository Structure
 
 ```
 nubbank-baas/                           ← github.com/RazorMVP/nubbank-baas
 ├── CLAUDE.md                           ← This file
 ├── baas-log.md                         ← Session change log
+├── docs/
+│   ├── regulatory/
+│   │   ├── CBN-Open-Banking-Operational-Guidelines-2023.md  ← CBN framework
+│   │   └── CBN-Open-Banking-Compliance-Gap-Analysis.md      ← Gap analysis
+│   └── architecture/                   ← Architecture diagrams (future)
 ├── baas-engine/                        ← Spring Boot 3.5 / Java 21 (PORT 8080)
 ├── baas-card/                          ← Card service (PORT 8081) — NOT YET BUILT
 ├── baas-ncube/                         ← CBN/Ncube adapter (PORT 8082) — NOT YET BUILT

@@ -47,7 +47,8 @@ CREATE TABLE partner_api_keys (
     active      BOOLEAN      NOT NULL DEFAULT true,
     last_used_at TIMESTAMPTZ,
     version     BIGINT       NOT NULL DEFAULT 0,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
 -- NUBAN virtual account pool (pre-allocated numbers, assigned at account creation)
