@@ -20,7 +20,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
-        FieldError first = ex.getBindingResult().getFieldErrors().stream().findFirst().orElseThrow();
+        FieldError first = ex.getBindingResult().getFieldErrors().stream()
+            .findFirst()
+            .orElse(new FieldError("unknown", "unknown", "Validation failed"));
         return ResponseEntity.badRequest()
             .body(ApiResponse.fieldError("VALIDATION_ERROR", first.getDefaultMessage(), first.getField()));
     }
