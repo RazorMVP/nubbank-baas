@@ -305,7 +305,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 1 — 2026-04-27)
+## Confirmed Platform Versions (Session 2 — 2026-04-27)
 
 ### BaaS Engine (`baas-engine/`)
 
@@ -321,6 +321,15 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
 | **Last git commit** | `c6c5e47` | Session 1 — Phase 1A complete: all 16 tasks, 23 tests passing, smoke test live |
+
+### BaaS Ncube (`baas-ncube/`)
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| **Spring Boot** | 3.5.0 | No DB, no Redis, no Flyway — pure adapter |
+| **Java** | 21 | Records, sealed classes, pattern matching |
+| **NPS spec** | v1.2 | pacs.008.001.12, acmt.023.001.04 |
+| **Last git commit** | `97544ce` | Session 2 — Phase 1B complete: 21 tests, smoke test live |
 
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
