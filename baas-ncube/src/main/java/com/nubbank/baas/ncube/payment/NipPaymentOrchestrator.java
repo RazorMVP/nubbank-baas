@@ -3,8 +3,8 @@ package com.nubbank.baas.ncube.payment;
 import com.nubbank.baas.ncube.common.NcubeException;
 import com.nubbank.baas.ncube.payment.dto.*;
 import com.nubbank.baas.ncube.payment.nps.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import java.time.Instant;
@@ -13,7 +13,6 @@ import java.util.UUID;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class NipPaymentOrchestrator {
 
     private final NpsXmlBuilder xmlBuilder;
@@ -22,18 +21,18 @@ public class NipPaymentOrchestrator {
     private final NpsMessageEncryptor encryptor;
     private final NpsHttpClient httpClient;
 
-    @Value("${baas.nps.institution-name}")
     private String institutionName;
-    @Value("${baas.nps.bicfi}")
     private String memberIdBicfi;
-    @Value("${baas.nps.member-id}")
     private String memberId;
 
-    // Visible constructor for unit tests (bypasses @Value injection)
+    /** Spring-managed constructor — @Value fields injected separately via setters. */
+    @Autowired
     public NipPaymentOrchestrator(NpsXmlBuilder xmlBuilder, NpsXmlParser xmlParser,
             NpsMessageSigner signer, NpsMessageEncryptor encryptor,
             NpsHttpClient httpClient,
-            String institutionName, String memberIdBicfi, String memberId) {
+            @Value("${baas.nps.institution-name}") String institutionName,
+            @Value("${baas.nps.bicfi}") String memberIdBicfi,
+            @Value("${baas.nps.member-id}") String memberId) {
         this.xmlBuilder = xmlBuilder;
         this.xmlParser = xmlParser;
         this.signer = signer;
