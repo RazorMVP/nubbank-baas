@@ -1,0 +1,14 @@
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/public
+  jpa:
+    hibernate:
+      ddl-auto: none
+
+app:
+  jwt:
+    secret: test-secret-key-that-is-at-least-32-characters-long-for-hmac
+    expiry-hours: 1
+  encryption:
+    key: test-encryption-key-exactly-32c!
