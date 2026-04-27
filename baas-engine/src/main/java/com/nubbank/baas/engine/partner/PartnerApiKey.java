@@ -50,12 +50,21 @@ public class PartnerApiKey {
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
     @PrePersist
     void onCreate() {
         createdAt = Instant.now();
+        updatedAt = Instant.now();
         active = true;
         if (scopes == null) scopes = "[]";
         if (tier == null) tier = PartnerTier.SANDBOX;
         if (environment == null) environment = PartnerEnvironment.SANDBOX;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
     }
 }

@@ -13,6 +13,7 @@ public interface PartnerApiKeyRepository extends JpaRepository<PartnerApiKey, UU
     List<PartnerApiKey> findByOrganizationIdAndActiveTrueOrderByCreatedAtDesc(UUID orgId);
 
     @Modifying
+    @org.springframework.transaction.annotation.Transactional
     @Query("UPDATE PartnerApiKey k SET k.lastUsedAt = :now WHERE k.id = :id")
     void updateLastUsed(UUID id, Instant now);
 }
