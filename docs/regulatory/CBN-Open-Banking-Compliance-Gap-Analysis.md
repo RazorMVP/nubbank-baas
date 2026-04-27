@@ -24,7 +24,7 @@
 |----------------|--------|-------|--------------|
 | REST architectural style | ✅ | Spring Boot REST throughout | Phase 1A |
 | JSON data interchange format | ✅ | Jackson + ApiResponse envelope | Phase 1A |
-| ISO 20022 financial data standard | ⚠️ | Payment models use internal format; ISO 20022 mapping required for NIP routing | Phase 2 (baas-ncube) |
+| ISO 20022 financial data standard | ⚠️ | pacs.008.001.12 and acmt.023.001.04 XML models built (Phase 1B); live NPS routing deferred to Phase 2 | Phase 2 live activation |
 | SSL/HTTPS for all connections | ✅ | Enforced at infrastructure level (Vercel + K8s ingress TLS) | Phase 1E |
 | OAuth 2.0 authentication | ✅ | Keycloak FAPI 2.0 for Open Banking flows | Phase 1A |
 
