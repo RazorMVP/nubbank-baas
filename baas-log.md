@@ -9,7 +9,7 @@
 
 | Sub-system | Status | Last Session |
 |------------|--------|-------------|
-| `baas-engine` — Foundation | 🔄 In Progress (Tasks 1–9 of 16 complete) | Session 1 |
+| `baas-engine` — Phase 1A | ✅ Complete (all 16 tasks, 23 tests passing, smoke test live) | Session 1 |
 | `baas-ncube` — CBN adapter | ⬜ Not started | — |
 | `baas-backoffice` — React | ⬜ Not started | — |
 | `baas-portal` — React | ⬜ Not started | — |
@@ -83,26 +83,60 @@ Tests run: 10 total
 BUILD SUCCESS
 ```
 
+#### Additional Files Created (Tasks 10–16 + smoke test fixes)
+
+| File | Change |
+|------|--------|
+| `baas-engine/src/main/java/.../virtualaccount/VirtualAccountPool.java` | NEW — `@Table(schema="public")` entity |
+| `baas-engine/src/main/java/.../virtualaccount/VirtualAccountRepository.java` | NEW — `@Lock(PESSIMISTIC_WRITE)` query |
+| `baas-engine/src/main/java/.../virtualaccount/VirtualAccountService.java` | NEW — atomic NUBAN assignment |
+| `baas-engine/src/main/java/.../customer/Customer.java` (+ enums, dto, repo, service, controller) | NEW — full customer module |
+| `baas-engine/src/main/java/.../account/Account.java` (+ Transaction, enums, dto, repo, service, controller) | NEW — full account module |
+| `baas-engine/src/main/java/.../payment/Payment.java` (+ enums, dto, repo, service, controller) | NEW — internal transfer + idempotency |
+| `baas-engine/src/main/java/.../sandbox/SandboxService.java` + `SandboxController.java` | NEW — simulate deposit, schema reset |
+| `baas-engine/src/main/java/.../config/RateLimitService.java` + `RateLimitFilter.java` | NEW — Redis Lua INCR+EXPIRE, fail-open |
+| `baas-engine/src/main/resources/application.yml` | UPDATED — `ddl-auto: none` (validate breaks multi-tenant) |
+| `baas-engine/src/main/resources/db/migration/public/V1__public_schema.sql` | UPDATED — `partner_api_keys.updated_at` column added |
+| `baas-engine/src/test/java/.../AbstractIntegrationTest.java` | UPDATED — static initializer (not `@Container`) for suite-wide container reuse |
+
+#### Key Decisions (Session 1 Complete)
+
+1. **Schema isolation via Hibernate SCHEMA strategy** — `SET search_path` enforced at PostgreSQL level, not application level.
+2. **Public schema entities need `@Table(schema="public")`** — Without this, Hibernate routes queries to partner schema where tables don't exist.
+3. **`PartnerContext.clear()` uses `HOLDER.remove()`** — `set(null)` leaks ThreadLocal entries in thread pools.
+4. **`@Modifying` requires `@Transactional`** — discovered on `updateLastUsed`.
+5. **`ddl-auto: none` required** — `validate` breaks because tenant tables don't exist in public schema.
+6. **`@ConditionalOnBean` doesn't work on user `@Service`** — use `@Autowired(required = false)` instead.
+7. **Testcontainers static initializer** — `@Container` stops the container between test classes, killing HikariPool. Static block starts it once.
+8. **Deadlock-safe UUID ordering** — `PaymentService` always locks the lower UUID first.
+9. **Idempotency check before locks** — `findByIdempotencyKey()` checked before `PESSIMISTIC_WRITE` lock acquisition.
+10. **Sandbox always resets `sandbox_` schema** — never `partner_` schema, even with a production JWT.
+
+#### Build Verification
+
+```
+Tests run: 23, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS
+Live smoke test: health=UP, register=✅, customer=✅, account=✅, rate-limit-headers=✅
+```
+
 #### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):**
 
 | Component | Version | Git ref |
 |-----------|---------|---------|
-| Spring Boot | 3.5.0 | `6e5b816` |
-| Java | 21 | `6e5b816` |
-| Hibernate | 6.x (managed) | `6e5b816` |
-| Flyway | 10.x (managed) | `6e5b816` |
-| Nimbus JOSE+JWT | 9.37.3 | `6e5b816` |
-| Lombok | 1.18.38 | `6e5b816` |
-| Testcontainers | 1.20.1 | `6e5b816` |
-| Last commit | `6e5b816` | Tasks 8+9 complete |
+| Spring Boot | 3.5.0 | `c6c5e47` |
+| Java | 21 | `c6c5e47` |
+| Hibernate | 6.x (managed) | `c6c5e47` |
+| Flyway | 10.x (managed) | `c6c5e47` |
+| Nimbus JOSE+JWT | 9.37.3 | `c6c5e47` |
+| Lombok | 1.18.38 | `c6c5e47` |
+| Testcontainers | 1.20.1 | `c6c5e47` |
+| Last commit | `c6c5e47` | Session 1 — Phase 1A complete |
 
 #### What's Next (Session 2)
 
-- Task 10: `VirtualAccountService` (NUBAN pool assignment with `PESSIMISTIC_WRITE`)
-- Task 11: Customer API (`POST/GET /baas/v1/customers`)
-- Task 12: Account API (open, deposit, withdraw, transactions)
-- Task 13: Payment API (internal transfer + idempotency)
-- Task 14: Sandbox Controller (simulate deposit, schema reset)
-- Task 15: Integration smoke test
-- Task 16: Rate limiting (Redis)
-- Then: push feature branch + open PR → merge to main
+Phase 1B: `baas-ncube` — CBN format adapter + BVN/NIN verification
+Phase 1C: `baas-backoffice` — React shell (auth, dashboard, customers, accounts)
+Phase 1D: `baas-portal` — React developer portal shell
+Phase 1E: Infrastructure — Docker Compose + CI/CD pipelines

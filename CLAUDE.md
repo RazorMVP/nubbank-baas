@@ -39,11 +39,11 @@ NubBank BaaS is a **completely separate product** from NubBank SaaS (`cba-platfo
 | **Hibernate** | 6.x (managed) | SCHEMA multi-tenancy via `MultiTenantConnectionProvider` |
 | **Flyway** | 10.x (managed) | `flyway-database-postgresql` required for Spring Boot 3.3+ |
 | **Nimbus JOSE+JWT** | 9.37.3 | HMAC-SHA256 Partner JWT |
-| **Jasypt** | 3.0.5 | PII field-level encryption (wired, not yet used for encryption) |
+| **Jasypt** | 3.0.5 | PII field-level encryption (wired, encryption in Phase 2) |
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
-| **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; `api.version=1.41` system property required for Docker Desktop |
-| **Last git commit** | `6e5b816` | Session 1 — TenantProvisioningService + PartnerContextFilter |
+| **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
+| **Last git commit** | `c6c5e47` | Session 1 — Phase 1A complete: all 16 tasks, 23 tests passing, smoke test live |
 
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
@@ -166,16 +166,16 @@ Affected entities: `PartnerOrganization`, `PartnerUser`, `PartnerApiKey`, `Virtu
 | Public schema migration (V1) | `db/migration/public/` | ✅ Built |
 | Tenant schema migration (V1) | `db/migration/tenant/` | ✅ Built |
 
-### Pending (Sub-plan 1A tasks 10–16)
+### Completed in Session 1 (Tasks 10–16)
 
 | Module | Package | Status |
 |--------|---------|--------|
-| VirtualAccountService (NUBAN pool assignment) | `virtualaccount/` | ⬜ Pending Task 10 |
-| Customer API | `customer/` | ⬜ Pending Task 11 |
-| Account API | `account/` | ⬜ Pending Task 12 |
-| Payment API (internal transfer) | `payment/` | ⬜ Pending Task 13 |
-| Sandbox Controller | `sandbox/` | ⬜ Pending Task 14 |
-| Rate Limiting (Redis) | `config/` | ⬜ Pending Task 16 |
+| VirtualAccountService (NUBAN pool assignment) | `virtualaccount/` | ✅ Built — `PESSIMISTIC_WRITE` lock |
+| Customer API | `customer/` | ✅ Built — POST/GET /baas/v1/customers |
+| Account API | `account/` | ✅ Built — open, deposit, withdraw, transactions |
+| Payment API (internal transfer) | `payment/` | ✅ Built — deadlock-safe UUID ordering + idempotency |
+| Sandbox Controller | `sandbox/` | ✅ Built — simulate deposit, schema reset |
+| Rate Limiting (Redis) | `config/` | ✅ Built — Lua INCR+EXPIRE, fail-open, X-RateLimit headers |
 
 ### Pending (Later sub-plans)
 
@@ -263,6 +263,10 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | `flyway-database-postgresql` missing | Spring Boot 3.3+ extracts PostgreSQL dialect — add this dep or Flyway fails at startup |
 | `schema_provision_log.partner_id` FK in tests | Tests must insert a real `PartnerOrganization` row before calling `provision()`, or the FK fails |
 | NUBAN check digit SQL — `CAST(expr % 10 AS TEXT)` | PostgreSQL parses `AS TEXT` as alias. Use `((expr % 10))::TEXT` |
+| `ddl-auto: validate` breaks with multi-tenant schemas | Hibernate validates against `public` schema — tenant tables don't exist there. Use `ddl-auto: none`; Flyway owns the schema. |
+| `@ConditionalOnBean` on a user `@Service` never fires | Spring evaluates user beans before Boot auto-config — condition always false. Use `@Autowired(required = false)` with a null-guard instead. |
+| `@Testcontainers` + `@Container` stops container between test classes | Kills the shared HikariPool. Use a static initializer block instead — container starts once for the JVM; Testcontainers registers its own shutdown hook. |
+| `partner_api_keys.updated_at` missing from DDL | Hibernate `validate` fails if entity field exists but column doesn't. Keep entity fields and DDL in sync. |
 
 ---
 
