@@ -6,40 +6,71 @@ Use this skill whenever working on the NubBank BaaS platform (`nubbank-baas/` re
 
 ## ⛔ SESSION COMPLETION GATE — READ BEFORE SAYING "DONE"
 
-**You MUST NOT close a session, summarise completion, or push to GitHub until every item below is checked.**
+**You MUST NOT close a session, summarise completion, or push to GitHub until every item below is checked. This is a hard stop, not a suggestion.**
 
 ### Mandatory End-of-Session Checklist
 
-- [ ] **1. `baas-log.md`** — New session entry added at the top of Change History. Must include: session number, date, one-line summary, New/Updated Files table, Key Decisions, Build Verification, and Confirmed Platform Versions block.
-  - Run `git log --oneline -1 -- baas-engine/` to get the SHA
-  - Read versions from `baas-engine/pom.xml`
+- [ ] **1. Build verification** — `cd ~/nubbank-baas/baas-engine && ./mvnw test -q` — all tests must pass before any commit. Only sessions that touched zero Java files may skip.
 
-- [ ] **2. `CLAUDE.md`** — Updated:
-  - Confirmed Platform Versions table at top
-  - Module Catalogue (new modules marked ✅)
-  - Any new gotchas discovered
+- [ ] **2. `baas-log.md`** — New session entry added at the **top** of Change History. Must include:
+  - Session number, date, one-line summary + final commit SHA
+  - New/Updated Files table
+  - Key Decisions (architectural choices, gotchas discovered)
+  - Build Verification (`Tests run: N, Failures: 0, BUILD SUCCESS`)
+  - **Confirmed Platform Versions** block (SHA from `git log --oneline -1 -- baas-engine/`)
 
-- [ ] **3. API docs** — If ANY controller file in `baas-engine/` was touched this session:
-  - Check for new or changed `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` annotations
-  - Update API reference (when created in a later session)
-  - Only sessions that touched ZERO controller files may skip this step
+- [ ] **3. `CLAUDE.md`** — Updated:
+  - Confirmed Platform Versions SHA (must match last commit)
+  - Module Catalogue — new modules ✅, pending modules current
+  - Any new gotchas in the Known Gotchas table
 
-- [ ] **4. Deployment-agnostic check** — If a new service was added this session:
-  - [ ] `Dockerfile` committed
-  - [ ] CI workflow committed (`.github/workflows/`)
+- [ ] **4. API docs** — If ANY `baas-engine` controller file was touched:
+  - `git diff HEAD~1 HEAD --name-only | grep -E '\.java$'` to find changed files
+  - Grep for `@GetMapping|@PostMapping|@PutMapping|@DeleteMapping|@PatchMapping`
+  - Update `docs/api-reference.html` for every new or changed endpoint
+  - Zero controller files touched = may skip
+
+- [ ] **5. CBN compliance gap analysis** — If any Open Banking, KYC, consent, or payment feature changed:
+  - Update `docs/regulatory/CBN-Open-Banking-Compliance-Gap-Analysis.md`
+  - Move items from ❌ to ⚠️ or ✅ as appropriate
+
+- [ ] **6. Figma diagrams** — If service architecture or data flows changed, flag which boards need updating:
+  - [Service Architecture](https://www.figma.com/board/PRACgc6BXsGVEL7ZhB866A)
+  - [Multi-Tenancy Flow](https://www.figma.com/board/TR1AYhx9Pcmd5y5grxMv8v)
+  - [Partner Provisioning Flow](https://www.figma.com/board/qHD6cSCRTQHPbkmavHtoxw)
+  - [CBN Compliance Roadmap](https://www.figma.com/board/5KpYYAtiukv7G6o3LyjsVr)
+  - Note in `baas-log.md` which boards were regenerated
+
+- [ ] **7. `/baas` skill update** — If a Phase or sub-plan completed: mark ✅ in Phase Build Order below
+
+- [ ] **8. Deployment-agnostic check** — If a new service was added:
+  - [ ] `Dockerfile` committed and tested
+  - [ ] `nginx.conf` committed
   - [ ] `infrastructure/docker-compose.yml` entry added
+  - [ ] CI workflow committed (`.github/workflows/{service}-ci.yml`)
 
-- [ ] **5. Commit and push** — `git add CLAUDE.md baas-log.md && git commit && git push origin main`
-  - The pre-push hook will block if `Confirmed Platform Versions` is missing from either file
+- [ ] **9. Commit and push**
+  ```bash
+  git add CLAUDE.md baas-log.md docs/regulatory/ .claude/skills/baas/SKILL.md
+  git commit -m "docs(baas-log+claude): Session N — <summary>
 
-### Rationalisation Traps
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+  git push origin main
+  ```
+  The pre-push hook blocks if `Confirmed Platform Versions` is missing from either `baas-log.md` or `CLAUDE.md`.
+
+### Rationalisation Traps — These Are Not Valid Reasons to Skip
 
 | Thought | Why it's wrong |
 |---------|---------------|
-| "The frontend didn't touch the backend" | `CLAUDE.md` and `baas-log.md` still need updating |
+| "The frontend didn't touch the backend" | `CLAUDE.md` and `baas-log.md` still need updating for every session |
 | "I'll do docs next session" | The next session starts cold. Missing docs will be missed again. |
 | "It was just a small fix" | Every session gets a log entry, no exceptions |
-| "Vercel handles the deploy, Dockerfile is redundant" | Vercel is one target. Dockerfile is the portability contract. Both must exist. |
+| "Tests passed locally, no need to re-run" | Run immediately before committing — local state can drift |
+| "Vercel handles the deploy, Dockerfile is redundant" | Vercel is one target. Dockerfile is the portability contract. |
+| "Figma diagrams are optional" | They are the visual spec shared with stakeholders. Stale diagrams create confusion. |
+| "CBN gap analysis was updated last session" | Last session's analysis doesn't cover this session's changes. |
+| "The API docs can wait until we have more endpoints" | One missing endpoint breaks partner integrations silently. |
 
 ---
 

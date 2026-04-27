@@ -216,23 +216,92 @@ Revenue: per-API + per-account     Revenue: per-transaction           Revenue: m
 
 ## ⛔ SESSION COMPLETION GATE — READ BEFORE SAYING "DONE"
 
-**You MUST NOT close a session, summarise completion, or push to GitHub until every item below is checked.**
+**You MUST NOT close a session, summarise completion, or push to GitHub until every item below is checked. This is a hard stop, not a suggestion.**
 
 ### Mandatory End-of-Session Checklist
 
-- [ ] **1. `baas-log.md`** — New session entry added at the top of Change History. Must include: session number, date, one-line summary, New/Updated Files table, Key Decisions, Build Verification, Confirmed Platform Versions block.
-- [ ] **2. `CLAUDE.md`** — Updated: Confirmed Platform Versions table; Module Catalogue (new modules ✅); new gotchas.
-- [ ] **3. API docs** — If ANY `baas-engine` endpoint was added or changed: update API docs (to be created in Session 2+). Only sessions that touched zero controller files may skip.
-- [ ] **4. Deployment-agnostic check** — If a new service was added: Dockerfile committed, CI workflow committed, Docker Compose entry added.
-- [ ] **5. Commit and push** — `git add CLAUDE.md baas-log.md && git commit && git push origin main`.
+Run through this list in order. Do not skip any item, even for tiny changes.
 
-### Rationalisation Traps
+- [ ] **1. Build verification** — Run `cd ~/nubbank-baas/baas-engine && ./mvnw test -q` before any commit. All tests must pass. A failing build blocks the push — fix it now, not later. Only sessions that touched zero Java files may skip the test run.
+
+- [ ] **2. `baas-log.md`** — New session entry added at the **top** of the Change History section. Must include:
+  - Session number and date
+  - One-line summary with final commit SHA
+  - New/Updated Files table
+  - Key Decisions (bullet list — architectural choices, gotchas discovered)
+  - Build Verification block (test count, BUILD SUCCESS)
+  - Confirmed Platform Versions block (see template in `/baas` skill)
+  - Run `git log --oneline -1 -- baas-engine/` to get the correct SHA
+
+- [ ] **3. `CLAUDE.md`** — Updated:
+  - Confirmed Platform Versions table (SHA must match last commit)
+  - Module Catalogue — new modules marked ✅, pending modules updated
+  - Any new gotchas added to the Known Gotchas table
+  - Architecture diagrams section if service boundaries changed
+
+- [ ] **4. API docs** — If ANY `baas-engine` controller file was touched this session:
+  - Run: `git diff HEAD~1 HEAD --name-only | grep -E '\.java$'` to list changed Java files
+  - For each changed file, grep for `@GetMapping|@PostMapping|@PutMapping|@DeleteMapping|@PatchMapping`
+  - For every new or changed endpoint: update `docs/api-reference.html` (to be created in Session 2+)
+  - Only sessions that touched **zero** controller files may skip this step — no exceptions
+
+- [ ] **5. CBN compliance gap analysis** — If ANY of the following changed this session:
+  - A new API endpoint related to Open Banking, consent, KYC, or payments
+  - A new field on Customer, Account, or PartnerOrganization
+  - A new integration (Ncube, OBR, NIP, mTLS)
+  - Update `docs/regulatory/CBN-Open-Banking-Compliance-Gap-Analysis.md`:
+    - Move items from ❌ to ⚠️ or ✅ as appropriate
+    - Add any newly discovered gaps
+  - Sessions that touched zero Open Banking / compliance files may skip
+
+- [ ] **6. Figma diagrams** — If the service architecture or data flows changed this session, flag which of the 4 FigJam boards needs updating:
+  - [Service Architecture](https://www.figma.com/board/PRACgc6BXsGVEL7ZhB866A) — new services, data layer changes
+  - [Multi-Tenancy Flow](https://www.figma.com/board/TR1AYhx9Pcmd5y5grxMv8v) — schema isolation changes
+  - [Partner Provisioning Flow](https://www.figma.com/board/qHD6cSCRTQHPbkmavHtoxw) — onboarding or tier changes
+  - [CBN Compliance Roadmap](https://www.figma.com/board/5KpYYAtiukv7G6o3LyjsVr) — compliance status changes
+  - Note in `baas-log.md` which boards were regenerated. Regenerate using `generate_diagram` MCP tool.
+
+- [ ] **7. `/baas` skill update** — If a Phase or sub-plan was completed this session:
+  - Update `.claude/skills/baas/SKILL.md` — mark phase ✅ in the Phase Build Order table
+  - If new critical gotchas were found, add them to the skill's Known Gotchas section
+
+- [ ] **8. Deployment-agnostic check** — If a new service (`baas-card`, `baas-ncube`, `baas-portal`, `baas-backoffice`, `baas-docs`) was added this session, verify before pushing:
+  - [ ] `Dockerfile` committed and tested (`docker build` succeeds locally)
+  - [ ] `nginx.conf` committed (SPA routing + security headers)
+  - [ ] `infrastructure/docker-compose.yml` entry added
+  - [ ] CI workflow committed (`.github/workflows/{service}-ci.yml`)
+  - [ ] Build uses only standard CLI (`npm run build`, `./mvnw package`) — no Vercel CLI in build step
+
+- [ ] **9. Commit and push**
+
+  ```bash
+  git add CLAUDE.md baas-log.md docs/regulatory/
+  # If API docs updated:
+  git add docs/api-reference.html
+  # If skill updated:
+  git add .claude/skills/baas/SKILL.md
+  git commit -m "docs(baas-log+claude): Session N — <one-line summary>
+
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+  git push origin main
+  ```
+
+  **The pre-push hook at `.claude/hooks/check-versions-before-push.sh` will block the push if `Confirmed Platform Versions` is missing from either `baas-log.md` or `CLAUDE.md`.** If the push is blocked, add the versions table to the current session entry and retry.
+
+---
+
+### Rationalisation Traps — These Are Not Valid Reasons to Skip
 
 | Thought | Why it's wrong |
 |---------|---------------|
-| "The frontend didn't touch the backend" | CLAUDE.md and baas-log.md still need updating |
+| "The frontend didn't touch the backend" | `CLAUDE.md` and `baas-log.md` still need updating for every session |
 | "I'll do docs next session" | The next session starts cold. Missing docs will be missed again. |
-| "It was just a fix" | Every session gets a log entry |
+| "It was just a small fix" | Every session gets a log entry, no exceptions |
+| "The tests passed locally, no need to run them again" | Run them immediately before committing — local state can drift |
+| "Vercel already handles the deploy, Dockerfile is redundant" | Vercel is one target. The Dockerfile is the portability contract. Both must exist. |
+| "Figma diagrams are optional" | They are the visual spec shared with stakeholders. Stale diagrams create confusion. |
+| "CBN gap analysis was updated last session" | Last session's analysis doesn't cover this session's changes. |
+| "The API docs can wait until we have more endpoints" | One missing endpoint breaks partner integrations silently. Document immediately. |
 
 ---
 
