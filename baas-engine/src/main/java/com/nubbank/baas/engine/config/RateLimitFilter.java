@@ -32,28 +32,37 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         PartnerContext ctx = PartnerContext.get();
-        if (ctx != null && rateLimitService.isPresent()) {
-            try {
-                var result = rateLimitService.get().check(ctx.partnerId(), ctx.tier(), ctx.environment());
-
-                response.setHeader("X-RateLimit-Limit", String.valueOf(result.limit()));
-                response.setHeader("X-RateLimit-Remaining",
-                    String.valueOf(Math.max(0, result.limit() - result.current())));
-                response.setHeader("X-RateLimit-Reset",
-                    String.valueOf(System.currentTimeMillis() / 1000L + result.resetInSeconds()));
-
-                if (!result.allowed()) {
-                    response.setStatus(429);
-                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                    response.setHeader("Retry-After", "60");
-                    response.getWriter().write(objectMapper.writeValueAsString(
-                        ApiResponse.error("RATE_LIMIT_EXCEEDED",
-                            "API rate limit exceeded. Retry after 60 seconds.")));
-                    return;
+        if (ctx != null) {
+            if (rateLimitService.isPresent()) {
+                try {
+                    var result = rateLimitService.get().check(
+                        ctx.partnerId(), ctx.tier(), ctx.environment());
+                    response.setHeader("X-RateLimit-Limit", String.valueOf(result.limit()));
+                    response.setHeader("X-RateLimit-Remaining",
+                        String.valueOf(Math.max(0, result.limit() - result.current())));
+                    response.setHeader("X-RateLimit-Reset",
+                        String.valueOf(System.currentTimeMillis() / 1000L + result.resetInSeconds()));
+                    if (!result.allowed()) {
+                        response.setStatus(429);
+                        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                        response.setHeader("Retry-After", "60");
+                        response.getWriter().write(objectMapper.writeValueAsString(
+                            ApiResponse.error("RATE_LIMIT_EXCEEDED",
+                                "API rate limit exceeded. Retry after 60 seconds.")));
+                        return;
+                    }
+                } catch (Exception ex) {
+                    log.debug("Rate limit check failed, allowing request: {}", ex.getMessage());
+                    // Fail open — set fallback headers
+                    response.setHeader("X-RateLimit-Limit", "-1");
+                    response.setHeader("X-RateLimit-Remaining", "-1");
+                    response.setHeader("X-RateLimit-Reset", "0");
                 }
-            } catch (Exception ex) {
-                // Redis unavailable — fail open
-                log.debug("Rate limit check failed, allowing request: {}", ex.getMessage());
+            } else {
+                // Redis unavailable — fail open with informational headers
+                response.setHeader("X-RateLimit-Limit", "-1");
+                response.setHeader("X-RateLimit-Remaining", "-1");
+                response.setHeader("X-RateLimit-Reset", "0");
             }
         }
         chain.doFilter(request, response);
