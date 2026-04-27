@@ -140,16 +140,26 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!-- forkCount=1 reuseForks=true ensures a single JVM fork so Spring
+                         context caching works across all @SpringBootTest classes and only
+                         one HikariCP pool is created per datasource URL. Without this,
+                         Surefire may fork multiple JVMs, each with their own pool, causing
+                         Testcontainer connection exhaustion on the shared postgres container. -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
                     <systemPropertyVariables>
-                        <!-- Pass raw Docker socket to testcontainers forked JVM -->
-                        <DOCKER_HOST>unix:///Users/razormvp/Library/Containers/com.docker.docker/Data/docker.raw.sock</DOCKER_HOST>
-                        <TC_HOST>unix:///Users/razormvp/Library/Containers/com.docker.docker/Data/docker.raw.sock</TC_HOST>
+                        <!-- The Testcontainers-shaded docker-java reads API version from
+                             the "api.version" property key (not the "API_VERSION" env var).
+                             Since env var names cannot contain dots on POSIX systems, and
+                             the shaded docker-java only maps env vars that match exactly
+                             the CONFIG_KEYS set (which uses lowercase-dot format like
+                             "api.version"), we must use a JVM system property.
+                             overrideDockerPropertiesWithSystemProperties reads System.getProperties()
+                             and maps "api.version" → withApiVersion("1.41") so docker-java
+                             calls /v1.41/info instead of /v0.0/info.
+                             Docker Desktop 4.x requires minimum API 1.40 on all endpoints. -->
+                        <api.version>1.41</api.version>
                     </systemPropertyVariables>
-                    <environmentVariables>
-                        <DOCKER_HOST>unix:///Users/razormvp/Library/Containers/com.docker.docker/Data/docker.raw.sock</DOCKER_HOST>
-                        <TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE>/Users/razormvp/Library/Containers/com.docker.docker/Data/docker.raw.sock</TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE>
-                        <DOCKER_API_VERSION>1.41</DOCKER_API_VERSION>
-                    </environmentVariables>
                 </configuration>
             </plugin>
         </plugins>
