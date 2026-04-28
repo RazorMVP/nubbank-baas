@@ -68,13 +68,14 @@ CREATE TABLE loan_repayment_schedule (
 
 CREATE TABLE loan_charges (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    loan_id     UUID NOT NULL REFERENCES loans(id),
+    loan_id     UUID NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
     charge_id   UUID NOT NULL REFERENCES charges(id),
     amount      NUMERIC(19,4) NOT NULL,
     amount_paid NUMERIC(19,4) NOT NULL DEFAULT 0,
     waived      BOOLEAN NOT NULL DEFAULT false,
     due_date    DATE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_loan_charge_paid CHECK (amount_paid <= amount)
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -82,7 +83,7 @@ CREATE TABLE loan_charges (
 -- ═══════════════════════════════════════════════════════════════
 CREATE TABLE loan_guarantors (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    loan_id        UUID NOT NULL REFERENCES loans(id),
+    loan_id        UUID NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
     guarantor_type VARCHAR(50) NOT NULL DEFAULT 'EXISTING_CUSTOMER',
     customer_id    UUID REFERENCES customers(id),
     first_name     VARCHAR(200),
@@ -94,7 +95,7 @@ CREATE TABLE loan_guarantors (
 
 CREATE TABLE loan_collaterals (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    loan_id       UUID NOT NULL REFERENCES loans(id),
+    loan_id       UUID NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
     description   TEXT NOT NULL,
     value         NUMERIC(19,4) NOT NULL,
     currency_code VARCHAR(3) NOT NULL DEFAULT 'NGN',
@@ -104,7 +105,7 @@ CREATE TABLE loan_collaterals (
 
 CREATE TABLE loan_reschedule_requests (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    loan_id              UUID NOT NULL REFERENCES loans(id),
+    loan_id              UUID NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
     status               VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     reschedule_from_date DATE,
     new_interest_rate    NUMERIC(8,4),
@@ -113,6 +114,7 @@ CREATE TABLE loan_reschedule_requests (
     extra_terms          INTEGER NOT NULL DEFAULT 0,
     recalculate_interest BOOLEAN NOT NULL DEFAULT true,
     reason               TEXT,
+    version              BIGINT NOT NULL DEFAULT 0,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -235,6 +237,7 @@ CREATE TABLE journal_entries (
     reversed      BOOLEAN NOT NULL DEFAULT false,
     reversed_by_id UUID REFERENCES journal_entries(id),
     created_by    VARCHAR(255),
+    version       BIGINT NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -335,6 +338,7 @@ CREATE TABLE teller_sessions (
     actual_cash     NUMERIC(19,4),
     difference      NUMERIC(19,4),
     currency_code   VARCHAR(3) NOT NULL DEFAULT 'NGN',
+    version         BIGINT NOT NULL DEFAULT 0,
     opened_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     closed_at       TIMESTAMPTZ,
     UNIQUE (cashier_id, session_date)
@@ -472,6 +476,7 @@ CREATE TABLE holidays (
     repayment_scheduling_type VARCHAR(50) NOT NULL DEFAULT 'NEXT_WORKING_DAY',
     status                    VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     description               TEXT,
+    version                   BIGINT NOT NULL DEFAULT 0,
     created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at                TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -636,6 +641,7 @@ CREATE TABLE maker_checker_requests (
     made_by_user_id    UUID NOT NULL,
     checked_by_user_id UUID,
     rejection_reason   TEXT,
+    version            BIGINT NOT NULL DEFAULT 0,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -922,6 +928,14 @@ CREATE INDEX idx_docs_entity           ON entity_documents(entity_type, entity_i
 CREATE INDEX idx_sms_campaign          ON sms_messages(campaign_id);
 CREATE INDEX idx_sanctions_entity      ON sanctions_screening_log(entity_type, entity_id);
 CREATE INDEX idx_maker_checker_status  ON maker_checker_requests(status, created_at DESC);
+CREATE INDEX idx_loans_product         ON loans(loan_product_id);
+CREATE INDEX idx_loan_guarantors_loan  ON loan_guarantors(loan_id);
+CREATE INDEX idx_loan_collaterals_loan ON loan_collaterals(loan_id);
+CREATE INDEX idx_loan_reschedule_loan  ON loan_reschedule_requests(loan_id);
+CREATE INDEX idx_jel_gl_account        ON journal_entry_lines(gl_account_id);
+CREATE INDEX idx_si_source_account     ON standing_instructions(source_account_id);
+CREATE INDEX idx_ob_consents_status    ON open_banking_consents(status);
+CREATE INDEX idx_share_txns_account    ON share_transactions(account_id);
 
 -- ═══════════════════════════════════════════════════════════════
 -- SEED DATA
