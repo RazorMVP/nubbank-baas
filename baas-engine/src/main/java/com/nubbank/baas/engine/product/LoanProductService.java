@@ -54,6 +54,10 @@ public class LoanProductService {
         LoanProduct p = findOrThrow(id);
         if (!p.getShortName().equals(req.shortName()) && repo.findByShortName(req.shortName()).isPresent())
             throw BaasException.conflict("DUPLICATE_SHORT_NAME", "Short name '" + req.shortName() + "' already in use");
+        if (req.defaultPrincipal().compareTo(req.minPrincipal()) < 0
+                || req.defaultPrincipal().compareTo(req.maxPrincipal()) > 0)
+            throw BaasException.badRequest("INVALID_DEFAULT_PRINCIPAL",
+                "defaultPrincipal must be between minPrincipal and maxPrincipal");
         p.setName(req.name()); p.setShortName(req.shortName()); p.setDescription(req.description());
         p.setMinPrincipal(req.minPrincipal()); p.setMaxPrincipal(req.maxPrincipal());
         p.setDefaultPrincipal(req.defaultPrincipal()); p.setNominalInterestRate(req.nominalInterestRate());
