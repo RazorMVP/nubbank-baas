@@ -1,5 +1,6 @@
 package com.nubbank.baas.engine.customer;
 
+import com.nubbank.baas.engine.common.FieldEncryptor;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
@@ -19,15 +20,19 @@ public class Customer {
     @Column(name = "external_reference", unique = true, length = 100)
     private String externalReference;
 
+    @Convert(converter = FieldEncryptor.class)
     @Column(name = "first_name_encrypted", nullable = false, length = 500)
     private String firstNameEncrypted;
 
+    @Convert(converter = FieldEncryptor.class)
     @Column(name = "last_name_encrypted", nullable = false, length = 500)
     private String lastNameEncrypted;
 
+    @Convert(converter = FieldEncryptor.class)
     @Column(name = "email_encrypted", length = 500)
     private String emailEncrypted;
 
+    @Convert(converter = FieldEncryptor.class)
     @Column(name = "phone_encrypted", length = 500)
     private String phoneEncrypted;
 
@@ -49,9 +54,11 @@ public class Customer {
     @Column(name = "kyc_provider", length = 50)
     private KycProvider kycProvider;
 
+    @Convert(converter = FieldEncryptor.class)
     @Column(name = "bvn_encrypted", length = 500)
     private String bvnEncrypted;
 
+    @Convert(converter = FieldEncryptor.class)
     @Column(name = "nin_encrypted", length = 500)
     private String ninEncrypted;
 
