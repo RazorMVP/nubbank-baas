@@ -4,7 +4,8 @@ import com.nubbank.baas.engine.notification.events.*;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.event.EventListener;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.data.domain.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -29,7 +30,7 @@ public class NotificationService {
     }
 
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLoanApproved(LoanApprovedEvent event) {
         safeLog("LOAN_APPROVED", "LOAN", event.loanId(), NotificationChannel.EMAIL, null,
             "Loan Approved",
@@ -38,7 +39,7 @@ public class NotificationService {
     }
 
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLoanDisbursed(LoanDisbursedEvent event) {
         safeLog("LOAN_DISBURSED", "LOAN", event.loanId(), NotificationChannel.EMAIL, null,
             "Loan Disbursed",
@@ -47,7 +48,7 @@ public class NotificationService {
     }
 
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onAccountOpened(AccountOpenedEvent event) {
         safeLog("ACCOUNT_OPENED", "ACCOUNT", event.accountId(), NotificationChannel.EMAIL, null,
             "Account Opened",
@@ -57,7 +58,7 @@ public class NotificationService {
     }
 
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onPaymentCompleted(PaymentCompletedEvent event) {
         safeLog("PAYMENT_COMPLETED", "PAYMENT", event.paymentId(), NotificationChannel.EMAIL, null,
             "Payment Completed",

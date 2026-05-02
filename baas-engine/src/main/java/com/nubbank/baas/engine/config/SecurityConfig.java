@@ -17,19 +17,29 @@ public class SecurityConfig {
 
     private final PartnerContextFilter partnerContextFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final AuthEnforcementFilter authEnforcementFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // Filter order:
+            // 1. PartnerContextFilter resolves JWT/ApiKey into PartnerContext
+            // 2. AuthEnforcementFilter rejects with 401 if context is null on /baas/v1/**
+            // 3. RateLimitFilter applies tier-based rate limits using the resolved context
             .addFilterBefore(partnerContextFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterAfter(rateLimitFilter, PartnerContextFilter.class) // runs after context is set
+            .addFilterAfter(authEnforcementFilter, PartnerContextFilter.class)
+            .addFilterAfter(rateLimitFilter, AuthEnforcementFilter.class)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/baas/v1/auth/**").permitAll()
+                .requestMatchers("/baas/v1/partners/register").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
-                .anyRequest().permitAll() // enforcement added in Phase 2
+                // AuthEnforcementFilter handles 401 for the rest. Spring Security
+                // permits everything here so our filter can produce a JSON error
+                // envelope consistent with the rest of the API.
+                .anyRequest().permitAll()
             );
         return http.build();
     }

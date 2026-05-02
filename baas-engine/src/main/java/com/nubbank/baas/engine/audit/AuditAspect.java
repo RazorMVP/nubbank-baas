@@ -40,17 +40,29 @@ public class AuditAspect {
         String className = pjp.getTarget().getClass().getSimpleName();
         String methodName = pjp.getSignature().getName();
         String action = className.replace("Service", "").toUpperCase() + "_" + toSnakeUpper(methodName);
-
-        UUID entityId = extractFirstUuid(pjp.getArgs());
         String entityType = className.replace("Service", "").toUpperCase();
-
+        UUID entityId = extractFirstUuid(pjp.getArgs());
         String changedBy = ctx.userId() != null ? ctx.userId() : ctx.partnerId();
 
-        Object result = pjp.proceed();
+        // Audit regardless of success/failure. AuditLogService.log() uses
+        // REQUIRES_NEW so the row survives a rollback of the calling tx.
+        // Failed operations matter for compliance — a denied withdrawal is
+        // still an event that must be auditable.
+        try {
+            Object result = pjp.proceed();
+            auditLogService.log(entityType, entityId, action, changedBy, null, null);
+            return result;
+        } catch (Throwable t) {
+            String failureNote = "{\"status\":\"FAILED\",\"error\":\""
+                + escapeJson(t.getClass().getSimpleName() + ": " + t.getMessage()) + "\"}";
+            auditLogService.log(entityType, entityId, action, changedBy, null, failureNote);
+            throw t;
+        }
+    }
 
-        auditLogService.log(entityType, entityId, action, changedBy, null, null);
-
-        return result;
+    private String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
     }
 
     private UUID extractFirstUuid(Object[] args) {

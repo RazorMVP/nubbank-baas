@@ -20,8 +20,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TwoFactorService {
 
     private final TwoFactorTokenRepository repo;
+    private final TwoFactorTokenWriter writer;
 
-    @Value("${app.encryption.key:nubbank-baas-dev-enc-key-32chars!}")
+    /**
+     * HMAC-SHA256 key for hashing OTP tokens. Must be set via env var or
+     * application.yml — there is no default. Production deployments fail
+     * to start if this is missing, which is the correct behaviour.
+     */
+    @Value("${app.encryption.key}")
     private String hmacKey;
 
     private final Map<UUID, String> testOtpStore = new ConcurrentHashMap<>();
@@ -46,6 +52,9 @@ public class TwoFactorService {
             "deliveryMethod", token.getDeliveryMethod());
     }
 
+    /** Maximum allowed failed verification attempts before token is locked. */
+    private static final int MAX_ATTEMPTS = 5;
+
     @Transactional
     public Map<String, Object> verifyOtp(VerifyOtpRequest req) {
         requireContext();
@@ -54,18 +63,42 @@ public class TwoFactorService {
 
         if (token.isVerified())
             throw BaasException.badRequest("TOKEN_ALREADY_USED", "This OTP has already been used");
+        if (token.isLocked())
+            throw BaasException.badRequest("TOKEN_LOCKED",
+                "This OTP token is locked due to too many failed attempts. Request a new code.");
         if (Instant.now().isAfter(token.getExpiresAt()))
             throw BaasException.badRequest("TOKEN_EXPIRED", "OTP has expired");
 
+        // Constant-time comparison to avoid timing-side-channel leakage
         String hash = hmacSha256(req.otp(), hmacKey);
-        if (!hash.equals(token.getTokenHash()))
-            throw BaasException.badRequest("INVALID_OTP", "The OTP provided is incorrect");
+        if (!constantTimeEquals(hash, token.getTokenHash())) {
+            // Record the failed attempt in a SEPARATE transaction (REQUIRES_NEW)
+            // so the increment survives the rollback caused by throwing below.
+            // Without this, the JPA rollback resets failedAttempts to 0 and the
+            // brute-force lockout never engages.
+            TwoFactorToken updated = writer.recordFailedAttempt(req.tokenId(), MAX_ATTEMPTS);
+            if (updated.isLocked()) {
+                throw BaasException.badRequest("TOKEN_LOCKED",
+                    "Too many failed attempts — token is now locked. Request a new code.");
+            }
+            int remaining = MAX_ATTEMPTS - updated.getFailedAttempts();
+            throw BaasException.badRequest("INVALID_OTP",
+                "The OTP provided is incorrect. " + remaining + " attempts remaining.");
+        }
 
         token.setVerified(true);
         repo.save(token);
         testOtpStore.remove(req.tokenId());
 
         return Map.of("verified", true, "userId", token.getUserId());
+    }
+
+    /** Constant-time string comparison — defends against timing attacks on the hash check. */
+    private boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null || a.length() != b.length()) return false;
+        int diff = 0;
+        for (int i = 0; i < a.length(); i++) diff |= a.charAt(i) ^ b.charAt(i);
+        return diff == 0;
     }
 
     /** Test helper — retrieves the plaintext OTP for the given token ID. Never call in production. */

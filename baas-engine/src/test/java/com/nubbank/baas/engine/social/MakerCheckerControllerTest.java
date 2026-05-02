@@ -16,8 +16,9 @@ class MakerCheckerControllerTest extends AbstractIntegrationTest {
     @Autowired private PartnerOrganizationRepository orgRepo;
     @Autowired private TenantProvisioningService provisioningService;
 
-    private String jwt;
-    private UUID userId;
+    private String makerJwt;
+    private String checkerJwt;
+    private UUID makerUserId;
 
     @BeforeEach
     void setup() {
@@ -27,35 +28,62 @@ class MakerCheckerControllerTest extends AbstractIntegrationTest {
             .environment(PartnerEnvironment.SANDBOX).schemaName(schemaName)
             .contactEmail("mc@test.com").build());
         provisioningService.provision(org.getId(), schemaName);
-        userId = UUID.randomUUID();
-        jwt = jwtService.issue(userId.toString(), "mc@test.com",
+        // Two distinct users — required for segregation of duties.
+        makerUserId = UUID.randomUUID();
+        UUID checkerUserId = UUID.randomUUID();
+        makerJwt = jwtService.issue(makerUserId.toString(), "maker@test.com",
+            "PARTNER_ADMIN", org.getId().toString(), "MC Test",
+            schemaName, "SANDBOX", "SANDBOX");
+        checkerJwt = jwtService.issue(checkerUserId.toString(), "checker@test.com",
             "PARTNER_ADMIN", org.getId().toString(), "MC Test",
             schemaName, "SANDBOX", "SANDBOX");
     }
 
     @Test
-    void createMakerCheckerRequest_and_approve() {
-        HttpHeaders h = new HttpHeaders();
-        h.setBearerAuth(jwt); h.setContentType(MediaType.APPLICATION_JSON);
+    void createAsMaker_then_approveAsChecker() {
+        HttpHeaders maker = new HttpHeaders();
+        maker.setBearerAuth(makerJwt); maker.setContentType(MediaType.APPLICATION_JSON);
 
-        // Create request — madeByUserId comes from JWT sub
+        // Maker creates the request
         ResponseEntity<Map> createResp = restTemplate.exchange("/baas/v1/makercheckers",
             HttpMethod.POST,
             new HttpEntity<>(Map.of(
                 "entityType", "LOAN",
                 "action", "APPROVE_LOAN",
                 "commandAsJson", "{\"loanId\":\"abc-123\",\"amount\":100000}"
-            ), h), Map.class);
+            ), maker), Map.class);
         assertThat(createResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String requestId = ((Map<?, ?>) createResp.getBody().get("data")).get("id").toString();
         assertThat(((Map<?, ?>) createResp.getBody().get("data")).get("status")).isEqualTo("PENDING");
 
-        // Approve with checker user ID
-        UUID checkerUserId = UUID.randomUUID();
+        // Checker (different user) approves
+        HttpHeaders checker = new HttpHeaders();
+        checker.setBearerAuth(checkerJwt);
         ResponseEntity<Map> approveResp = restTemplate.exchange(
-            "/baas/v1/makercheckers/" + requestId + "?command=approve&checkerUserId=" + checkerUserId,
-            HttpMethod.POST, new HttpEntity<>(h), Map.class);
+            "/baas/v1/makercheckers/" + requestId + "?command=approve",
+            HttpMethod.POST, new HttpEntity<>(checker), Map.class);
         assertThat(approveResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Map<?, ?>) approveResp.getBody().get("data")).get("status")).isEqualTo("APPROVED");
+    }
+
+    @Test
+    void approveByMaker_isRejected_segregationOfDuties() {
+        HttpHeaders maker = new HttpHeaders();
+        maker.setBearerAuth(makerJwt); maker.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<Map> createResp = restTemplate.exchange("/baas/v1/makercheckers",
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of(
+                "entityType", "LOAN",
+                "action", "APPROVE_LOAN",
+                "commandAsJson", "{}"
+            ), maker), Map.class);
+        String requestId = ((Map<?, ?>) createResp.getBody().get("data")).get("id").toString();
+
+        // Maker tries to approve their own request — must be rejected.
+        ResponseEntity<Map> selfApprove = restTemplate.exchange(
+            "/baas/v1/makercheckers/" + requestId + "?command=approve",
+            HttpMethod.POST, new HttpEntity<>(maker), Map.class);
+        assertThat(selfApprove.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 }

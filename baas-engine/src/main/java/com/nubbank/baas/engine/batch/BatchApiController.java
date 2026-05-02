@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import java.util.*;
 
@@ -57,7 +58,10 @@ public class BatchApiController {
                 result.put("body", response.getBody());
                 responses.add(result);
 
-            } catch (Exception e) {
+            } catch (RestClientException | IllegalArgumentException e) {
+                // RestClientException covers HTTP transport errors and non-2xx responses
+                // IllegalArgumentException covers bad MethodValueOf/URL parsing.
+                // Errors and other RuntimeExceptions propagate normally.
                 Map<String, Object> errorResult = new LinkedHashMap<>();
                 errorResult.put("requestId", subReq.requestId());
                 errorResult.put("statusCode", 500);

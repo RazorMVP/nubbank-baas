@@ -783,6 +783,8 @@ CREATE TABLE two_factor_tokens (
     delivery_method VARCHAR(20) NOT NULL DEFAULT 'EMAIL',
     recipient       VARCHAR(255) NOT NULL,
     verified        BOOLEAN NOT NULL DEFAULT false,
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked          BOOLEAN NOT NULL DEFAULT false,
     expires_at      TIMESTAMPTZ NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

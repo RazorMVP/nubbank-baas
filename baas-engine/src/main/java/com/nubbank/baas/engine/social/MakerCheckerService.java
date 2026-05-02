@@ -31,18 +31,33 @@ public class MakerCheckerService {
     }
 
     @Transactional
-    public MakerCheckerRequest executeCommand(UUID id, String command, UUID checkerUserId) {
+    public MakerCheckerRequest executeCommand(UUID id, String command) {
         requireContext();
+        PartnerContext ctx = PartnerContext.get();
+        // Checker must come from the JWT (PartnerContext.userId), NOT a request
+        // parameter — otherwise an attacker could forge any UUID as the checker
+        // and bypass the segregation-of-duties control.
+        if (ctx.userId() == null)
+            throw BaasException.unauthorized("USER_ID_REQUIRED",
+                "Maker-checker actions require a user-bound JWT (sub claim)");
+        UUID checkerUserId = UUID.fromString(ctx.userId());
+
         MakerCheckerRequest r = mcRepo.findById(id)
             .orElseThrow(() -> BaasException.notFound("MC_NOT_FOUND", "Request not found"));
         if (!"PENDING".equals(r.getStatus()))
             throw BaasException.badRequest("INVALID_STATUS", "Only PENDING requests can be actioned");
+
+        // Segregation of duties: the maker cannot also be the checker.
+        if (r.getMadeByUserId() != null && r.getMadeByUserId().equals(checkerUserId))
+            throw BaasException.badRequest("SEGREGATION_OF_DUTIES",
+                "The maker cannot also be the checker — a different user must approve/reject");
+
         switch (command.toLowerCase()) {
             case "approve" -> r.setStatus("APPROVED");
             case "reject" -> r.setStatus("REJECTED");
             default -> throw BaasException.badRequest("UNKNOWN_COMMAND", "Unknown command: " + command);
         }
-        if (checkerUserId != null) r.setCheckedByUserId(checkerUserId);
+        r.setCheckedByUserId(checkerUserId);
         return mcRepo.save(r);
     }
 

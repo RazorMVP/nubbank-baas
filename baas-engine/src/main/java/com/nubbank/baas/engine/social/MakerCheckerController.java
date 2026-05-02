@@ -34,9 +34,10 @@ public class MakerCheckerController {
     @PostMapping("/baas/v1/makercheckers/{id}")
     public ResponseEntity<ApiResponse<MakerCheckerRequest>> command(
             @PathVariable UUID id,
-            @RequestParam String command,
-            @RequestParam(required = false) UUID checkerUserId) {
-        return ResponseEntity.ok(ApiResponse.ok(service.executeCommand(id, command, checkerUserId)));
+            @RequestParam String command) {
+        // Checker identity is derived from the JWT (PartnerContext.userId),
+        // not accepted as a request parameter — see MakerCheckerService.
+        return ResponseEntity.ok(ApiResponse.ok(service.executeCommand(id, command)));
     }
 
     @DeleteMapping("/baas/v1/makercheckers/{id}")
