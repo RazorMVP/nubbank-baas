@@ -37,7 +37,7 @@ class FixedDepositControllerTest extends AbstractIntegrationTest {
             "PARTNER_ADMIN", org.getId().toString(), "FD Test",
             schemaName, "SANDBOX", "SANDBOX");
 
-        PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST"));
+        PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST", null));
         customerId = customerRepo.save(Customer.builder()
             .firstNameEncrypted("Jane").lastNameEncrypted("Doe").build()).getId();
         productId = depositProductRepo.save(DepositProduct.builder()

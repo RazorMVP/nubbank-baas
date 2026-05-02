@@ -33,7 +33,7 @@ class AccountingRulesControllerTest extends AbstractIntegrationTest {
             "PARTNER_ADMIN", org.getId().toString(), "Rules Test",
             schemaName, "SANDBOX", "SANDBOX");
 
-        PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST"));
+        PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST", null));
         debitGlId = glAccountRepo.save(GlAccount.builder()
             .name("Loans Receivable").glCode("1100-" + UUID.randomUUID().toString().substring(0, 6))
             .accountType(GlAccountType.ASSET)

@@ -33,7 +33,7 @@ class ClientExtControllerTest extends AbstractIntegrationTest {
             "PARTNER_ADMIN", org.getId().toString(), "ClientExt Test",
             schemaName, "SANDBOX", "SANDBOX");
         PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName,
-            "SANDBOX", "SANDBOX", "TEST"));
+            "SANDBOX", "SANDBOX", "TEST", null));
         customerId = customerRepo.save(Customer.builder()
             .firstNameEncrypted("Emeka").lastNameEncrypted("Okonkwo").build()).getId();
         PartnerContext.clear();

@@ -66,7 +66,8 @@ public class PartnerJwtService {
                 claims.getStringClaim("schema_name"),
                 claims.getStringClaim("tier"),
                 claims.getStringClaim("environment"),
-                "JWT"
+                "JWT",
+                claims.getSubject()
             );
         } catch (BaasException ex) {
             throw ex;

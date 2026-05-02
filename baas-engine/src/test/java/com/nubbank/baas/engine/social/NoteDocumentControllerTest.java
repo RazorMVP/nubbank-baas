@@ -33,7 +33,7 @@ class NoteDocumentControllerTest extends AbstractIntegrationTest {
             "PARTNER_ADMIN", org.getId().toString(), "Note Test",
             schemaName, "SANDBOX", "SANDBOX");
         PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName,
-            "SANDBOX", "SANDBOX", "TEST"));
+            "SANDBOX", "SANDBOX", "TEST", null));
         customerId = customerRepo.save(Customer.builder()
             .firstNameEncrypted("Chidi").lastNameEncrypted("Aneke").build()).getId();
         PartnerContext.clear();

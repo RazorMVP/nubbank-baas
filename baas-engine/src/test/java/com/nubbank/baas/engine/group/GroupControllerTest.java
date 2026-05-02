@@ -33,7 +33,7 @@ class GroupControllerTest extends AbstractIntegrationTest {
             "PARTNER_ADMIN", org.getId().toString(), "Group Test",
             schemaName, "SANDBOX", "SANDBOX");
         PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName,
-            "SANDBOX", "SANDBOX", "TEST"));
+            "SANDBOX", "SANDBOX", "TEST", null));
         customerId = customerRepo.save(Customer.builder()
             .firstNameEncrypted("Ngozi").lastNameEncrypted("Obi").build()).getId();
         PartnerContext.clear();

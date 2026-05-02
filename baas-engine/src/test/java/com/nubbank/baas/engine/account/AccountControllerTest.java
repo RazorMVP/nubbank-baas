@@ -34,7 +34,7 @@ class AccountControllerTest extends AbstractIntegrationTest {
 
         // Create a customer in this partner's schema
         PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName,
-            "SANDBOX", "SANDBOX", "TEST"));
+            "SANDBOX", "SANDBOX", "TEST", null));
         Customer customer = Customer.builder()
             .firstNameEncrypted("Test").lastNameEncrypted("User")
             .build();

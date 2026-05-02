@@ -5,7 +5,8 @@ public record PartnerContext(
     String schemaName,
     String tier,
     String environment,
-    String authMode
+    String authMode,
+    String userId
 ) {
     private static final ThreadLocal<PartnerContext> HOLDER = new ThreadLocal<>();
 

@@ -32,7 +32,7 @@ class ShareControllerTest extends AbstractIntegrationTest {
         jwt = jwtService.issue(UUID.randomUUID().toString(), "share@test.com",
             "PARTNER_ADMIN", org.getId().toString(), "Share Test",
             schemaName, "SANDBOX", "SANDBOX");
-        PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST"));
+        PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST", null));
         customerId = customerRepo.save(Customer.builder()
             .firstNameEncrypted("John").lastNameEncrypted("Coop").build()).getId();
         PartnerContext.clear();

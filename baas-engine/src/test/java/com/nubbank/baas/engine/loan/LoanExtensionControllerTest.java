@@ -39,7 +39,7 @@ class LoanExtensionControllerTest extends AbstractIntegrationTest {
             "PARTNER_ADMIN", org.getId().toString(), "Ext Test",
             schemaName, "SANDBOX", "SANDBOX");
 
-        PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST"));
+        PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST", null));
         var customer = customerRepo.save(Customer.builder()
             .firstNameEncrypted("Test").lastNameEncrypted("User").build());
         var account = accountRepo.save(Account.builder().customer(customer)
