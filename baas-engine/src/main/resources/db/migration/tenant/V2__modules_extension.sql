@@ -866,16 +866,9 @@ CREATE TABLE sanctions_screening_log (
 
 -- ═══════════════════════════════════════════════════════════════
 -- COB SCHEDULER
+-- (cob_job_history lives in the public schema — system-wide, not per-tenant)
+-- See: db/migration/public/V2__cob_job_history.sql
 -- ═══════════════════════════════════════════════════════════════
-CREATE TABLE cob_job_history (
-    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_name          VARCHAR(100) NOT NULL,
-    status            VARCHAR(50) NOT NULL DEFAULT 'RUNNING',
-    started_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    completed_at      TIMESTAMPTZ,
-    records_processed INTEGER NOT NULL DEFAULT 0,
-    error_message     TEXT
-);
 
 -- ═══════════════════════════════════════════════════════════════
 -- REPORTS
@@ -920,7 +913,6 @@ CREATE INDEX idx_notif_entity          ON notification_events(entity_type, entit
 CREATE INDEX idx_standing_customer     ON standing_instructions(customer_id);
 CREATE INDEX idx_beneficiary_customer  ON beneficiaries(customer_id);
 CREATE INDEX idx_2fa_user_active       ON two_factor_tokens(user_id, verified, expires_at);
-CREATE INDEX idx_cob_history_job       ON cob_job_history(job_name, started_at DESC);
 CREATE INDEX idx_client_identifiers    ON client_identifiers(customer_id);
 CREATE INDEX idx_client_addresses      ON client_addresses(customer_id);
 CREATE INDEX idx_notes_entity          ON entity_notes(entity_type, entity_id);
