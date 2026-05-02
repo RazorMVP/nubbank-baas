@@ -197,6 +197,76 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 
 ## Change History
 
+### Session 3 — 2026-05-02
+**Phase 1A-ext: all missing baas-engine modules added (29 tasks, 74 tests, BUILD SUCCESS, branch `feature/phase1a-ext-engine` pushed).**
+
+#### Modules added (Tasks 1–29)
+
+| # | Module | Package | Tests |
+|---|--------|---------|-------|
+| 1 | V2 tenant schema migration (70 tables) | `db/migration/tenant/V2` | — |
+| 2 | Loan + Deposit Products | `product/` | 3 |
+| 3 | Fixed + Recurring Deposits | `deposit/` | 2 |
+| 4 | Share Products + Accounts | `share/` | 1 |
+| 5 | Charges | `charge/` | 2 |
+| 6 | Loans core lifecycle | `loan/` | shared |
+| 7 | Loan extensions (guarantors/collateral/reschedule) | `loan/` | 1 |
+| 8 | GL Accounting | `accounting/` | shared |
+| 9 | Accounting Rules + Provisioning | `accounting/` | 1 |
+| 10 | Teller / Cash Management | `teller/` | 2 |
+| 11 | Office + Staff | `office/` | 1 |
+| 12 | Groups + Centers | `group/` | 2 |
+| 13 | System Configuration | `system/` | 3 |
+| 14 | Floating Rates + Taxes | `rate/` | 1 |
+| 15 | Roles + Permissions (with `PartnerContext.userId` from JWT sub) | `role/` | 1 |
+| 16 | Client Identifiers + Addresses + Images | `clientext/` | 1 |
+| 17 | Notes + Documents (polymorphic) | `social/` | 1 |
+| 18 | Maker-Checker + DataTables | `social/` | 1 |
+| 19 | Open Banking Consents | `openbanking/` | 2 |
+| 20 | Audit Log Service + AOP aspect (covers ALL services) | `audit/` | 1 |
+| 21 | Notifications (Spring async events) | `notification/` | 1 |
+| 22 | SMS Campaigns + Report Mailing Jobs | `campaign/` | 2 |
+| 23 | Standing Instructions + Beneficiaries | `standing/` | 2 |
+| 24 | Two-Factor Authentication (HMAC-SHA256 OTP) | `twofa/` | 2 |
+| 25 | Credit Bureau (stub) + PPI Surveys | `bureau/` + `survey/` | 2 |
+| 26 | Compliance Module (sanctions screening) | `compliance/` | 2 |
+| 27 | CoB Scheduler (nightly @Scheduled jobs) | `cob/` | 2 |
+| 28 | Reports Module (SQL engine) + `TenantJdbcTemplate` | `report/` + `common/` | 3 |
+| 29 | Global Search + Batch API | `search/` + `batch/` | 1 |
+
+#### Architectural decisions
+
+- **`PartnerContext.userId`** added (6th field) — extracted from JWT `sub` claim by `PartnerJwtService.validate()`. Propagates real user identity into audit logs at live deployment, not the org ID.
+- **`AuditAspect`** intercepts all `@Transactional` (non-readOnly) `*Service` methods system-wide. New services get audited automatically — no manual wiring per service.
+- **`TenantJdbcTemplate`** (`common/`) — wraps `JdbcTemplate` and sets `SET search_path TO <tenant>, public` per query. Required because Hibernate's `MultiTenantConnectionProvider` only routes Hibernate sessions; raw JDBC bypasses it. Used by `ReportService` and `GlobalSearchController`.
+- **`@JdbcTypeCode(SqlTypes.JSON)`** for JSONB columns (`open_banking_consents.scopes`, `notification_events.payload`) — Hibernate 6 native, no third-party library needed.
+- **`cob_job_history`** moved to `public/` schema — system-wide audit, not per-tenant. Tenant search_path order (`tenant, public`) makes it findable from any context.
+- **Word-boundary regex** for SQL keyword blocklist — `CREATE` no longer false-matches `created_at`.
+- **Lombok `@Builder.Default`** on every initialized collection field — prevents `NullPointerException` when builder is used.
+- **`@JsonIgnore`** on every lazy `@ManyToOne` back-reference — prevents Jackson serialization errors outside the Hibernate session.
+
+#### New Files (180+ Java + 1 SQL migration + 1 plan)
+
+See commits `e8cd292` → `bb0eb6c` on `feature/phase1a-ext-engine`.
+
+#### Build Verification
+
+```
+cd ~/nubbank-baas/baas-engine && ./mvnw test
+[INFO] Tests run: 74, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+```
+
+Branch pushed: `feature/phase1a-ext-engine` (32 commits ahead of `main`).
+
+#### What's Next (Session 4)
+
+- `baas-backoffice` (Phase 1C) — React/Vite operations portal consuming all the new endpoints
+- `baas-portal` (Phase 1D) — React/Vite developer portal for partner self-service
+- `baas-engine` Phase 2 — wire real BVN/NIN verification, Ncube consent registry sync, Apache Santuario XML signing
+
+---
+
 ### Session 2 — 2026-04-27
 **Phase 1B: baas-ncube service — CBN Open Banking adapter + NIBSS NPS ISO 20022 gateway (commits `1d8eb9d` → `97544ce`).**
 
