@@ -2,9 +2,11 @@ package com.nubbank.baas.engine.payment;
 
 import com.nubbank.baas.engine.account.*;
 import com.nubbank.baas.engine.common.BaasException;
+import com.nubbank.baas.engine.notification.events.PaymentCompletedEvent;
 import com.nubbank.baas.engine.payment.dto.*;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -17,6 +19,7 @@ public class PaymentService {
     private final PaymentRepository paymentRepo;
     private final AccountRepository accountRepo;
     private final TransactionRepository txRepo;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public PaymentResponse transfer(TransferRequest req) {
@@ -89,6 +92,10 @@ public class PaymentService {
         txRepo.save(Transaction.builder().account(destination)
             .transactionType(TransactionType.CREDIT).amount(req.amount())
             .runningBalance(destination.getBalance()).paymentId(payment.getId()).build());
+
+        eventPublisher.publishEvent(new PaymentCompletedEvent(
+            payment.getId(), source.getId(), destination.getId(),
+            payment.getAmount(), PartnerContext.get().schemaName()));
 
         return toResponse(payment);
     }

@@ -482,13 +482,48 @@ Affected entities: `PartnerOrganization`, `PartnerUser`, `PartnerApiKey`, `Virtu
 | Sandbox Controller | `sandbox/` | ✅ Built — simulate deposit, schema reset |
 | Rate Limiting (Redis) | `config/` | ✅ Built — Lua INCR+EXPIRE, fail-open, X-RateLimit headers |
 
+### Completed in Session 3 — Phase 1A-ext (Tasks 1–29)
+
+All missing baas-engine modules are now implemented. 74 tests, BUILD SUCCESS, branch `feature/phase1a-ext-engine` pushed.
+
+| Module | Package | Status |
+|--------|---------|--------|
+| Loan Products + Deposit Products | `product/` | ✅ Built |
+| Fixed + Recurring Deposits | `deposit/` | ✅ Built |
+| Share Products + Accounts | `share/` | ✅ Built |
+| Charges | `charge/` | ✅ Built |
+| Loans (full lifecycle + extensions) | `loan/` | ✅ Built |
+| GL / Accounting + Rules + Provisioning | `accounting/` | ✅ Built |
+| Teller / Cash Management | `teller/` | ✅ Built |
+| Office + Staff | `office/` | ✅ Built |
+| Groups + Centers | `group/` | ✅ Built |
+| System Configuration | `system/` | ✅ Built |
+| Floating Rates + Taxes | `rate/` | ✅ Built |
+| Roles + Permissions | `role/` | ✅ Built |
+| Client Identifiers + Addresses + Images | `clientext/` | ✅ Built |
+| Notes + Documents (polymorphic) | `social/` | ✅ Built |
+| Maker-Checker + DataTables | `social/` | ✅ Built |
+| Open Banking Consents | `openbanking/` | ✅ Built |
+| Audit Log Service + AOP aspect | `audit/` | ✅ Built |
+| Notifications (Spring async events) | `notification/` | ✅ Built |
+| SMS Campaigns + Report Mailing | `campaign/` | ✅ Built |
+| Standing Instructions + Beneficiaries | `standing/` | ✅ Built |
+| Two-Factor Authentication (HMAC-SHA256) | `twofa/` | ✅ Built |
+| Credit Bureau (stub) + PPI Surveys | `bureau/` + `survey/` | ✅ Built |
+| Compliance (sanctions screening) | `compliance/` | ✅ Built |
+| CoB Scheduler (nightly @Scheduled) | `cob/` | ✅ Built |
+| Reports Module (SQL engine) | `report/` | ✅ Built |
+| Global Search + Batch API | `search/` + `batch/` | ✅ Built |
+| `TenantJdbcTemplate` (multi-tenant raw JDBC) | `common/` | ✅ Built |
+| `PartnerContext.userId` (from JWT sub) | `tenant/` | ✅ Built |
+
 ### Pending (Later sub-plans)
 
 | Module | Sub-plan | Status |
 |--------|---------|--------|
-| baas-ncube (CBN format + Ncube) | 1B | ⬜ Not started |
-| baas-backoffice (React) | 1C | ⬜ Not started |
-| baas-portal (React) | 1D | ⬜ Not started |
+| baas-ncube (CBN format + Ncube) | 1B | ✅ Complete (Session 2) |
+| baas-backoffice (React operations portal) | 1C | ⬜ Next — start now |
+| baas-portal (React developer portal) | 1D | ⬜ Not started |
 | Infrastructure (Docker + CI) | 1E | ⬜ Not started |
 | KYC delegation + Ncube live | Phase 2 | ⬜ Not started |
 | Virtual account pool + loans | Phase 3 | ⬜ Not started |

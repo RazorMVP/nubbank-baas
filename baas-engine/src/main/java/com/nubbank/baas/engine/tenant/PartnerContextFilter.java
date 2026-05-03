@@ -59,7 +59,8 @@ public class PartnerContextFilter extends OncePerRequestFilter {
                     key.getOrganization().getSchemaName(),
                     key.getTier().name(),
                     key.getEnvironment().name(),
-                    "API_KEY"
+                    "API_KEY",
+                    null
                 );
                 PartnerContext.set(ctx);
                 // Update last_used_at — the repository method is @Transactional

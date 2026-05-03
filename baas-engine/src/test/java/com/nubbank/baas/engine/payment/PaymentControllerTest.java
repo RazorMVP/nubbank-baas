@@ -37,7 +37,7 @@ class PaymentControllerTest extends AbstractIntegrationTest {
         provisioningService.provision(org.getId(), schema);
 
         testContext = new PartnerContext(org.getId().toString(), schema,
-            "SANDBOX", "SANDBOX", "TEST");
+            "SANDBOX", "SANDBOX", "TEST", null);
         PartnerContext.set(testContext);
         Customer cust = customerRepo.save(Customer.builder()
             .firstNameEncrypted("A").lastNameEncrypted("B").build());

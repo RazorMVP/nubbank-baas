@@ -1,9 +1,11 @@
 package com.nubbank.baas.engine.customer;
 
 import com.nubbank.baas.engine.common.BaasException;
+import com.nubbank.baas.engine.compliance.ComplianceService;
 import com.nubbank.baas.engine.customer.dto.*;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,9 +13,11 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CustomerService {
 
     private final CustomerRepository customerRepo;
+    private final ComplianceService complianceService;
 
     @Transactional
     public CustomerResponse create(CreateCustomerRequest req) {
@@ -34,7 +38,16 @@ public class CustomerService {
             .ninEncrypted(req.nin())
             .build();
 
-        return toResponse(customerRepo.save(customer));
+        Customer saved = customerRepo.save(customer);
+
+        // Compliance screen — must never block customer creation in Phase 1
+        try {
+            complianceService.screenCustomer(saved.getId());
+        } catch (Exception e) {
+            log.warn("Compliance screen failed for customer {}: {}", saved.getId(), e.getMessage());
+        }
+
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
