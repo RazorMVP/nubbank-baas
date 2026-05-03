@@ -1,0 +1,38 @@
+# Vanilla Kubernetes Ingress — works with any compliant Ingress controller
+# (nginx, Traefik, HAProxy, Contour, Kong, AWS ALB Controller, GCP GLB, etc.).
+# No annotations specific to a single provider.
+#
+# To use a specific controller, add its IngressClass via:
+#   kubectl annotate ingress baas-engine kubernetes.io/ingress.class=<class>
+# or set spec.ingressClassName below.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: baas-engine
+  namespace: nubbank-baas
+spec:
+  # Uncomment + set in your overlay; left empty to remain provider-agnostic.
+  # ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.nubbank.example.com
+      secretName: baas-engine-tls
+  rules:
+    - host: api.nubbank.example.com
+      http:
+        paths:
+          - path: /baas/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: baas-engine
+                port:
+                  number: 80
+          - path: /open-banking
+            pathType: Prefix
+            backend:
+              service:
+                name: baas-ncube
+                port:
+                  number: 80

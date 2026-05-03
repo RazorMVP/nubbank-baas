@@ -305,22 +305,23 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 2 — 2026-04-27)
+## Confirmed Platform Versions (Session 4 — 2026-05-03)
 
 ### BaaS Engine (`baas-engine/`)
 
 | Component | Version | Notes |
 |-----------|---------|-------|
 | **Spring Boot** | 3.5.0 | Parent BOM |
+| **Spring AOP** | 3.5.0 (managed) | Added Session 4 — used by `AuditAspect` for cross-cutting audit interception |
 | **Java** | 21 | LTS; records, sealed classes, pattern matching |
 | **Hibernate** | 6.x (managed) | SCHEMA multi-tenancy via `MultiTenantConnectionProvider` |
 | **Flyway** | 10.x (managed) | `flyway-database-postgresql` required for Spring Boot 3.3+ |
 | **Nimbus JOSE+JWT** | 9.37.3 | HMAC-SHA256 Partner JWT |
-| **Jasypt** | 3.0.5 | PII field-level encryption (wired, encryption in Phase 2) |
+| **Jasypt** | 3.0.5 | (legacy dep — replaced by hand-rolled `FieldEncryptor` AES-GCM-256, Session 4) |
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
-| **Last git commit** | `c6c5e47` | Session 1 — Phase 1A complete: all 16 tasks, 23 tests passing, smoke test live |
+| **Last git commit** | `5adeb10` | Session 4 — Phase 1A-ext merged: 29 modules + 12 critical security fixes + 84 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -607,6 +608,17 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | `@ConditionalOnBean` on a user `@Service` never fires | Spring evaluates user beans before Boot auto-config — condition always false. Use `@Autowired(required = false)` with a null-guard instead. |
 | `@Testcontainers` + `@Container` stops container between test classes | Kills the shared HikariPool. Use a static initializer block instead — container starts once for the JVM; Testcontainers registers its own shutdown hook. |
 | `partner_api_keys.updated_at` missing from DDL | Hibernate `validate` fails if entity field exists but column doesn't. Keep entity fields and DDL in sync. |
+| `@Transactional` on `private` method silently does nothing | Spring AOP proxies don't intercept private methods or `this::method` self-references. Extract to a separate `@Service` bean and inject (e.g. `CobJobExecutor` for CoB jobs). |
+| Counter increment doesn't persist when caller throws | Caller's `@Transactional` rolls back the increment too. Move the write to a separate bean with `@Transactional(REQUIRES_NEW)` (e.g. `TwoFactorTokenWriter` for OTP attempts, `AuditLogService` for failure rows). |
+| `JdbcTemplate` doesn't see tenant data | Hibernate's `MultiTenantConnectionProvider` only routes Hibernate sessions; raw JDBC bypasses it. Use `TenantJdbcTemplate` (in `common/`) which sets `SET search_path` per query. |
+| Schema name in raw SQL is an injection vector | Identifiers can't be parameter-bound. Validate against a strict regex `^(?:partner\|sandbox)_[0-9a-f]{32}$` before interpolation. |
+| PostgreSQL JSONB column rejects bound `varchar` | Driver binds Strings as `character varying`. Use `@JdbcTypeCode(SqlTypes.JSON)` (Hibernate 6 native) — no third-party library. |
+| Spring `@EventListener` fires before commit | Default phase is "as soon as published". For side-effects that must skip on rollback (notifications, external API calls), use `@TransactionalEventListener(phase = AFTER_COMMIT)`. |
+| `permitAll()` on Spring Security + `requireContext()` per service | Brittle — every new service must remember to check. Replaced by `AuthEnforcementFilter` which rejects `/baas/v1/**` (minus public paths) when `PartnerContext.get() == null`. New endpoints protected by default. |
+| Race on read-modify-write counter | `findById → increment → save` from two threads can lose an update. Use a native UPDATE that computes both fields in the SET clause: `failed_attempts = failed_attempts + 1, locked = (failed_attempts + 1 >= :max)`. PostgreSQL evaluates SET against pre-update row → atomic at row level. |
+| OTP brute-force with no lockout | Add `failed_attempts` + `locked` columns; combine atomic UPDATE (above) + REQUIRES_NEW writer (above) + constant-time hash compare so timing leaks don't help the attacker either. |
+| Lombok `@Builder` initializes collection fields to null | Use `@Builder.Default` on every initialized collection (`= new ArrayList<>()` etc.) — without it the builder ignores the initializer. |
+| Customer PII fields named `*_encrypted` but stored plaintext | The `_encrypted` suffix is naming aspiration only unless `@Convert(converter = FieldEncryptor.class)` is on the field. Apply `FieldEncryptor` (AES-GCM-256) to ALL regulated PII: name, email, phone, BVN, NIN, document keys, residential address. |
 
 ---
 

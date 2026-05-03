@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nubbank-baas
+  labels:
+    app.kubernetes.io/name: nubbank-baas
+    app.kubernetes.io/part-of: nubbank

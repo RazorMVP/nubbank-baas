@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baas-engine-config
+  namespace: nubbank-baas
+data:
+  # Non-secret runtime config. Secrets live in the Secret of the same name suffix.
+  DATASOURCE_URL: "jdbc:postgresql://postgres.nubbank-baas.svc.cluster.local:5432/nubbank_baas"
+  SPRING_PROFILES_ACTIVE: "production"
+  # ComplianceService stub guard: refuses to start under 'production' unless
+  # this flag is true. Set to "true" only in dry-run / staging environments
+  # where a real sanctions provider isn't yet wired.
+  APP_COMPLIANCE_ALLOW_STUB: "false"

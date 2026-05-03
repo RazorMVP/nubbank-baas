@@ -197,6 +197,125 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 
 ## Change History
 
+### Session 4 — 2026-05-03
+**PR #3 review cycle: 12 critical + 6 important security findings fixed; merged to main as squash commit `5adeb10`.**
+
+#### Review cycle
+
+| Round | Outcome |
+|-------|---------|
+| Initial review | 12 critical, 9 important, 6 minor — BLOCK MERGE |
+| First fix round | C3, C5, C7–C12 + AuthEnforcementFilter (C1+C2) + 2FA lockout (C6) |
+| Re-review | New criticals: C9 (events never published), C4 (PII coverage incomplete) + 4 importants |
+| Second fix round | Wired ApplicationEventPublisher, expanded PII to ClientIdentifier+ClientAddress, atomic UPDATE for OTP race, ObjectMapper audit JSON, @Profile(test) for testOtpStore, removed DB credential defaults |
+| Final review | **APPROVED FOR MERGE** — no regressions, no new criticals |
+
+#### New Files
+
+| File | Purpose |
+|------|---------|
+| `baas-engine/src/main/java/com/nubbank/baas/engine/config/AuthEnforcementFilter.java` | C1+C2 — single config gate for `/baas/v1/**`; replaces brittle per-service `requireContext()` discipline |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/common/FieldEncryptor.java` | C4 — JPA AttributeConverter, AES-GCM-256 with fresh IV per save (semantic security), SHA-256 key derivation |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/common/TenantJdbcTemplate.java` | C3 — wraps JdbcTemplate, validates `^(?:partner\|sandbox)_[0-9a-f]{32}$` schema before SET search_path |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/audit/AuditAspect.java` | C11 — Spring AOP intercepts every `@Transactional(readOnly=false)` `*Service.*` method; audits both success and failure paths; ObjectMapper for JSON encoding |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/cob/CobJobExecutor.java` | C7 — separate Spring bean so `@Transactional` on CoB jobs is intercepted via proxy (private/self-ref methods bypass AOP silently) |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/twofa/TwoFactorTokenWriter.java` | C6 — `@Transactional(REQUIRES_NEW)` writer so failed-attempt counter survives the rollback caused by INVALID_OTP exception |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/twofa/TestOtpStore.java` | IMPORTANT-4 — `@Profile("test")` plaintext OTP store; absent in production memory |
+| `baas-engine/src/test/java/com/nubbank/baas/engine/security/SecurityBoundariesTest.java` | 6 boundary tests: missing/invalid auth → 401, OTP lockout, SQL injection block, cross-tenant isolation |
+| `baas-engine/src/test/java/com/nubbank/baas/engine/security/PiiEncryptionTest.java` | Verifies row on disk is ciphertext (raw JdbcTemplate read), round-trip decrypt, IV freshness |
+
+#### Updated Files
+
+| File | Change |
+|------|--------|
+| `baas-engine/src/main/java/com/nubbank/baas/engine/customer/Customer.java` | `@Convert(FieldEncryptor.class)` on 6 PII fields |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/clientext/ClientIdentifier.java` | `@Convert(FieldEncryptor.class)` on `documentKey`; column 200 → 500 |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/clientext/ClientAddress.java` | `@Convert(FieldEncryptor.class)` on `street`/`city`/`postalCode`; columns widened proportionally |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/twofa/TwoFactorService.java` | Constant-time hash compare, `Optional<TestOtpStore>` injection, no plaintext map in production |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/twofa/TwoFactorTokenRepository.java` | Native `incrementFailedAttempts(id, max)` UPDATE (atomic at row level — closes race) |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/loan/LoanService.java` | `eventPublisher.publishEvent(LoanApprovedEvent)` in `approve()`, `LoanDisbursedEvent` in `disburse()` |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/account/AccountService.java` | `eventPublisher.publishEvent(AccountOpenedEvent)` in `open()` |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/payment/PaymentService.java` | `eventPublisher.publishEvent(PaymentCompletedEvent)` in `transfer()` |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/notification/NotificationService.java` | `@EventListener` → `@TransactionalEventListener(AFTER_COMMIT)` on all 4 handlers |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/social/MakerCheckerService.java` | Checker derived from JWT `sub`, NOT request param; SoD check (maker ≠ checker) |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/compliance/ComplianceService.java` | `@PostConstruct` refuses `production` profile without `app.compliance.allow-stub=true` |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/batch/BatchApiController.java` | `catch (Exception)` → `catch (RestClientException \| IllegalArgumentException)` |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/cob/CobService.java` | Delegates job execution to `CobJobExecutor` (proxy boundary) |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/config/SecurityConfig.java` | Wires `AuthEnforcementFilter` between `PartnerContextFilter` and `RateLimitFilter` |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/tenant/PartnerContext.java` | Added 6th field `userId` (extracted from JWT `sub` claim by `PartnerJwtService.validate()`) |
+| `baas-engine/src/main/resources/application.yml` | Removed defaults for `JWT_SECRET`, `ENCRYPTION_KEY`, `DATASOURCE_URL`/`USERNAME`/`PASSWORD` — production fails fast on missing env vars |
+| `baas-engine/src/main/resources/db/migration/tenant/V2__modules_extension.sql` | `client_identifiers.document_key` 200 → 500; `client_addresses` columns widened; `two_factor_tokens` adds `failed_attempts`/`locked` |
+
+#### Key Decisions
+
+- **Security at the filter chain, not at the service layer.** The pre-fix pattern relied on every service method calling `requireContext()`. New endpoints would silently be public. Switched to `AuthEnforcementFilter` — single config gate; new services protected by default.
+- **AOP for audit, not manual wiring.** `AuditAspect` intercepts every `@Transactional(readOnly=false)` `*Service.*` method. New services get audited automatically — no per-method discipline.
+- **PII encryption with SHA-256 KDF, not PBKDF2/Argon2.** `app.encryption.key` is supposed to be a high-entropy secret from Vault/SSM, not a password. PBKDF2/Argon2 are designed to slow brute-force on low-entropy human passwords; single-pass SHA-256 to derive a 256-bit AES key is correct here.
+- **`@Profile("test")` beans for test-only side channels.** The plaintext OTP store is never loaded in production; even a `@SpringBootTest` accidentally activated under a non-test profile cannot retrieve plaintext OTPs.
+- **Atomic UPDATE for OTP lockout race.** Counter increment computed in the SET clause: `failed_attempts = failed_attempts + 1, locked = (failed_attempts + 1 >= :max)`. PostgreSQL evaluates SET against pre-update row, so the boolean correctly determines post-update state. No `@Version` needed.
+- **REQUIRES_NEW for any counter that must survive rollback.** OTP failed-attempt counter, audit log, and notifications-via-AFTER_COMMIT all use this pattern. Without it, the JPA rollback caused by throwing `BaasException` resets the counter to 0 and the brute-force lockout never engages.
+
+#### Known Gotchas (added to CLAUDE.md)
+
+| Symptom | Root cause | Fix |
+|---------|-----------|-----|
+| `@Transactional` on a private method silently does nothing | Spring AOP proxies don't intercept private method calls or self-references (`this::method`) | Extract to a separate `@Service` bean and inject |
+| Counter increment doesn't persist after exception | Caller's `@Transactional` rolls back the increment too | Move the write to a separate bean with `@Transactional(REQUIRES_NEW)` |
+| `JdbcTemplate` doesn't see tenant data | Hibernate's `MultiTenantConnectionProvider` only routes Hibernate sessions; raw JDBC bypasses it | Use `TenantJdbcTemplate` which sets `SET search_path` per query |
+| Schema name in raw SQL is an injection vector | Identifiers can't be parameter-bound in SQL | Validate against a strict regex before interpolation; never accept arbitrary input |
+| PostgreSQL JSONB column rejects bound `varchar` | Driver binds Strings as `character varying` | `@JdbcTypeCode(SqlTypes.JSON)` (Hibernate 6 native) — no third-party library |
+| Spring `@EventListener` fires before commit | Default phase is "as soon as published" | `@TransactionalEventListener(phase = AFTER_COMMIT)` for side-effects that must be skipped on rollback |
+
+#### Build Verification
+
+```
+cd ~/nubbank-baas/baas-engine && ./mvnw test
+[INFO] Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+```
+
+74 (Phase 1A-ext modules) + 6 (security boundaries) + 3 (PII encryption) + 1 (maker-checker SoD) = **84 tests**.
+
+#### Confirmed Platform Versions
+
+`baas-engine/`:
+
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.0 | `5adeb10` |
+| Java | 21 | `5adeb10` |
+| Spring AOP (new dependency) | 3.5.0 (managed) | `5adeb10` |
+| Hibernate | 6.x (Spring Boot 3.5.0 default) | `5adeb10` |
+| PostgreSQL | 16 (Docker / Testcontainers) | `5adeb10` |
+| Last git commit | `5adeb10` | Squash merge of PR #3 |
+
+#### Deployment infrastructure (Phase 1E — completed in this session)
+
+- `baas-engine/Dockerfile` — multi-stage Maven build → Eclipse Temurin JRE 21 Alpine; non-root `app` user; healthcheck on `/actuator/health`. Build verified locally — image fails fast on missing `JWT_SECRET`/`ENCRYPTION_KEY`/`DATASOURCE_*` env vars (correct production behaviour).
+- `baas-ncube/Dockerfile` — same pattern; healthcheck on port 8081.
+- `infrastructure/docker-compose.yml` + `.env.example` — local / on-prem stack: postgres + baas-engine + baas-ncube. Plain Compose syntax (works with Docker / Podman / nerdctl).
+- `infrastructure/k8s/` — vanilla Kubernetes manifests: namespace, secret template, configmap, postgres StatefulSet, baas-engine Deployment + Service + HPA, baas-ncube Deployment + Service, generic Ingress (no provider-specific annotations). README explains the overlay pattern for cloud-specific config.
+- `.github/workflows/baas-engine-ci.yml`, `.github/workflows/baas-ncube-ci.yml` — test on every PR/push, push image to GHCR on main. CI has NO deploy step — deployment is target-cluster's responsibility (kubectl/Helmfile/ArgoCD), keeping the build deployment-agnostic.
+
+The build is now genuinely portable: same image runs on Docker Desktop, k3s, EKS, GKE, AKS, on-prem k8s, or any OCI-compatible runtime. No cloud-provider lock-in.
+
+#### Figma boards affected
+
+The Service Architecture board needs regeneration to reflect the new components introduced in this session:
+
+- **[Service Architecture](https://www.figma.com/board/PRACgc6BXsGVEL7ZhB866A)** — Add `AuthEnforcementFilter`, `RateLimitFilter`, `AuditAspect`, `FieldEncryptor`, `TenantJdbcTemplate`, `CobJobExecutor`, `TwoFactorTokenWriter`, `TestOtpStore` to the engine internals diagram. Show the new filter chain order: PartnerContextFilter → AuthEnforcementFilter → RateLimitFilter.
+- **[Multi-Tenancy Flow](https://www.figma.com/board/TR1AYhx9Pcmd5y5grxMv8v)** — Add the `TenantJdbcTemplate` path alongside Hibernate's `MultiTenantConnectionProvider`; show that raw JDBC requires explicit `SET search_path`.
+- **[Partner Provisioning Flow](https://www.figma.com/board/qHD6cSCRTQHPbkmavHtoxw)** — No change.
+- **[CBN Compliance Roadmap](https://www.figma.com/board/5KpYYAtiukv7G6o3LyjsVr)** — Move "PII encryption at rest" from ⚠️ to ✅; flag NDPR §9.2 compliance scorecard delta (1 ✅, 2 ⚠️, 1 ❌).
+
+#### What's Next (Session 5)
+
+- `baas-backoffice` (Phase 1C) — React/Vite operations portal
+- `baas-portal` (Phase 1D) — React/Vite developer portal for partner self-service
+- Phase 2 — real BVN/NIN verification via Ncube, consent registry sync, Apache Santuario XML signing
+
+---
+
 ### Session 3 — 2026-05-02
 **Phase 1A-ext: all missing baas-engine modules added (29 tasks, 74 tests, BUILD SUCCESS, branch `feature/phase1a-ext-engine` pushed).**
 

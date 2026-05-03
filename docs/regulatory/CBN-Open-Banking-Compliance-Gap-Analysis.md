@@ -2,8 +2,8 @@
 
 **Reference:** CBN Operational Guidelines for Open Banking in Nigeria (Approved March 2023)
 **Document:** `docs/regulatory/CBN-Open-Banking-Operational-Guidelines-2023.md`
-**Last Updated:** Session 1 — 2026-04-27
-**Assessed Against:** Phase 1A baas-engine (commit `c6c5e47`)
+**Last Updated:** Session 4 — 2026-05-03
+**Assessed Against:** Phase 1A-ext baas-engine (squash merge commit `5adeb10`)
 
 ---
 
@@ -92,16 +92,17 @@
 
 | CBN Required Field | Status | Field in Customer Entity | Notes |
 |-------------------|--------|------------------------|-------|
-| First Name | ✅ | `first_name_encrypted` | Stored; Jasypt encryption in Phase 2 |
-| Middle Name | ❌ | Missing | Add `middle_name_encrypted` |
-| Last Name | ✅ | `last_name_encrypted` | Stored |
-| Contact Address | ⚠️ | Missing dedicated address entity | ClientAddress module needed |
+| First Name | ✅ | `first_name_encrypted` | **Encrypted at rest (AES-GCM-256, Session 4)** |
+| Middle Name | ❌ | Missing | Add `middle_name_encrypted` (Phase 2) |
+| Last Name | ✅ | `last_name_encrypted` | **Encrypted at rest (AES-GCM-256, Session 4)** |
+| Contact Address | ✅ | `client_addresses` | Built Session 3; **street/city/postal_code encrypted at rest (Session 4)** |
 | Date of Birth | ✅ | `date_of_birth` | Present |
-| State of Residence | ❌ | Missing | Add `state_of_residence` field |
-| NIN | ✅ | `nin_encrypted` | Present; live verification in Phase 2 |
-| BVN | ✅ | `bvn_encrypted` | Present; live verification in Phase 2 |
-| Email Address | ✅ | `email_encrypted` | Present |
-| Phone Number | ✅ | `phone_encrypted` | Present |
+| State of Residence | ❌ | Missing | Add `state_of_residence` field (Phase 2) |
+| NIN | ✅ | `nin_encrypted` | **Encrypted at rest (Session 4)**; live verification Phase 2 |
+| BVN | ✅ | `bvn_encrypted` | **Encrypted at rest (Session 4)**; live verification Phase 2 |
+| Email Address | ✅ | `email_encrypted` | **Encrypted at rest (Session 4)** |
+| Phone Number | ✅ | `phone_encrypted` | **Encrypted at rest (Session 4)** |
+| Identity documents (passport / DL / SSN) | ✅ | `client_identifiers.document_key` | **Encrypted at rest (Session 4)** |
 
 **Account Data Fields:**
 
@@ -176,10 +177,10 @@
 
 | CBN Requirement | Status | Notes | Planned Phase |
 |----------------|--------|-------|--------------|
-| Comply with NDPR (Nigeria Data Protection Regulation) | ⚠️ | PII field-level encryption designed; Jasypt activation in Phase 2 | Phase 2 |
+| Comply with NDPR (Nigeria Data Protection Regulation) | ✅ | **PII field-level encryption ACTIVE (AES-GCM-256, Session 4)** — Customer name/email/phone/BVN/NIN; ClientIdentifier document_key; ClientAddress street/city/postal_code. Verified via `PiiEncryptionTest` — row on disk is ciphertext. | Phase 1 ✅ |
 | Data retention and destruction policy | ⚠️ | 10-year retention defined; destruction policy documentation pending | Phase 3 |
 | Customer right to data portability | ❌ | Data export API not yet implemented | Phase 3 |
-| Data loss prevention (DLP) | ❌ | Encryption is the primary DLP mechanism; additional DLP pending | Phase 3 |
+| Data loss prevention (DLP) | ⚠️ | Field-level encryption is the primary DLP mechanism (active Session 4); additional DLP layers pending | Phase 3 |
 
 ---
 
@@ -230,7 +231,7 @@
 | KPI & Performance | 3 | 3 | 6 | 🟡 Phase 2 |
 | Event Logging & Retention | 2 | 1 | 0 | ✅ |
 | AML/CFT | 0 | 2 | 2 | 🟡 Phase 2–3 |
-| Data Privacy (NDPR) | 0 | 2 | 2 | 🟡 Phase 2 |
+| Data Privacy (NDPR) | 1 | 2 | 1 | 🟡 Phase 3 (encryption-at-rest now ✅; portability + destruction policy + extra DLP pending) |
 | Reporting | 0 | 1 | 3 | 🟡 Phase 2–3 |
 | Consent API Operations | 3 | 0 | 3 | 🟡 Phase 2 |
 | Business Continuity | 0 | 1 | 3 | 🟡 Phase 1E |

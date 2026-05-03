@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baas-ncube
+  namespace: nubbank-baas
+  labels:
+    app: baas-ncube
+    app.kubernetes.io/component: integration
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: baas-ncube
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: baas-ncube
+    spec:
+      containers:
+        - name: baas-ncube
+          image: ghcr.io/razormvp/baas-ncube:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          envFrom:
+            - configMapRef: { name: baas-engine-config }
+            - secretRef:    { name: baas-engine-secrets }
+          env:
+            - name: NIBSS_NPS_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: baas-ncube-config
+                  key: NIBSS_NPS_BASE_URL
+                  optional: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: baas-ncube
+  namespace: nubbank-baas
+spec:
+  type: ClusterIP
+  selector:
+    app: baas-ncube
+  ports:
+    - port: 80
+      targetPort: 8081
+      name: http

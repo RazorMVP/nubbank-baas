@@ -1,0 +1,85 @@
+# NubBank BaaS — local / on-prem development stack.
+#
+# Spins up: PostgreSQL 16 + baas-engine + baas-ncube.
+#
+# Usage:
+#   cd infrastructure
+#   cp .env.example .env  &&  edit .env
+#   docker compose up --build
+#
+# Deployment-agnostic: this file uses only standard Compose syntax
+# (no Docker Desktop / Rancher Desktop / cloud-specific extensions).
+# Works on Docker, Podman Compose, and Nerdctl.
+
+name: nubbank-baas
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nubbank_baas}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  baas-engine:
+    build:
+      context: ../baas-engine
+      dockerfile: Dockerfile
+    image: baas-engine:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-nubbank_baas}
+      DATASOURCE_USERNAME: ${POSTGRES_USER}
+      DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+    ports:
+      - "${BAAS_ENGINE_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  baas-ncube:
+    build:
+      context: ../baas-ncube
+      dockerfile: Dockerfile
+    image: baas-ncube:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-nubbank_baas}
+      DATASOURCE_USERNAME: ${POSTGRES_USER}
+      DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      NIBSS_NPS_BASE_URL: ${NIBSS_NPS_BASE_URL:-http://stub.local}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+    ports:
+      - "${BAAS_NCUBE_PORT:-8081}:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8081/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  pgdata:
+    driver: local
