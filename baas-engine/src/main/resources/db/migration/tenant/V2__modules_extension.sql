@@ -570,7 +570,9 @@ CREATE TABLE client_identifiers (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id   UUID NOT NULL REFERENCES customers(id),
     document_type VARCHAR(100) NOT NULL,
-    document_key  VARCHAR(200) NOT NULL,
+    -- document_key is encrypted at rest (FieldEncryptor / AES-GCM-256, base64 output).
+    -- 500 bytes accommodates ~330-char plaintext after the IV+tag+base64 expansion.
+    document_key  VARCHAR(500) NOT NULL,
     description   TEXT,
     expiry_date   DATE,
     active        BOOLEAN NOT NULL DEFAULT true,
@@ -582,11 +584,13 @@ CREATE TABLE client_addresses (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id    UUID NOT NULL REFERENCES customers(id),
     address_type   VARCHAR(50) NOT NULL DEFAULT 'HOME',
-    street         VARCHAR(500),
-    city           VARCHAR(200),
+    -- street, city, postal_code are encrypted at rest (FieldEncryptor).
+    -- Column widths sized for AES-GCM-256 base64 ciphertext expansion (~1.4× + 40B overhead).
+    street         VARCHAR(1000),
+    city           VARCHAR(500),
     state_province VARCHAR(200),
     country_code   VARCHAR(3),
-    postal_code    VARCHAR(20),
+    postal_code    VARCHAR(200),
     is_active      BOOLEAN NOT NULL DEFAULT true,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()

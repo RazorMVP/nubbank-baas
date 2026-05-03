@@ -4,10 +4,13 @@ import com.nubbank.baas.engine.account.*;
 import com.nubbank.baas.engine.common.BaasException;
 import com.nubbank.baas.engine.customer.CustomerRepository;
 import com.nubbank.baas.engine.loan.dto.*;
+import com.nubbank.baas.engine.notification.events.LoanApprovedEvent;
+import com.nubbank.baas.engine.notification.events.LoanDisbursedEvent;
 import com.nubbank.baas.engine.product.*;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import com.nubbank.baas.engine.virtualaccount.VirtualAccountService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +31,7 @@ public class LoanService {
     private final TransactionRepository txRepo;
     private final VirtualAccountService virtualAccountService;
     private final EmiCalculator emiCalculator;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public LoanResponse apply(ApplyLoanRequest req) {
@@ -116,6 +120,14 @@ public class LoanService {
                 .principalDue(item.principalDue()).interestDue(item.interestDue()).totalDue(item.totalDue())
                 .build());
         }
+
+        // Publish — listeners use @TransactionalEventListener(AFTER_COMMIT) so
+        // the notification only fires if this transaction commits successfully.
+        eventPublisher.publishEvent(new LoanApprovedEvent(
+            loan.getId(),
+            loan.getCustomer() != null ? loan.getCustomer().getId() : null,
+            loan.getPrincipalAmount(),
+            PartnerContext.get().schemaName()));
     }
 
     private void disburse(Loan loan) {
@@ -144,6 +156,12 @@ public class LoanService {
         loan.setDisbursementDate(LocalDate.now());
         loan.setDisbursedOn(Instant.now());
         loan.setOutstandingBalance(loan.getPrincipalAmount());
+
+        eventPublisher.publishEvent(new LoanDisbursedEvent(
+            loan.getId(),
+            loan.getCustomer() != null ? loan.getCustomer().getId() : null,
+            loan.getPrincipalAmount(),
+            PartnerContext.get().schemaName()));
     }
 
     @Transactional

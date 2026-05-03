@@ -13,7 +13,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +20,13 @@ public class TwoFactorService {
 
     private final TwoFactorTokenRepository repo;
     private final TwoFactorTokenWriter writer;
+    /**
+     * Optional test-only plaintext OTP store. Empty in production (the
+     * {@link TestOtpStore} bean is gated by {@code @Profile("test")} so it
+     * is never autowired outside tests). Calls to the store are no-ops
+     * when the Optional is empty.
+     */
+    private final java.util.Optional<TestOtpStore> testOtpStore;
 
     /**
      * HMAC-SHA256 key for hashing OTP tokens. Must be set via env var or
@@ -29,8 +35,6 @@ public class TwoFactorService {
      */
     @Value("${app.encryption.key}")
     private String hmacKey;
-
-    private final Map<UUID, String> testOtpStore = new ConcurrentHashMap<>();
 
     @Transactional
     public Map<String, Object> generateOtp(GenerateOtpRequest req) {
@@ -46,7 +50,8 @@ public class TwoFactorService {
             .expiresAt(Instant.now().plusSeconds(600))
             .build());
 
-        testOtpStore.put(token.getId(), otp);
+        // Test-only side channel: bean is absent in production, so this is a no-op.
+        testOtpStore.ifPresent(s -> s.put(token.getId(), otp));
 
         return Map.of("tokenId", token.getId(), "expiresAt", token.getExpiresAt(),
             "deliveryMethod", token.getDeliveryMethod());
@@ -88,7 +93,7 @@ public class TwoFactorService {
 
         token.setVerified(true);
         repo.save(token);
-        testOtpStore.remove(req.tokenId());
+        testOtpStore.ifPresent(s -> s.remove(req.tokenId()));
 
         return Map.of("verified", true, "userId", token.getUserId());
     }
@@ -101,9 +106,13 @@ public class TwoFactorService {
         return diff == 0;
     }
 
-    /** Test helper — retrieves the plaintext OTP for the given token ID. Never call in production. */
+    /**
+     * Test helper — retrieves the plaintext OTP for the given token ID. Returns
+     * an empty string in production where {@link TestOtpStore} is not on the
+     * classpath (the bean is gated by {@code @Profile("test")}).
+     */
     public String getPlaintextOtpForTest(UUID tokenId) {
-        return testOtpStore.getOrDefault(tokenId, "");
+        return testOtpStore.map(s -> s.get(tokenId)).orElse("");
     }
 
     private String hmacSha256(String data, String key) {

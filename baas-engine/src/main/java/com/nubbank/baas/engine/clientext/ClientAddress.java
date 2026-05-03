@@ -2,6 +2,7 @@ package com.nubbank.baas.engine.clientext;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.nubbank.baas.engine.common.FieldEncryptor;
 import com.nubbank.baas.engine.customer.Customer;
 import jakarta.persistence.*;
 import lombok.*;
@@ -17,11 +18,17 @@ public class ClientAddress {
     @JsonIgnore private Customer customer;
     @Column(name = "customer_id", insertable = false, updatable = false) private UUID customerId;
     @Column(name = "address_type", nullable = false, length = 50) private String addressType;
-    @Column(length = 500) private String street;
-    @Column(length = 200) private String city;
+    /** Street address — regulated PII (GDPR/NDPR), encrypted at rest. */
+    @Convert(converter = FieldEncryptor.class)
+    @Column(length = 1000) private String street;
+    /** City — regulated PII, encrypted at rest. */
+    @Convert(converter = FieldEncryptor.class)
+    @Column(length = 500) private String city;
     @Column(name = "state_province", length = 200) private String stateProvince;
     @Column(name = "country_code", length = 3) private String countryCode;
-    @Column(name = "postal_code", length = 20) private String postalCode;
+    /** Postal code — regulated PII, encrypted at rest. */
+    @Convert(converter = FieldEncryptor.class)
+    @Column(name = "postal_code", length = 200) private String postalCode;
     @JsonProperty("isActive")
     @Column(name = "is_active", nullable = false) private boolean active;
     @Column(name = "created_at", updatable = false) private Instant createdAt;

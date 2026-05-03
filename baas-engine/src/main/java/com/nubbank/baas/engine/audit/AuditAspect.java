@@ -1,5 +1,6 @@
 package com.nubbank.baas.engine.audit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -23,6 +25,7 @@ import java.util.UUID;
 public class AuditAspect {
 
     private final AuditLogService auditLogService;
+    private final ObjectMapper objectMapper;
 
     @Around("execution(public * com.nubbank.baas.engine.*..*Service.*(..))" +
             " && @annotation(transactional)" +
@@ -53,16 +56,21 @@ public class AuditAspect {
             auditLogService.log(entityType, entityId, action, changedBy, null, null);
             return result;
         } catch (Throwable t) {
-            String failureNote = "{\"status\":\"FAILED\",\"error\":\""
-                + escapeJson(t.getClass().getSimpleName() + ": " + t.getMessage()) + "\"}";
+            // Use Jackson for JSON encoding so all control chars (\b, \t, \f,
+            // U+0000..U+001F) are correctly escaped — manual replace() chains
+            // miss most of these and produce malformed audit log payloads.
+            String failureNote;
+            try {
+                failureNote = objectMapper.writeValueAsString(Map.of(
+                    "status", "FAILED",
+                    "error", t.getClass().getSimpleName() + ": "
+                        + (t.getMessage() != null ? t.getMessage() : "")));
+            } catch (Exception jsonErr) {
+                failureNote = "{\"status\":\"FAILED\"}";
+            }
             auditLogService.log(entityType, entityId, action, changedBy, null, failureNote);
             throw t;
         }
-    }
-
-    private String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
     }
 
     private UUID extractFirstUuid(Object[] args) {

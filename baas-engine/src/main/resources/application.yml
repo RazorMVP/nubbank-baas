@@ -2,9 +2,13 @@ spring:
   application:
     name: baas-engine
   datasource:
-    url: ${DATASOURCE_URL:jdbc:postgresql://localhost:5432/nubbank_baas}
-    username: ${DATASOURCE_USERNAME:baas}
-    password: ${DATASOURCE_PASSWORD:baas}
+    # Production deployments MUST set these env vars. No defaults — a misconfigured
+    # deploy that misses DATASOURCE_* should fail to start, NOT silently connect
+    # to localhost:5432 with weak default credentials. Local-dev profiles (`local`,
+    # `test`) set these via application-<profile>.yml which is gitignored / test-only.
+    url: ${DATASOURCE_URL}
+    username: ${DATASOURCE_USERNAME}
+    password: ${DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:

@@ -3,9 +3,11 @@ package com.nubbank.baas.engine.account;
 import com.nubbank.baas.engine.account.dto.*;
 import com.nubbank.baas.engine.common.BaasException;
 import com.nubbank.baas.engine.customer.*;
+import com.nubbank.baas.engine.notification.events.AccountOpenedEvent;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import com.nubbank.baas.engine.virtualaccount.VirtualAccountService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,7 @@ public class AccountService {
     private final TransactionRepository txRepo;
     private final CustomerRepository customerRepo;
     private final VirtualAccountService virtualAccountService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public AccountResponse open(OpenAccountRequest req) {
@@ -41,7 +44,10 @@ public class AccountService {
             .minimumBalance(req.minimumBalance() != null ? req.minimumBalance() : BigDecimal.ZERO)
             .build();
 
-        return toResponse(accountRepo.save(account));
+        Account saved = accountRepo.save(account);
+        eventPublisher.publishEvent(new AccountOpenedEvent(
+            saved.getId(), customer.getId(), saved.getAccountNumber(), schema));
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
