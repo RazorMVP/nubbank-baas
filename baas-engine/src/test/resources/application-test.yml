@@ -28,3 +28,5 @@ app:
     expiry-hours: 1
   encryption:
     key: test-encryption-key-exactly-32c!
+  internal-service:
+    shared-secret: test-shared-secret-min-32-chars-long-okay

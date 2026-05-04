@@ -34,14 +34,18 @@ server:
   port: 8080
 
 app:
-  # Production deployments MUST set JWT_SECRET and ENCRYPTION_KEY env vars.
-  # No defaults — startup fails fast if missing, which is the correct behaviour
+  # Production deployments MUST set JWT_SECRET, ENCRYPTION_KEY, and INTERNAL_SERVICE_SECRET
+  # env vars. No defaults — startup fails fast if missing, which is the correct behaviour
   # (default secrets in a public codebase are a security hole).
   jwt:
     secret: ${JWT_SECRET}
     expiry-hours: 24
   encryption:
     key: ${ENCRYPTION_KEY}
+  internal-service:
+    shared-secret: ${INTERNAL_SERVICE_SECRET}   # MUST match baas-ncube's value; ≥32 chars
+  ncube:
+    base-url: ${NCUBE_BASE_URL:http://baas-ncube:8082}
   rate-limit:
     sandbox-rpm: 30
     basic-rpm: 100
