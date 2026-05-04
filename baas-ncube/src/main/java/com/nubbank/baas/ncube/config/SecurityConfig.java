@@ -1,6 +1,7 @@
 package com.nubbank.baas.ncube.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -31,5 +32,27 @@ public class SecurityConfig {
                 .anyRequest().permitAll()  // AuthEnforcementFilter handles 401 envelope
             );
         return http.build();
+    }
+
+    /**
+     * Spring Boot auto-registers any {@link jakarta.servlet.Filter} bean with the servlet container
+     * (URL pattern {@code /*}), in addition to the explicit security-chain wiring above. That would
+     * cause the filter to run on paths the security chain skips (e.g. {@code /actuator/health}).
+     * Disabling auto-registration here keeps the filter bean available for the security chain only.
+     */
+    @Bean
+    public FilterRegistrationBean<InternalServiceAuthFilter> disableInternalServiceAuthFilterAutoRegistration(
+            InternalServiceAuthFilter filter) {
+        FilterRegistrationBean<InternalServiceAuthFilter> reg = new FilterRegistrationBean<>(filter);
+        reg.setEnabled(false);
+        return reg;
+    }
+
+    @Bean
+    public FilterRegistrationBean<AuthEnforcementFilter> disableAuthEnforcementFilterAutoRegistration(
+            AuthEnforcementFilter filter) {
+        FilterRegistrationBean<AuthEnforcementFilter> reg = new FilterRegistrationBean<>(filter);
+        reg.setEnabled(false);
+        return reg;
     }
 }
