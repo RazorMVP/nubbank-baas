@@ -13,6 +13,7 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -59,24 +60,33 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
             String authHeader = wrapped.getHeader("Authorization");
             String tsHeader = wrapped.getHeader("X-Internal-Timestamp");
             if (authHeader != null && authHeader.startsWith("Internal ") && tsHeader != null) {
-                long ts = Long.parseLong(tsHeader);
-                long now = Instant.now().getEpochSecond();
-                if (Math.abs(now - ts) <= REPLAY_WINDOW_SECONDS) {
-                    String provided = authHeader.substring("Internal ".length());
-                    String bodyHash = sha256Hex(body);
-                    String signedString = wrapped.getMethod() + "|"
-                        + wrapped.getRequestURI() + "|"
-                        + ts + "|"
-                        + bodyHash;
-                    String expected = computeHmac(signedString);
-                    if (constantTimeEquals(provided, expected)) {
-                        NcubeRequestContext.set("baas-engine");
+                // Treat any malformed input (non-numeric ts, hex-decode failure, etc.) as auth-failure
+                // rather than a 500 — Task 1's AuthEnforcementFilter then returns 401.
+                try {
+                    long ts = Long.parseLong(tsHeader);
+                    long now = Instant.now().getEpochSecond();
+                    if (Math.abs(now - ts) <= REPLAY_WINDOW_SECONDS) {
+                        String provided = authHeader.substring("Internal ".length());
+                        String bodyHash = sha256Hex(body);
+                        String signedString = wrapped.getMethod() + "|"
+                            + wrapped.getRequestURI() + "|"
+                            + ts + "|"
+                            + bodyHash;
+                        String expected = computeHmac(signedString);
+                        if (constantTimeEquals(provided, expected)) {
+                            NcubeRequestContext.set("baas-engine");
+                            log.debug("Internal-service HMAC verified for {} {}",
+                                wrapped.getMethod(), wrapped.getRequestURI());
+                        } else {
+                            log.warn("Internal-service HMAC mismatch for {} {} (body={}b)",
+                                wrapped.getMethod(), wrapped.getRequestURI(), body.length);
+                        }
                     } else {
-                        log.warn("Internal-service HMAC mismatch for {} {} (body={}b)",
-                            wrapped.getMethod(), wrapped.getRequestURI(), body.length);
+                        log.warn("Internal-service timestamp out of window: ts={} now={}", ts, now);
                     }
-                } else {
-                    log.warn("Internal-service timestamp out of window: ts={} now={}", ts, now);
+                } catch (IllegalArgumentException ex) {
+                    // Covers NumberFormatException (bad ts) and any hex-decode failures.
+                    log.warn("Internal-service auth header malformed: {}", ex.getMessage());
                 }
             }
             chain.doFilter(wrapped, resp);
@@ -95,8 +105,8 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
     private String computeHmac(String data) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(sharedSecret.getBytes(), "HmacSHA256"));
-            return HexFormat.of().formatHex(mac.doFinal(data.getBytes()));
+            mac.init(new SecretKeySpec(sharedSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception ex) {
             throw new IllegalStateException("HMAC computation failed", ex);
         }
@@ -111,6 +121,14 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
     }
 
     private boolean constantTimeEquals(String a, String b) {
-        return MessageDigest.isEqual(a.getBytes(), b.getBytes());
+        // Inputs are always 64-char hex (HMAC-SHA256 → 32 bytes → 64 hex), but length-equality
+        // short-circuits a tampered or truncated input before it reaches MessageDigest.isEqual,
+        // which is itself constant-time only when the byte arrays are length-equal.
+        if (a.length() != b.length()) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+            a.getBytes(StandardCharsets.UTF_8),
+            b.getBytes(StandardCharsets.UTF_8));
     }
 }

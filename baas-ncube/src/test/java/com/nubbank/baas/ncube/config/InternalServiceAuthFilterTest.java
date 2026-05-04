@@ -9,10 +9,12 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HexFormat;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -35,7 +37,7 @@ class InternalServiceAuthFilterTest {
         String bodyHash = sha256Hex(body);
         String sig = hmac("POST|/baas/v1/ncube/identity/verify-bvn|" + ts + "|" + bodyHash);
         MockHttpServletRequest req = new MockHttpServletRequest("POST", "/baas/v1/ncube/identity/verify-bvn");
-        req.setContent(body.getBytes());
+        req.setContent(body.getBytes(StandardCharsets.UTF_8));
         req.addHeader("Authorization", "Internal " + sig);
         req.addHeader("X-Internal-Timestamp", String.valueOf(ts));
         MockHttpServletResponse resp = new MockHttpServletResponse();
@@ -53,7 +55,7 @@ class InternalServiceAuthFilterTest {
         long ts = Instant.now().getEpochSecond();
         String sig = hmac("POST|/baas/v1/ncube/identity/verify-bvn|" + ts + "|" + sha256Hex(signedBody));
         MockHttpServletRequest req = new MockHttpServletRequest("POST", "/baas/v1/ncube/identity/verify-bvn");
-        req.setContent(tamperedBody.getBytes());
+        req.setContent(tamperedBody.getBytes(StandardCharsets.UTF_8));
         req.addHeader("Authorization", "Internal " + sig);
         req.addHeader("X-Internal-Timestamp", String.valueOf(ts));
         filter.doFilter(req, new MockHttpServletResponse(), mock(FilterChain.class));
@@ -64,7 +66,7 @@ class InternalServiceAuthFilterTest {
     void invalid_hmac_does_not_populate_context() throws Exception {
         long ts = Instant.now().getEpochSecond();
         MockHttpServletRequest req = new MockHttpServletRequest("POST", "/baas/v1/ncube/identity/verify-bvn");
-        req.setContent("{\"bvn\":\"12345678901\"}".getBytes());
+        req.setContent("{\"bvn\":\"12345678901\"}".getBytes(StandardCharsets.UTF_8));
         req.addHeader("Authorization", "Internal deadbeef");
         req.addHeader("X-Internal-Timestamp", String.valueOf(ts));
         filter.doFilter(req, new MockHttpServletResponse(), mock(FilterChain.class));
@@ -81,6 +83,25 @@ class InternalServiceAuthFilterTest {
         req.addHeader("X-Internal-Timestamp", String.valueOf(ts));
         filter.doFilter(req, new MockHttpServletResponse(), mock(FilterChain.class));
         assertThat(NcubeRequestContext.get()).isNull();
+    }
+
+    @Test
+    void malformed_timestamp_does_not_throw_does_not_populate_context() throws Exception {
+        // Non-numeric timestamp must be treated as auth-failure (context null), not propagate as 500.
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/baas/v1/ncube/identity/verify-bvn");
+        req.setContent("{\"bvn\":\"12345678901\"}".getBytes(StandardCharsets.UTF_8));
+        req.addHeader("Authorization", "Internal deadbeef");
+        req.addHeader("X-Internal-Timestamp", "not-a-number");
+        filter.doFilter(req, new MockHttpServletResponse(), mock(FilterChain.class));
+        assertThat(NcubeRequestContext.get()).isNull();
+    }
+
+    @Test
+    void short_shared_secret_fails_fast_at_construction() {
+        // Constructor must reject any secret <32 chars; prevents weak prod config.
+        assertThatThrownBy(() -> new InternalServiceAuthFilter("short"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("≥32 chars");
     }
 
     @Test
@@ -101,12 +122,12 @@ class InternalServiceAuthFilterTest {
 
     private String hmac(String data) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(SECRET.getBytes(), "HmacSHA256"));
-        return HexFormat.of().formatHex(mac.doFinal(data.getBytes()));
+        mac.init(new SecretKeySpec(SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        return HexFormat.of().formatHex(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
     }
 
     private String sha256Hex(String data) throws Exception {
         return HexFormat.of().formatHex(
-            java.security.MessageDigest.getInstance("SHA-256").digest(data.getBytes()));
+            java.security.MessageDigest.getInstance("SHA-256").digest(data.getBytes(StandardCharsets.UTF_8)));
     }
 }
