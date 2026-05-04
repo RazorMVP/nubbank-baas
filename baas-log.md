@@ -9,12 +9,12 @@
 
 | Sub-system | Status | Last Session |
 |------------|--------|-------------|
-| `baas-engine` — Phase 1A | ✅ Complete (all 16 tasks, 23 tests passing, smoke test live) | Session 1 |
+| `baas-engine` — Phase 1A + 1A-ext | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; **84 tests passing**) | Session 4 (`5adeb10`) |
 | `baas-ncube` — Phase 1B | ✅ Complete (9 tasks, 21 tests, smoke test live) | Session 2 |
-| `baas-backoffice` — React | ⬜ Not started | — |
-| `baas-portal` — React | ⬜ Not started | — |
+| `baas-backoffice` — React | ⬜ Not started — Phase 1C next | — |
+| `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
-| Infrastructure (Docker + K8s + CI) | ⬜ Not started | — |
+| Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles for engine + ncube, `infrastructure/docker-compose.yml`, vanilla k8s manifests in `infrastructure/k8s/`, GHCR CI workflows) | Session 4 |
 
 ---
 
@@ -190,7 +190,7 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 | ISO 20022 data format | ⚠️ Partial | Phase 2 (NIP) |
 | 12 CBN KPI metrics | ❌ Gap | Phase 2 |
 | mTLS machine auth | ❌ Gap | Phase 3 |
-| Jasypt PII encryption (active) | ⚠️ Wired, not active | Phase 2 |
+| PII encryption at rest (FieldEncryptor) | ✅ Active | — |
 | Annual consent re-validation | ❌ Gap | Phase 3 |
 
 ---
@@ -299,14 +299,14 @@ cd ~/nubbank-baas/baas-engine && ./mvnw test
 
 The build is now genuinely portable: same image runs on Docker Desktop, k3s, EKS, GKE, AKS, on-prem k8s, or any OCI-compatible runtime. No cloud-provider lock-in.
 
-#### Figma boards affected
+#### Figma boards updated
 
-The Service Architecture board needs regeneration to reflect the new components introduced in this session:
+All boards refreshed via the Figma Plugin API on 2026-05-03 (after the squash merge of PR #3) to reflect the new Session 4 components. Node IDs recorded for audit trail.
 
-- **[Service Architecture](https://www.figma.com/board/PRACgc6BXsGVEL7ZhB866A)** — Add `AuthEnforcementFilter`, `RateLimitFilter`, `AuditAspect`, `FieldEncryptor`, `TenantJdbcTemplate`, `CobJobExecutor`, `TwoFactorTokenWriter`, `TestOtpStore` to the engine internals diagram. Show the new filter chain order: PartnerContextFilter → AuthEnforcementFilter → RateLimitFilter.
-- **[Multi-Tenancy Flow](https://www.figma.com/board/TR1AYhx9Pcmd5y5grxMv8v)** — Add the `TenantJdbcTemplate` path alongside Hibernate's `MultiTenantConnectionProvider`; show that raw JDBC requires explicit `SET search_path`.
-- **[Partner Provisioning Flow](https://www.figma.com/board/qHD6cSCRTQHPbkmavHtoxw)** — No change.
-- **[CBN Compliance Roadmap](https://www.figma.com/board/5KpYYAtiukv7G6o3LyjsVr)** — Move "PII encryption at rest" from ⚠️ to ✅; flag NDPR §9.2 compliance scorecard delta (1 ✅, 2 ⚠️, 1 ❌).
+- **[Service Architecture](https://www.figma.com/board/PRACgc6BXsGVEL7ZhB866A)** — Security & Gateway section widened 608 → 896 px; added `AuthEnforcementFilter` as the third filter tile (node `8:73`) and a new connector `8:77` from `RateLimitFilter` → `AuthEnforcementFilter`; the three existing connectors `1:59`, `1:63`, `1:67` (RateLimit → engine/card/ncube) were redirected to originate from `AuthEnforcementFilter` since it is the last gate before controllers. New section **`baas-engine Internals (Session 4)`** (node `9:78`) added below the security row with 6 tiles in a 3×2 grid: `AuditAspect`, `FieldEncryptor`, `TenantJdbcTemplate`, `CobJobExecutor`, `TwoFactorTokenWriter`, `TestOtpStore` (nodes `9:79`, `9:83`, `9:87`, `9:91`, `9:95`, `9:99`).
+- **[Multi-Tenancy Flow](https://www.figma.com/board/TR1AYhx9Pcmd5y5grxMv8v)** — Added `TenantJdbcTemplate` node (`5:55`) below the main Hibernate rail with two labelled connectors: `5:59` from `PartnerContext` ("Raw JDBC path") and `5:63` into `partner_abc schema` ("SET search_path TO partner_abc, public"). Both rails converge on the same per-partner schema, making it explicit that raw JDBC bypasses Hibernate's `MultiTenantConnectionProvider` but still respects schema isolation via the regex-validated `SET search_path`.
+- **[CBN Compliance Roadmap](https://www.figma.com/board/5KpYYAtiukv7G6o3LyjsVr)** — Phase 1A — Complete section grew 1568 → 1760 px tall and a new tile (`5:48`) was added: **PII Encryption at Rest / AES-GCM-256 / FieldEncryptor JPA Converter**. Reflects NDPR §9.2 moving from ⚠️ to ✅ (the gap-analysis doc was already updated in this session).
+- **[Partner Provisioning Flow](https://www.figma.com/board/qHD6cSCRTQHPbkmavHtoxw)** — No change required; provisioning flow is unaffected by Session 4.
 
 #### What's Next (Session 5)
 
