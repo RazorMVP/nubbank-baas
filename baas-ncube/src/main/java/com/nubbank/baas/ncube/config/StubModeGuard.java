@@ -7,6 +7,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.Locale;
 
 /**
  * Refuses to start when baas.nps.live=false AND SPRING_PROFILES_ACTIVE contains 'prod'.
@@ -32,7 +33,11 @@ public class StubModeGuard {
 
     @PostConstruct
     public void onStartup() {
-        boolean prod = Arrays.asList(env.getActiveProfiles()).contains("prod");
+        // Case-insensitive prefix match: catches "prod", "PROD", "Prod", "production",
+        // "prod-eu", etc. The guard's job is preventing ops slips, so the matcher errs
+        // on the side of permissive — anything that *might* be production trips the gate.
+        boolean prod = Arrays.stream(env.getActiveProfiles())
+            .anyMatch(p -> p != null && p.toLowerCase(Locale.ROOT).startsWith("prod"));
         if (!live && prod) {
             throw new IllegalStateException(
                 "FATAL: baas-ncube is in stub mode (baas.nps.live=false) but SPRING_PROFILES_ACTIVE includes 'prod'. "
