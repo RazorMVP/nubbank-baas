@@ -25,7 +25,7 @@ class NcubeIdentityControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"bvn\":\"12345678901\"}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.identifier").value("12345678901"))
+            .andExpect(jsonPath("$.data.identifier").value("00000000000"))
             .andExpect(jsonPath("$.data.verified").value(true))
             .andExpect(jsonPath("$.data.verificationSource").value("NIBSS_NCUBE_STUB"));
     }
@@ -53,7 +53,7 @@ class NcubeIdentityControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"nin\":\"98765432109\"}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.identifier").value("98765432109"))
+            .andExpect(jsonPath("$.data.identifier").value("00000000000"))
             .andExpect(jsonPath("$.data.verified").value(true))
             .andExpect(jsonPath("$.data.verificationSource").value("NIBSS_NCUBE_STUB"));
     }

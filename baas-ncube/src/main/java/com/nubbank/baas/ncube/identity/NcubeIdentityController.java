@@ -25,8 +25,9 @@ public class NcubeIdentityController {
             @Valid @RequestBody BvnVerificationRequest req,
             @RequestHeader(value = "Authorization", required = false) String auth) {
         log.debug("BVN verification: {} — Phase 1B stub (Phase 2 calls NIBSS Ncube acmt.023/024)", req.bvn());
+        // stubbed BVN — never echoes caller input
         return ResponseEntity.ok(Map.of("data", new VerificationResponse(
-            req.bvn(), true, "STUB_FIRST", "STUB_LAST",
+            "00000000000", true, "STUB_FIRST", "STUB_LAST",
             null, null, "NIBSS_NCUBE_STUB")));
     }
 
@@ -35,8 +36,9 @@ public class NcubeIdentityController {
             @Valid @RequestBody NinVerificationRequest req,
             @RequestHeader(value = "Authorization", required = false) String auth) {
         log.debug("NIN verification: {} — Phase 1B stub", req.nin());
+        // stubbed NIN — never echoes caller input
         return ResponseEntity.ok(Map.of("data", new VerificationResponse(
-            req.nin(), true, "STUB_FIRST", "STUB_LAST",
+            "00000000000", true, "STUB_FIRST", "STUB_LAST",
             null, null, "NIBSS_NCUBE_STUB")));
     }
 }
