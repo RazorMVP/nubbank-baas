@@ -35,7 +35,6 @@ class NcubeConsentControllerTest {
                 "partner-org-id","2026-12-31T00:00:00Z","2026-04-27T10:00:00Z")));
 
         mockMvc.perform(get("/baas/v1/ncube/consents").header("Authorization","Bearer jwt")
-                .contentType(CBN_OB)
                 .accept(CBN_OB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.Data.Consent[0].ConsentId").value("consent-uuid"))

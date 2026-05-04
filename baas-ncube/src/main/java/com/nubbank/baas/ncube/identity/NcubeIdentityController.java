@@ -20,11 +20,10 @@ import java.util.Map;
 @RestController
 @RequestMapping(
     value = "/baas/v1/ncube/identity",
-    consumes = CbnMediaTypes.CBN_OB_V1_JSON,
     produces = CbnMediaTypes.CBN_OB_V1_JSON)
 public class NcubeIdentityController {
 
-    @PostMapping("/verify-bvn")
+    @PostMapping(value = "/verify-bvn", consumes = CbnMediaTypes.CBN_OB_V1_JSON)
     public ResponseEntity<Map<String, Object>> verifyBvn(
             @Valid @RequestBody BvnVerificationRequest req,
             @RequestHeader(value = "Authorization", required = false) String auth) {
@@ -35,7 +34,7 @@ public class NcubeIdentityController {
             null, null, "NIBSS_NCUBE_STUB")));
     }
 
-    @PostMapping("/verify-nin")
+    @PostMapping(value = "/verify-nin", consumes = CbnMediaTypes.CBN_OB_V1_JSON)
     public ResponseEntity<Map<String, Object>> verifyNin(
             @Valid @RequestBody NinVerificationRequest req,
             @RequestHeader(value = "Authorization", required = false) String auth) {

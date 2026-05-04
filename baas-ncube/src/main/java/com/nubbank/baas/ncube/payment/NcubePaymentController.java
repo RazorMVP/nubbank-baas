@@ -10,14 +10,13 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping(
     value = "/baas/v1/ncube/payments",
-    consumes = CbnMediaTypes.CBN_OB_V1_JSON,
     produces = CbnMediaTypes.CBN_OB_V1_JSON)
 @RequiredArgsConstructor
 public class NcubePaymentController {
 
     private final NipPaymentOrchestrator orchestrator;
 
-    @PostMapping("/nip")
+    @PostMapping(value = "/nip", consumes = CbnMediaTypes.CBN_OB_V1_JSON)
     public ResponseEntity<CbnApiResponse<NipPaymentResponse>> initiateNip(
             @Valid @RequestBody NipPaymentRequest req,
             @RequestHeader(value = "Authorization", required = false) String auth) {

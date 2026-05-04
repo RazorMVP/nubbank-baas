@@ -36,7 +36,6 @@ class NcubeAccountControllerTest {
                 new BigDecimal("5000.00"), new BigDecimal("5000.00"), "NGN")));
 
         mockMvc.perform(get("/baas/v1/ncube/accounts").header("Authorization","Bearer jwt")
-                .contentType(CBN_OB)
                 .accept(CBN_OB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.Data.Account[0].AccountId").value("0581000042"))
@@ -54,7 +53,6 @@ class NcubeAccountControllerTest {
 
         mockMvc.perform(get("/baas/v1/ncube/accounts/0581000042/balances")
                 .header("Authorization","Bearer jwt")
-                .contentType(CBN_OB)
                 .accept(CBN_OB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.Data.Balance[0].AccountId").value("0581000042"))
@@ -71,7 +69,6 @@ class NcubeAccountControllerTest {
 
         mockMvc.perform(get("/baas/v1/ncube/accounts/0581000042/transactions")
                 .header("Authorization","Bearer jwt")
-                .contentType(CBN_OB)
                 .accept(CBN_OB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.Data.Transaction[0].AccountId").value("0581000042"))
