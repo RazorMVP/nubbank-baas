@@ -8,7 +8,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/baas/v1/ncube/payments")
+@RequestMapping(
+    value = "/baas/v1/ncube/payments",
+    consumes = CbnMediaTypes.CBN_OB_V1_JSON,
+    produces = CbnMediaTypes.CBN_OB_V1_JSON)
 @RequiredArgsConstructor
 public class NcubePaymentController {
 

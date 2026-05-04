@@ -1,5 +1,6 @@
 package com.nubbank.baas.ncube.payment;
 
+import com.nubbank.baas.ncube.common.CbnMediaTypes;
 import com.nubbank.baas.ncube.payment.dto.NipPaymentResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +21,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
          com.nubbank.baas.ncube.config.SecurityConfig.class})
 class NcubePaymentControllerTest {
 
+    private static final MediaType CBN_OB = MediaType.parseMediaType(CbnMediaTypes.CBN_OB_V1_JSON);
+
     @Autowired private MockMvc mockMvc;
     @MockBean private NipPaymentOrchestrator orchestrator;
 
@@ -30,7 +33,7 @@ class NcubePaymentControllerTest {
 
         mockMvc.perform(post("/baas/v1/ncube/payments/nip")
                 .header("Authorization", "Bearer test-jwt")
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(CBN_OB)
                 .content("""
                     {"sourceAccountId":"src","destinationAccountNumber":"0581000099",
                      "destinationBankCode":"058","amount":5000.00,"currency":"NGN",
@@ -44,7 +47,7 @@ class NcubePaymentControllerTest {
     @Test
     void initiateNip_invalidBvn_returns400() throws Exception {
         mockMvc.perform(post("/baas/v1/ncube/payments/nip")
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(CBN_OB)
                 .content("""
                     {"sourceAccountId":"src","destinationAccountNumber":"0581000099",
                      "destinationBankCode":"058","amount":5000.00,

@@ -2,12 +2,14 @@ package com.nubbank.baas.ncube.account;
 
 import com.nubbank.baas.ncube.account.dto.NubBankAccountDto;
 import com.nubbank.baas.ncube.account.dto.NubBankTransactionDto;
+import com.nubbank.baas.ncube.common.CbnMediaTypes;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.List;
@@ -22,6 +24,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
          com.nubbank.baas.ncube.config.SecurityConfig.class})
 class NcubeAccountControllerTest {
 
+    private static final MediaType CBN_OB = MediaType.parseMediaType(CbnMediaTypes.CBN_OB_V1_JSON);
+
     @Autowired private MockMvc mockMvc;
     @MockBean private NcubeAccountClient accountClient;
 
@@ -31,7 +35,9 @@ class NcubeAccountControllerTest {
             new NubBankAccountDto("uuid-1","0581000042","Savings","ACTIVE",
                 new BigDecimal("5000.00"), new BigDecimal("5000.00"), "NGN")));
 
-        mockMvc.perform(get("/baas/v1/ncube/accounts").header("Authorization","Bearer jwt"))
+        mockMvc.perform(get("/baas/v1/ncube/accounts").header("Authorization","Bearer jwt")
+                .contentType(CBN_OB)
+                .accept(CBN_OB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.Data.Account[0].AccountId").value("0581000042"))
             .andExpect(jsonPath("$.Data.Account[0].Currency").value("NGN"))
@@ -47,7 +53,9 @@ class NcubeAccountControllerTest {
                 new BigDecimal("5000.00"), new BigDecimal("5000.00"), "NGN"));
 
         mockMvc.perform(get("/baas/v1/ncube/accounts/0581000042/balances")
-                .header("Authorization","Bearer jwt"))
+                .header("Authorization","Bearer jwt")
+                .contentType(CBN_OB)
+                .accept(CBN_OB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.Data.Balance[0].AccountId").value("0581000042"))
             .andExpect(jsonPath("$.Data.Balance[0].CreditDebitIndicator").value("Credit"))
@@ -62,7 +70,9 @@ class NcubeAccountControllerTest {
                 new BigDecimal("6000.00"),"NGN","ref-001","2026-04-27T10:00:00Z")));
 
         mockMvc.perform(get("/baas/v1/ncube/accounts/0581000042/transactions")
-                .header("Authorization","Bearer jwt"))
+                .header("Authorization","Bearer jwt")
+                .contentType(CBN_OB)
+                .accept(CBN_OB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.Data.Transaction[0].AccountId").value("0581000042"))
             .andExpect(jsonPath("$.Data.Transaction[0].CreditDebitIndicator").value("Credit"))

@@ -1,5 +1,6 @@
 package com.nubbank.baas.ncube.identity;
 
+import com.nubbank.baas.ncube.common.CbnMediaTypes;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -16,13 +17,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
          com.nubbank.baas.ncube.common.GlobalExceptionHandler.class})
 class NcubeIdentityControllerTest {
 
+    private static final MediaType CBN_OB = MediaType.parseMediaType(CbnMediaTypes.CBN_OB_V1_JSON);
+
     @Autowired private MockMvc mockMvc;
 
     @Test
     void verifyBvn_validFormat_returnsStubVerified() throws Exception {
         mockMvc.perform(post("/baas/v1/ncube/identity/verify-bvn")
                 .header("Authorization", "Bearer test-jwt")
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(CBN_OB)
                 .content("{\"bvn\":\"12345678901\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.identifier").value("00000000000"))
@@ -33,7 +36,7 @@ class NcubeIdentityControllerTest {
     @Test
     void verifyBvn_tooShort_returns400() throws Exception {
         mockMvc.perform(post("/baas/v1/ncube/identity/verify-bvn")
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(CBN_OB)
                 .content("{\"bvn\":\"123\"}"))
             .andExpect(status().isBadRequest());
     }
@@ -41,7 +44,7 @@ class NcubeIdentityControllerTest {
     @Test
     void verifyBvn_nonNumeric_returns400() throws Exception {
         mockMvc.perform(post("/baas/v1/ncube/identity/verify-bvn")
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(CBN_OB)
                 .content("{\"bvn\":\"ABCDE678901\"}"))
             .andExpect(status().isBadRequest());
     }
@@ -50,7 +53,7 @@ class NcubeIdentityControllerTest {
     void verifyNin_validFormat_returnsStubVerified() throws Exception {
         mockMvc.perform(post("/baas/v1/ncube/identity/verify-nin")
                 .header("Authorization", "Bearer test-jwt")
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(CBN_OB)
                 .content("{\"nin\":\"98765432109\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.identifier").value("00000000000"))

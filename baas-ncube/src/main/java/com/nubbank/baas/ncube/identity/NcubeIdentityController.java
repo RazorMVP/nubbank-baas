@@ -1,5 +1,6 @@
 package com.nubbank.baas.ncube.identity;
 
+import com.nubbank.baas.ncube.common.CbnMediaTypes;
 import com.nubbank.baas.ncube.identity.dto.BvnVerificationRequest;
 import com.nubbank.baas.ncube.identity.dto.NinVerificationRequest;
 import com.nubbank.baas.ncube.identity.dto.VerificationResponse;
@@ -17,7 +18,10 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/baas/v1/ncube/identity")
+@RequestMapping(
+    value = "/baas/v1/ncube/identity",
+    consumes = CbnMediaTypes.CBN_OB_V1_JSON,
+    produces = CbnMediaTypes.CBN_OB_V1_JSON)
 public class NcubeIdentityController {
 
     @PostMapping("/verify-bvn")

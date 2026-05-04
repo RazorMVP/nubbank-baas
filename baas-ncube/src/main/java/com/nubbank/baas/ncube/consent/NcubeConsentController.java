@@ -8,7 +8,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 @RestController
-@RequestMapping("/baas/v1/ncube/consents")
+@RequestMapping(
+    value = "/baas/v1/ncube/consents",
+    consumes = CbnMediaTypes.CBN_OB_V1_JSON,
+    produces = CbnMediaTypes.CBN_OB_V1_JSON)
 @RequiredArgsConstructor
 public class NcubeConsentController {
 
