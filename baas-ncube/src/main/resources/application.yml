@@ -29,7 +29,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health   # was: health,info — info leaks git.commit.id and active profile
 
 logging:
   level:

@@ -2,6 +2,7 @@ package com.nubbank.baas.ncube.identity;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -10,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(NcubeIdentityController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import({com.nubbank.baas.ncube.config.SecurityConfig.class,
          com.nubbank.baas.ncube.common.GlobalExceptionHandler.class})
 class NcubeIdentityControllerTest {
