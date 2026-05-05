@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.web.util.ContentCachingRequestWrapper;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -26,8 +25,9 @@ import java.util.HexFormat;
  * HMAC content: METHOD + "|" + PATH + "|" + TIMESTAMP + "|" + sha256Hex(body)
  * Replay window: 60 seconds.
  *
- * Body bytes are read via {@link ContentCachingRequestWrapper} so the controller can still
- * read them downstream (raw HttpServletRequest's input stream is single-use).
+ * Body bytes are read via {@link CachedBodyHttpServletRequest} so the controller can still
+ * read them downstream (raw HttpServletRequest's input stream is single-use, and Spring's
+ * {@code ContentCachingRequestWrapper} does not replay bytes via {@code getInputStream()}).
  *
  * On valid signature, populates {@link NcubeRequestContext} with caller identity.
  * On invalid signature (or tampered body), leaves context null —
@@ -51,12 +51,10 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
             throws ServletException, IOException {
         // Wrap to allow body to be read here and downstream
-        ContentCachingRequestWrapper wrapped = (req instanceof ContentCachingRequestWrapper w)
-            ? w : new ContentCachingRequestWrapper(req);
+        CachedBodyHttpServletRequest wrapped = (req instanceof CachedBodyHttpServletRequest w)
+            ? w : new CachedBodyHttpServletRequest(req);
         try {
-            // Force the wrapper to read the body once so the cache is populated.
-            // (Downstream controller will read from the cache.)
-            byte[] body = readAllBytes(wrapped);
+            byte[] body = wrapped.getCachedBody();
             String authHeader = wrapped.getHeader("Authorization");
             String tsHeader = wrapped.getHeader("X-Internal-Timestamp");
             if (authHeader != null && authHeader.startsWith("Internal ") && tsHeader != null) {
@@ -93,13 +91,6 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
         } finally {
             NcubeRequestContext.clear();
         }
-    }
-
-    private byte[] readAllBytes(ContentCachingRequestWrapper wrapped) throws IOException {
-        // Force the inputStream to be consumed so getContentAsByteArray returns full body.
-        // Spring's wrapper buffers as it's read.
-        wrapped.getInputStream().readAllBytes();
-        return wrapped.getContentAsByteArray();
     }
 
     private String computeHmac(String data) {
