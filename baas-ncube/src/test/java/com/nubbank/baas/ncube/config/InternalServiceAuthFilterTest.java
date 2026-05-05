@@ -18,6 +18,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 class InternalServiceAuthFilterTest {
 
@@ -118,6 +120,27 @@ class InternalServiceAuthFilterTest {
         doAnswer(inv -> { assertThat(NcubeRequestContext.get()).isEqualTo("baas-engine"); return null; })
             .when(chain).doFilter(any(), any());
         filter.doFilter(req, new MockHttpServletResponse(), chain);
+    }
+
+    @Test
+    void oversized_body_returns_400_via_filter() throws Exception {
+        // Construct a CachedBodyHttpServletRequest with a body larger than the cap.
+        // Easiest: directly invoke the wrapper's constructor with a mock servlet request whose
+        // getContentLengthLong returns > MAX_BODY_BYTES.
+        org.springframework.mock.web.MockHttpServletRequest big = new org.springframework.mock.web.MockHttpServletRequest("POST", "/baas/v1/ncube/identity/verify-bvn");
+        // Setting an oversized content via setContent triggers the readBoundedBytes path
+        byte[] huge = new byte[CachedBodyHttpServletRequest.MAX_BODY_BYTES + 1];
+        big.setContent(huge);
+
+        org.springframework.mock.web.MockHttpServletResponse resp = new org.springframework.mock.web.MockHttpServletResponse();
+        jakarta.servlet.FilterChain chain = mock(jakarta.servlet.FilterChain.class);
+        filter.doFilter(big, resp, chain);
+
+        assertThat(resp.getStatus()).isEqualTo(400);
+        assertThat(resp.getContentAsString()).contains("BAD_REQUEST");
+        assertThat(NcubeRequestContext.get()).isNull();
+        // chain.doFilter must NOT have been invoked when we wrote 400 directly
+        verify(chain, never()).doFilter(any(), any());
     }
 
     private String hmac(String data) throws Exception {

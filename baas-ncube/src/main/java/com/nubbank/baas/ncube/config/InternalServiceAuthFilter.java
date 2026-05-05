@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -51,8 +52,19 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
             throws ServletException, IOException {
         // Wrap to allow body to be read here and downstream
-        CachedBodyHttpServletRequest wrapped = (req instanceof CachedBodyHttpServletRequest w)
-            ? w : new CachedBodyHttpServletRequest(req);
+        CachedBodyHttpServletRequest wrapped;
+        try {
+            wrapped = (req instanceof CachedBodyHttpServletRequest w)
+                ? w : new CachedBodyHttpServletRequest(req);
+        } catch (IOException ex) {
+            log.warn("Could not buffer request body for HMAC validation: {}", ex.getMessage());
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            resp.getWriter().write(
+                "{\"data\":null,\"errors\":[{\"code\":\"BAD_REQUEST\","
+                + "\"message\":\"Request body could not be read or exceeds size limit\"}]}");
+            return;
+        }
         try {
             byte[] body = wrapped.getCachedBody();
             String authHeader = wrapped.getHeader("Authorization");
