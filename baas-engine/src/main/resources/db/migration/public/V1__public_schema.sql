@@ -136,17 +136,18 @@ CREATE INDEX idx_deliveries_retry       ON webhook_deliveries(status, next_retry
 -- Seed virtual account pool with 10,000 NUBAN numbers for dev/test
 -- Bank code 058 (GTBank used as demo)
 -- NUBAN check digit formula: weights {3,7,3,3,7,3,3,7,3} over bank_code(3) + serial(6), then (10 - sum%10) % 10
+-- Outer % 10 wraps the 10→0 case (when sum%10 == 0, naive 10 - 0 = 10; the outer % 10 reduces it back to 0)
 INSERT INTO virtual_account_pool (account_number, bank_code)
 SELECT
     '058' ||
     LPAD(gs::text, 6, '0') ||
-    (((10 - (
+    ((10 - (
         (3 * SUBSTRING(LPAD(gs::text, 6, '0'), 1, 1)::INT +
          7 * SUBSTRING(LPAD(gs::text, 6, '0'), 2, 1)::INT +
          3 * SUBSTRING(LPAD(gs::text, 6, '0'), 3, 1)::INT +
          3 * SUBSTRING(LPAD(gs::text, 6, '0'), 4, 1)::INT +
          7 * SUBSTRING(LPAD(gs::text, 6, '0'), 5, 1)::INT +
          3 * SUBSTRING(LPAD(gs::text, 6, '0'), 6, 1)::INT) % 10
-    ) % 10))::TEXT),
+    )) % 10)::TEXT,
     '058'
 FROM generate_series(100000, 109999) gs;
