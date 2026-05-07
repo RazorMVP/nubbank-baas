@@ -4,7 +4,8 @@ metadata:
   name: baas-ncube-config
   namespace: nubbank-baas
 data:
-  NIBSS_NPS_BASE_URL: "https://nps-sandbox.nibss-plc.com.ng"   # replace per environment
+  NPS_ENDPOINT: "https://nps-sandbox.nibss-plc.com.ng"   # replace per environment
   NPS_LIVE: "false"   # set to "true" only when wired to live NIBSS
   NPS_MEMBER_ID: "999058"
+  NPS_BICFI: "999058"
   NPS_INSTITUTION_NAME: "NubBank BaaS"

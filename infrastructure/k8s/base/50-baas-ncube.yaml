@@ -39,12 +39,6 @@ spec:
             - configMapRef: { name: baas-engine-config }
             - configMapRef: { name: baas-ncube-config }
             - secretRef:    { name: baas-engine-secrets }
-          env:
-            - name: NIBSS_NPS_BASE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: baas-ncube-config
-                  key: NIBSS_NPS_BASE_URL
           resources:
             requests:
               cpu: 100m
