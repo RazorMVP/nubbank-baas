@@ -10,6 +10,7 @@ namespace: nubbank-baas
 # or via SealedSecrets / Vault / external-secrets-operator.
 resources:
   - 00-namespace.yaml
+  - 16-baas-ncube-config.yaml
   - 20-configmap.yaml
   - 30-postgres.yaml
   - 40-baas-engine.yaml
