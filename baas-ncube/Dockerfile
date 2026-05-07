@@ -31,5 +31,6 @@ USER app
 EXPOSE 8082
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8082/actuator/health/readiness || exit 1
-ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75"
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Security baseline baked into ENTRYPOINT — not overridable via JAVA_TOOL_OPTIONS env var.
+# To add runtime options at deploy time, append to the deployment's args field.
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]

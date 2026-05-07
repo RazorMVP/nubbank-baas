@@ -35,7 +35,6 @@ USER app
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8080/actuator/health/readiness || exit 1
-# JAVA_TOOL_OPTIONS makes the entrypoint configurable without a custom shell wrapper.
-# Override at runtime: -e JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -Xlog:gc"
-ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75"
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Security baseline baked into ENTRYPOINT — not overridable via JAVA_TOOL_OPTIONS env var.
+# To add runtime options at deploy time, append to the deployment's args field.
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
