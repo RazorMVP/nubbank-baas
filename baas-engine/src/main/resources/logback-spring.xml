@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!-- Use Spring Boot defaults so console/file appenders work as before -->
+    <!-- Spring Boot defaults provide CONSOLE_LOG_PATTERN, %clr support, and PID setup -->
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
-    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
     <!-- Register the custom converter — replaces %msg with PII-masked output -->
     <conversionRule conversionWord="piimsg"
-                    converterClass="com.nubbank.baas.engine.common.PiiMaskingConverter"/>
+                    class="com.nubbank.baas.engine.common.PiiMaskingConverter"/>
 
     <!-- Override the console appender's pattern to use %piimsg instead of %msg -->
     <appender name="CONSOLE_MASKED" class="ch.qos.logback.core.ConsoleAppender">
