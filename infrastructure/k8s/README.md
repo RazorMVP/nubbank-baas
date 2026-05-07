@@ -26,7 +26,8 @@ kubectl create secret generic baas-engine-secrets \
   --from-literal=DATASOURCE_USERNAME=... \
   --from-literal=DATASOURCE_PASSWORD=... \
   --from-literal=JWT_SECRET=... \
-  --from-literal=ENCRYPTION_KEY=...
+  --from-literal=ENCRYPTION_KEY=... \
+  --from-literal=INTERNAL_SERVICE_SECRET=...   # ≥32 chars; shared by engine + ncube for HMAC inter-service auth
 
 # 3. Apply the rest
 kubectl apply -f 20-configmap.yaml

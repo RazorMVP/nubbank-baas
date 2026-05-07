@@ -4,7 +4,7 @@
 # Deployment-agnostic: same pattern as baas-engine.
 #
 # Build: docker build -t baas-ncube:local -f baas-ncube/Dockerfile baas-ncube
-# Run:   docker run --rm -p 8081:8081 --env-file .env baas-ncube:local
+# Run:   docker run --rm -p 8082:8082 --env-file .env baas-ncube:local
 #
 # Required runtime env vars:
 #   DATASOURCE_URL, DATASOURCE_USERNAME, DATASOURCE_PASSWORD (if persisting state)
@@ -22,8 +22,8 @@ WORKDIR /app
 COPY --from=build /workspace/target/*.jar app.jar
 RUN chown -R app:app /app
 USER app
-EXPOSE 8081
+EXPOSE 8082
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD wget -q -O- http://127.0.0.1:8081/actuator/health | grep -q '"status":"UP"' || exit 1
+    CMD wget -q -O- http://127.0.0.1:8082/actuator/health | grep -q '"status":"UP"' || exit 1
 ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75"
 ENTRYPOINT ["java", "-jar", "app.jar"]

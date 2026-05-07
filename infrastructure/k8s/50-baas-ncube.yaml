@@ -26,7 +26,7 @@ spec:
           image: ghcr.io/razormvp/baas-ncube:latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8081
+            - containerPort: 8082
               name: http
           envFrom:
             - configMapRef: { name: baas-engine-config }
@@ -71,5 +71,5 @@ spec:
     app: baas-ncube
   ports:
     - port: 80
-      targetPort: 8081
+      targetPort: 8082
       name: http
