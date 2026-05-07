@@ -305,14 +305,16 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 4 — 2026-05-03)
+## Confirmed Platform Versions (Session 5 — 2026-05-07)
 
 ### BaaS Engine (`baas-engine/`)
 
 | Component | Version | Notes |
 |-----------|---------|-------|
 | **Spring Boot** | 3.5.0 | Parent BOM |
+| **Spring Security** | 6.5.0 (managed) | Multi-chain `SecurityFilterChain`; `InternalServiceClient` provides outbound HMAC signing for engine→ncube calls |
 | **Spring AOP** | 3.5.0 (managed) | Added Session 4 — used by `AuditAspect` for cross-cutting audit interception |
+| **Logback** | 1.5.x (managed) | `logback-spring.xml` with `PiiMaskingConverter` (`%piimsg`) — masks BVN/NIN/NUBAN/PAN in log message bodies (Session 5) |
 | **Java** | 21 | LTS; records, sealed classes, pattern matching |
 | **Hibernate** | 6.x (managed) | SCHEMA multi-tenancy via `MultiTenantConnectionProvider` |
 | **Flyway** | 10.x (managed) | `flyway-database-postgresql` required for Spring Boot 3.3+ |
@@ -321,16 +323,19 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
-| **Last git commit** | `5adeb10` | Session 4 — Phase 1A-ext merged: 29 modules + 12 critical security fixes + 84 tests passing |
+| **Last git commit** | `d8b1802` | Session 5 — Phase 1F-0 cross-cutting security baseline; 97 tests passing on `feature/phase1f-0-cross-cutting-security` |
 
 ### BaaS Ncube (`baas-ncube/`)
 
 | Component | Version | Notes |
 |-----------|---------|-------|
 | **Spring Boot** | 3.5.0 | No DB, no Redis, no Flyway — pure adapter |
+| **Spring Security** | 6.5.0 (managed) | `InternalServiceAuthFilter` (HMAC validate inbound) → `AuthEnforcementFilter` (single 401 gate); auto-registration suppressed via `FilterRegistrationBean.setEnabled(false)` (Session 5) |
+| **Logback** | 1.5.x (managed) | `logback-spring.xml` with `PiiMaskingConverter` (`%piimsg`) — same converter as engine, different package (Session 5) |
 | **Java** | 21 | Records, sealed classes, pattern matching |
 | **NPS spec** | v1.2 | pacs.008.001.12, acmt.023.001.04 |
-| **Last git commit** | `97544ce` | Session 2 — Phase 1B complete: 21 tests, smoke test live |
+| **CBN vendor media type** | `application/vnd.cbn.openbanking.v1+json` | Required on all controllers; `consumes` method-level on POST/PUT only; `produces` class-level (Session 5) |
+| **Last git commit** | `d8b1802` | Session 5 — Phase 1F-0; 49 tests passing on `feature/phase1f-0-cross-cutting-security` |
 
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
@@ -619,6 +624,13 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | OTP brute-force with no lockout | Add `failed_attempts` + `locked` columns; combine atomic UPDATE (above) + REQUIRES_NEW writer (above) + constant-time hash compare so timing leaks don't help the attacker either. |
 | Lombok `@Builder` initializes collection fields to null | Use `@Builder.Default` on every initialized collection (`= new ArrayList<>()` etc.) — without it the builder ignores the initializer. |
 | Customer PII fields named `*_encrypted` but stored plaintext | The `_encrypted` suffix is naming aspiration only unless `@Convert(converter = FieldEncryptor.class)` is on the field. Apply `FieldEncryptor` (AES-GCM-256) to ALL regulated PII: name, email, phone, BVN, NIN, document keys, residential address. |
+| `ContentCachingRequestWrapper.getInputStream()` returns empty stream after a filter reads the body | Spring's wrapper caches bytes for `getContentAsByteArray()` but does NOT replay them through `getInputStream()`. Implement an `HttpServletRequestWrapper` that overrides `getInputStream()` to return a fresh `ByteArrayInputStream` each call (`CachedBodyHttpServletRequest` pattern in `baas-ncube/.../config/`). Cap body size at read time (`MAX_BODY_BYTES = 1 MB`) to prevent OOM. |
+| Naked `\b\d{13,19}\b` PII regex masks Unix-millisecond timestamps | `\b` matches at every word/non-word boundary; 13-digit ms timestamps and 19-digit Sleuth trace IDs get mangled, breaking observability. Require a context anchor via bounded lookbehind: `(?<=(?:card / pan / primary)[^\\d]{0,16})(\\d{4})...`. Java 9+ supports bounded variable-length lookbehind. BVN/NIN (11 digits) is fine without context — rarely conflicts with timestamps. |
+| Stub mode silently active in prod when profile name is `PROD` not `prod` | `String.contains("prod")` is case-sensitive and won't match `prod-eu`/`production` either. Use `Arrays.stream(profiles).anyMatch(p -> p != null && p.toLowerCase(Locale.ROOT).startsWith("prod"))` — case-insensitive prefix match catches every common variant (`PROD`, `Prod`, `prod-eu`, `production`). |
+| Filter is in security chain AND auto-registered as a servlet filter | `@Component` filters are auto-registered by Spring Boot servlet auto-config, so they fire in BOTH the servlet pipeline and the security chain — ordering becomes unpredictable. Define `@Bean FilterRegistrationBean<X> disableX(X filter)` returning `setEnabled(false)` to keep the filter out of the servlet pipeline; security chain alone routes it. Add a `SecurityConfigTest` using `FilterChainProxy.getFilterChains()` to assert ordering doesn't regress. |
+| Class-level `@RequestMapping(consumes = ...)` rejects partner GETs with 415 | Spring inherits class-level `consumes` to all methods including GET. A partner sending `Accept` only on a GET hits 415. Move `consumes` to method-level on POST/PUT only; keep `produces` at class level for response content negotiation. Pattern used by ncube CBN vendor media type. |
+| `HttpMediaTypeNotSupportedException` propagates as 500 | No matching `@ExceptionHandler` in `GlobalExceptionHandler` falls through to the framework's default 500 handler. Add `@ExceptionHandler(HttpMediaTypeNotSupportedException.class)` → 415 and `@ExceptionHandler(HttpMediaTypeNotAcceptableException.class)` → 406. |
+| Inter-service call has no auth between trusted services | `permitAll()` for internal endpoints leaves them open to anyone who can reach the service network. Use body-signed HMAC-SHA256: `Authorization: Internal <hex-hmac>` + `X-Internal-Timestamp`; HMAC content `METHOD then PATH then TIMESTAMP then sha256Hex(body)` (pipe-separated); 60s replay window; constant-time hex compare; ≥32-char shared secret enforced at filter construction. See `InternalServiceClient` (engine, signer) + `InternalServiceAuthFilter` (ncube, validator). |
 
 ---
 

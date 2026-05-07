@@ -9,12 +9,12 @@
 
 | Sub-system | Status | Last Session |
 |------------|--------|-------------|
-| `baas-engine` — Phase 1A | ✅ Complete (all 16 tasks, 23 tests passing, smoke test live) | Session 1 |
+| `baas-engine` — Phase 1A + 1A-ext | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; **84 tests passing**) | Session 4 (`5adeb10`) |
 | `baas-ncube` — Phase 1B | ✅ Complete (9 tasks, 21 tests, smoke test live) | Session 2 |
-| `baas-backoffice` — React | ⬜ Not started | — |
-| `baas-portal` — React | ⬜ Not started | — |
+| `baas-backoffice` — React | ⬜ Not started — Phase 1C next | — |
+| `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
-| Infrastructure (Docker + K8s + CI) | ⬜ Not started | — |
+| Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles for engine + ncube, `infrastructure/docker-compose.yml`, vanilla k8s manifests in `infrastructure/k8s/`, GHCR CI workflows) | Session 4 |
 
 ---
 
@@ -190,12 +190,132 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 | ISO 20022 data format | ⚠️ Partial | Phase 2 (NIP) |
 | 12 CBN KPI metrics | ❌ Gap | Phase 2 |
 | mTLS machine auth | ❌ Gap | Phase 3 |
-| Jasypt PII encryption (active) | ⚠️ Wired, not active | Phase 2 |
+| PII encryption at rest (FieldEncryptor) | ✅ Active | — |
 | Annual consent re-validation | ❌ Gap | Phase 3 |
 
 ---
 
 ## Change History
+
+### Session 5 — 2026-05-07
+**Phase 1F-0: cross-cutting security baseline — 6 retroactive 1B findings closed (4 critical, 2 important) on `feature/phase1f-0-cross-cutting-security`. Branch HEAD `d8b1802`. Closes 1B C1, C2, C5, I1, I3, I7.**
+
+#### Findings closed
+| ID | Description | Resolution |
+|----|-------------|-----------|
+| 1B C1 | Stub mode could run in production silently | `StubModeGuard` refuses prod profile in stub mode (case-insensitive prefix match); `X-NubBank-Stubbed: true` response header on every stubbed call; stub BVN/NIN return `00000000000` not echoes |
+| 1B C2 | `permitAll()` on `/baas/v1/**` left ncube wide open | New `AuthEnforcementFilter` — single config gate; rejects unauthenticated `/baas/v1/**` with 401; new endpoints protected by default |
+| 1B C5 | PII could surface in logs at any level | New `PiiMaskingConverter` Logback `ClassicConverter` masks BVN/NIN/NUBAN/PAN; wired in both services via `logback-spring.xml` as `%piimsg`; context-anchored regex (`card`/`pan`/`primary` for PAN; `account`/`nuban`/`from`/`to` for NUBAN) avoids false-positives on Unix epoch timestamps and trace IDs |
+| 1B I1 | `/actuator/info` exposed deployment metadata | Removed from public path list; only `/actuator/health` remains permitAll |
+| 1B I3 | ncube accepted any media type | All controllers now require `application/vnd.cbn.openbanking.v1+json`; `consumes` is method-level on POST/PUT only (GET/DELETE gated by `Accept` header only); `GlobalExceptionHandler` returns 415/406 |
+| 1B I7 | Engine→ncube calls had no inter-service auth | HMAC-SHA256 body-signed scheme: `Authorization: Internal <hmac>` + `X-Internal-Timestamp`; HMAC content `METHOD\|PATH\|TS\|sha256Hex(body)`; 60s replay window; engine signs via `InternalServiceClient` (`@Bean("internalServiceRestTemplate")` RestTemplate); ncube validates via `InternalServiceAuthFilter`; `CachedBodyHttpServletRequest` replays body bytes after filter inspection; 1MB body cap |
+
+#### New Files
+
+| File | Purpose |
+|------|---------|
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/config/AuthEnforcementFilter.java` | Single config gate — 401 on `/baas/v1/**` without auth |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/config/NcubeRequestContext.java` | ThreadLocal carrying inter-service caller identity (`baas-engine`) |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/config/InternalServiceAuthFilter.java` | HMAC-SHA256 validator; UTF-8 charset; constant-time hex compare; ≥32-char secret enforced at construction |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/config/CachedBodyHttpServletRequest.java` | Body cache wrapper — `ContentCachingRequestWrapper` does NOT replay bytes; this one does. `MAX_BODY_BYTES = 1 MB` enforced at read time |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/config/StubModeGuard.java` | `@PostConstruct` boot guard — refuses stub mode + prod profile combination; case-insensitive prefix match (PROD/Prod/prod-eu/production all trip) |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/config/StubResponseHeaderInterceptor.java` | `HandlerInterceptor` adds `X-NubBank-Stubbed: true` to every response |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/config/WebMvcConfig.java` | Wires `StubResponseHeaderInterceptor` into MVC pipeline |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/common/CbnMediaTypes.java` | `CBN_OB = "application/vnd.cbn.openbanking.v1+json"` constant |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/common/PiiMaskingConverter.java` | Logback masker — engine-side copy of identical converter |
+| `baas-ncube/src/main/resources/logback-spring.xml` | Wires masker via `%piimsg` conversion word |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/config/InternalServiceClient.java` | `@Bean("internalServiceRestTemplate")` — outbound HMAC signer; pre-built `SecretKeySpec`; 5s connect / 30s read timeouts; boot-time HMAC algorithm probe |
+| `baas-engine/src/main/java/com/nubbank/baas/engine/common/PiiMaskingConverter.java` | Logback masker — same code as ncube, different package |
+| `baas-engine/src/main/resources/logback-spring.xml` | Wires masker via `%piimsg` conversion word |
+| `baas-{engine,ncube}/src/test/resources/application-test.yml` | Sets `app.internal-service.shared-secret` for slice/integration tests |
+| 9 test classes | `AuthEnforcementFilterTest`, `InternalServiceAuthFilterTest`, `SecurityConfigTest`, `StubModeGuardTest`, `PiiMaskingConverterTest` (×2), `InternalServiceClientTest`, expanded `NcubeIdentityControllerTest` (full-stack `@SpringBootTest(RANDOM_PORT)` with HMAC signing), expanded controller slice tests |
+
+#### Updated Files
+
+| File | Change |
+|------|--------|
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/config/SecurityConfig.java` | Wires `InternalServiceAuthFilter` before `UsernamePasswordAuthenticationFilter`, then `AuthEnforcementFilter`; `permitAll()` removed for `/baas/v1/**`; `/actuator/info` dropped; `FilterRegistrationBean.setEnabled(false)` × 2 to suppress dual auto-registration |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/{consent,identity,payment,account}/*Controller.java` | `@RequestMapping(produces = CBN_OB)` at class level; `consumes = CBN_OB` only on POST/PUT methods (not class-level — would break GET/DELETE under `Accept`-only gating) |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/identity/NcubeIdentityController.java` | Stub BVN/NIN return `00000000000` instead of echoing caller input |
+| `baas-ncube/src/main/java/com/nubbank/baas/ncube/common/GlobalExceptionHandler.java` | New `@ExceptionHandler(HttpMediaTypeNotSupportedException.class)` → 415; `(HttpMediaTypeNotAcceptableException.class)` → 406 |
+| `baas-ncube/src/main/resources/application.yml` | `app.internal-service.shared-secret: ${INTERNAL_SERVICE_SECRET}` (no default — fails fast in prod) |
+| `baas-engine/src/main/resources/application.yml` | Same `INTERNAL_SERVICE_SECRET` env var |
+
+#### Key Decisions
+
+- **Body-signed HMAC, not header-only.** Signature includes `sha256Hex(body)` so a tampered body fails validation even if the auth header is intact. Header-only HMAC (signing just URL+method+timestamp) leaves the body fully tamperable.
+- **`CachedBodyHttpServletRequest` over Spring's `ContentCachingRequestWrapper`.** Spring's wrapper buffers bytes for `getContentAsByteArray()` but `getInputStream()` still consumes the underlying single-use stream. Two production bugs were caught by the integration test before any signed POST could land in production: (1) controller's `@RequestBody` reader saw an empty stream after the filter read it, (2) `HttpMediaTypeNotSupportedException` propagated as 500 not 415. Both fixed.
+- **Stub data → `00000000000`, not echo.** Echoing the caller's input lets a partner's malformed input flow back unmodified — easy to mistake stub for real verification. Constant zero string makes "this is fake" obvious in any log line and removes the trivial echo-PII leak.
+- **Context-anchored PII regex, not naked digit-runs.** First-cut `\b\d{13,19}\b` was a Critical defect: it masks every 13-digit Unix-millisecond timestamp (Sleuth/Micrometer trace IDs, `currentTimeMillis()` log lines) and every 10-digit Unix-second timestamp (JWT iat/exp/nbf). Fix requires a context word (`card`/`pan`/`primary` for PAN; `account`/`nuban`/`from`/`to`/`debit`/`credit` for NUBAN) within 16 non-digit chars before. BVN/NIN regex stays simple — 11-digit sequences rarely conflict with timestamps. MDC values, structured args, and exception messages are explicitly scoped out (documented in JavaDoc) — Phase 1F-0 is defence-in-depth on log message bodies only.
+- **Case-insensitive prefix-match for prod profile detection.** First-cut `contains("prod")` would miss `PROD`, `Prod`, `prod-eu`, `production`. Operators slip on casing. Use `Arrays.stream().anyMatch(p -> p.toLowerCase(Locale.ROOT).startsWith("prod"))`.
+- **`@Bean` name disambiguation for filter chains.** Both `AuthEnforcementFilter` and `InternalServiceAuthFilter` are `@Component`s, so Spring Boot auto-registers them as servlet filters AND we want them only as Spring Security chain filters. Use `FilterRegistrationBean.setEnabled(false)` for each to suppress the auto-registration.
+- **`getFilterChains()` for ordering tests, not `getFilters(HttpServletRequest)`.** The ordering regression test uses `FilterChainProxy.getFilterChains()` (public API) rather than `getFilters(HttpServletRequest)` (package-private). Asserting `indexOf` ordering with `isNotNegative()` covers the index-0 case (`isPositive()` would falsely fail for the first filter).
+- **`%piimsg` over rebuilding `console-appender.xml`.** Plan code included Spring Boot's `console-appender.xml` then defined a duplicate `CONSOLE_MASKED` appender — produced a harmless but noisy "Appender [CONSOLE] not referenced" boot warning. Drop the include; `defaults.xml` (which we keep) supplies `CONSOLE_LOG_PATTERN`. Also: `class="..."` not deprecated `converterClass="..."` (Logback 1.5+).
+
+#### Known Gotchas (added to CLAUDE.md)
+
+| Symptom | Root cause | Fix |
+|---------|-----------|-----|
+| `ContentCachingRequestWrapper.getInputStream()` returns empty stream after the filter reads it | Spring's wrapper caches bytes for `getContentAsByteArray()` but does NOT replay them through `getInputStream()` | Implement a `HttpServletRequestWrapper` that overrides `getInputStream()` to return a fresh `ByteArrayInputStream` each call (`CachedBodyHttpServletRequest` pattern) |
+| `Pattern.compile("\\b\\d{13,19}\\b")` masks Unix-millisecond timestamps | `\b` matches at any word/non-word boundary; 13-digit ms timestamps are everywhere in JVM logs | Require a context anchor: `(?<=(?:card\|pan\|primary)[^\\d]{0,16})(\\d{4})...` — bounded lookbehind supported on Java 9+ |
+| Stub mode silently active in prod when profile name is `PROD` not `prod` | `String.contains("prod")` is case-sensitive | `Arrays.stream(profiles).anyMatch(p -> p.toLowerCase(Locale.ROOT).startsWith("prod"))` — catches `PROD`, `Prod`, `prod-eu`, `production` |
+| Filter is in the security chain AND auto-registered as a servlet filter | `@Component` filters are auto-registered by Spring Boot servlet auto-config | `@Bean FilterRegistrationBean<X> disableX(...)` returning `setEnabled(false)` — keeps the filter out of the servlet pipeline; security chain alone routes it |
+| Class-level `@RequestMapping(consumes = ...)` rejects GET requests | Spring inherits class-level `consumes` to all methods including GET; partner GET with only `Accept` header gets 415 | Move `consumes` to method-level on POST/PUT only; keep `produces` at class level for response content negotiation |
+| `HttpMediaTypeNotSupportedException` propagates as 500 | No matching `@ExceptionHandler` in `GlobalExceptionHandler` → falls through to default 500 | Add `@ExceptionHandler` for `HttpMediaTypeNotSupportedException` (415) and `HttpMediaTypeNotAcceptableException` (406) |
+
+#### Build Verification
+
+```
+cd ~/nubbank-baas/baas-engine && ./mvnw test
+[INFO] Tests run: 97, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+
+cd ../baas-ncube && ./mvnw test
+[INFO] Tests run: 49, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+```
+
+Engine: 84 (Session 4) + 13 new (`InternalServiceClientTest`, `PiiMaskingConverterTest` — 10 tests) = **97 tests**.
+Ncube: 21 (Session 2) + 28 new (`AuthEnforcementFilterTest`, `InternalServiceAuthFilterTest`, `SecurityConfigTest`, `StubModeGuardTest`, `PiiMaskingConverterTest`, expanded controller tests) = **49 tests**.
+
+Smoke test of the full chain (engine → ncube with HMAC, stubbed header, masked log) deferred to manual verification post-merge — requires running the full Docker Compose stack which is out of scope for this branch's CI.
+
+#### Confirmed Platform Versions
+
+`baas-engine/`:
+
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.0 | `d8b1802` |
+| Java | 21 | `d8b1802` |
+| Spring Security | 6.5.0 (managed) | `d8b1802` |
+| Logback | 1.5.x (managed by Spring Boot 3.5) | `d8b1802` |
+| Last git commit | `d8b1802` | Branch `feature/phase1f-0-cross-cutting-security` |
+
+`baas-ncube/`:
+
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.0 | `d8b1802` |
+| Java | 21 | `d8b1802` |
+| Spring Security | 6.5.0 (managed) | `d8b1802` |
+| Logback | 1.5.x (managed by Spring Boot 3.5) | `d8b1802` |
+| Last git commit | `d8b1802` | Branch `feature/phase1f-0-cross-cutting-security` |
+
+#### Process notes (Subagent-Driven Development)
+
+Plan executed strictly per task with implementer + spec reviewer + code-quality reviewer per task. Three review-cycle fixes worth flagging:
+- **Task 9.5** caught two production bugs via the new integration test before any signed POST could ship — vindicating the cost of a full-stack `@SpringBootTest(RANDOM_PORT)` over slice tests.
+- **Task 10** code review found a Critical false-positive issue in the first-cut PII regex (timestamps mangled). Fixed with context-anchored lookbehind + 4 new pinning tests.
+- **Task 11** code review caught two non-fatal Logback boot warnings the implementer flagged. Fixed by dropping a redundant include and switching `converterClass` → `class`.
+
+#### What's Next (Session 6)
+
+- Open PR for `feature/phase1f-0-cross-cutting-security` against main; squash-merge after review
+- Resume Phase 1A / 1B follow-on plans (A, B in parallel; then E)
+- Phase 1C — `baas-backoffice` (React/Vite operations portal)
+
+---
 
 ### Session 4 — 2026-05-03
 **PR #3 review cycle: 12 critical + 6 important security findings fixed; merged to main as squash commit `5adeb10`.**
@@ -299,14 +419,14 @@ cd ~/nubbank-baas/baas-engine && ./mvnw test
 
 The build is now genuinely portable: same image runs on Docker Desktop, k3s, EKS, GKE, AKS, on-prem k8s, or any OCI-compatible runtime. No cloud-provider lock-in.
 
-#### Figma boards affected
+#### Figma boards updated
 
-The Service Architecture board needs regeneration to reflect the new components introduced in this session:
+All boards refreshed via the Figma Plugin API on 2026-05-03 (after the squash merge of PR #3) to reflect the new Session 4 components. Node IDs recorded for audit trail.
 
-- **[Service Architecture](https://www.figma.com/board/PRACgc6BXsGVEL7ZhB866A)** — Add `AuthEnforcementFilter`, `RateLimitFilter`, `AuditAspect`, `FieldEncryptor`, `TenantJdbcTemplate`, `CobJobExecutor`, `TwoFactorTokenWriter`, `TestOtpStore` to the engine internals diagram. Show the new filter chain order: PartnerContextFilter → AuthEnforcementFilter → RateLimitFilter.
-- **[Multi-Tenancy Flow](https://www.figma.com/board/TR1AYhx9Pcmd5y5grxMv8v)** — Add the `TenantJdbcTemplate` path alongside Hibernate's `MultiTenantConnectionProvider`; show that raw JDBC requires explicit `SET search_path`.
-- **[Partner Provisioning Flow](https://www.figma.com/board/qHD6cSCRTQHPbkmavHtoxw)** — No change.
-- **[CBN Compliance Roadmap](https://www.figma.com/board/5KpYYAtiukv7G6o3LyjsVr)** — Move "PII encryption at rest" from ⚠️ to ✅; flag NDPR §9.2 compliance scorecard delta (1 ✅, 2 ⚠️, 1 ❌).
+- **[Service Architecture](https://www.figma.com/board/PRACgc6BXsGVEL7ZhB866A)** — Security & Gateway section widened 608 → 896 px; added `AuthEnforcementFilter` as the third filter tile (node `8:73`) and a new connector `8:77` from `RateLimitFilter` → `AuthEnforcementFilter`; the three existing connectors `1:59`, `1:63`, `1:67` (RateLimit → engine/card/ncube) were redirected to originate from `AuthEnforcementFilter` since it is the last gate before controllers. New section **`baas-engine Internals (Session 4)`** (node `9:78`) added below the security row with 6 tiles in a 3×2 grid: `AuditAspect`, `FieldEncryptor`, `TenantJdbcTemplate`, `CobJobExecutor`, `TwoFactorTokenWriter`, `TestOtpStore` (nodes `9:79`, `9:83`, `9:87`, `9:91`, `9:95`, `9:99`).
+- **[Multi-Tenancy Flow](https://www.figma.com/board/TR1AYhx9Pcmd5y5grxMv8v)** — Added `TenantJdbcTemplate` node (`5:55`) below the main Hibernate rail with two labelled connectors: `5:59` from `PartnerContext` ("Raw JDBC path") and `5:63` into `partner_abc schema` ("SET search_path TO partner_abc, public"). Both rails converge on the same per-partner schema, making it explicit that raw JDBC bypasses Hibernate's `MultiTenantConnectionProvider` but still respects schema isolation via the regex-validated `SET search_path`.
+- **[CBN Compliance Roadmap](https://www.figma.com/board/5KpYYAtiukv7G6o3LyjsVr)** — Phase 1A — Complete section grew 1568 → 1760 px tall and a new tile (`5:48`) was added: **PII Encryption at Rest / AES-GCM-256 / FieldEncryptor JPA Converter**. Reflects NDPR §9.2 moving from ⚠️ to ✅ (the gap-analysis doc was already updated in this session).
+- **[Partner Provisioning Flow](https://www.figma.com/board/qHD6cSCRTQHPbkmavHtoxw)** — No change required; provisioning flow is unaffected by Session 4.
 
 #### What's Next (Session 5)
 

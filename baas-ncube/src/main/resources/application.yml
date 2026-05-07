@@ -5,6 +5,12 @@ spring:
 server:
   port: 8082
 
+app:
+  internal-service:
+    # MUST be overridden in production via INTERNAL_SERVICE_SECRET env var; ≥32 chars; matches baas-engine's value.
+    # Default is a dev-only placeholder so local Spring context boots without env-var set.
+    shared-secret: ${INTERNAL_SERVICE_SECRET:dev-only-shared-secret-rotate-in-prod-okay}
+
 baas:
   engine:
     base-url: ${BAAS_ENGINE_URL:http://localhost:8080}
@@ -23,7 +29,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health   # was: health,info — info leaks git.commit.id and active profile
 
 logging:
   level:

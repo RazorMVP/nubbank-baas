@@ -47,6 +47,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /Users/razormvp/nubbank-baas/.claude/hooks/session-completion-gate.sh"
+          }
+        ]
+      }
     ]
   }
 }

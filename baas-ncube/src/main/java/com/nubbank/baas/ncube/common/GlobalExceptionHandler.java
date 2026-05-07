@@ -1,8 +1,11 @@
 package com.nubbank.baas.ncube.common;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -27,6 +30,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest()
             .body(Map.of("error", "VALIDATION_ERROR", "message", first.getDefaultMessage(),
                 "field", first.getField()));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
+        log.warn("Unsupported media type: {}", ex.getContentType());
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+            .body(Map.of("error", "UNSUPPORTED_MEDIA_TYPE",
+                "message", "Content-Type must be application/vnd.cbn.openbanking.v1+json"));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<Map<String, Object>> handleNotAcceptable(HttpMediaTypeNotAcceptableException ex) {
+        log.warn("Not acceptable: supported={}", ex.getSupportedMediaTypes());
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE)
+            .body(Map.of("error", "NOT_ACCEPTABLE",
+                "message", "Accept header must include application/vnd.cbn.openbanking.v1+json"));
     }
 
     @ExceptionHandler(Exception.class)

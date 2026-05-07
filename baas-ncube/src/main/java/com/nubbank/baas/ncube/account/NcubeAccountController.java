@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/baas/v1/ncube/accounts")
+@RequestMapping(
+    value = "/baas/v1/ncube/accounts",
+    produces = CbnMediaTypes.CBN_OB_V1_JSON)
 @RequiredArgsConstructor
 public class NcubeAccountController {
 

@@ -1,8 +1,10 @@
 package com.nubbank.baas.ncube.consent;
 
+import com.nubbank.baas.ncube.common.CbnMediaTypes;
 import com.nubbank.baas.ncube.consent.dto.NubBankConsentDto;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
@@ -15,9 +17,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(NcubeConsentController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import({com.nubbank.baas.ncube.common.GlobalExceptionHandler.class,
          com.nubbank.baas.ncube.config.SecurityConfig.class})
 class NcubeConsentControllerTest {
+
+    private static final MediaType CBN_OB = MediaType.parseMediaType(CbnMediaTypes.CBN_OB_V1_JSON);
 
     @Autowired private MockMvc mockMvc;
     @MockBean private NcubeConsentClient consentClient;
@@ -29,7 +34,8 @@ class NcubeConsentControllerTest {
                 List.of("ReadAccountsBasic","ReadBalances"),
                 "partner-org-id","2026-12-31T00:00:00Z","2026-04-27T10:00:00Z")));
 
-        mockMvc.perform(get("/baas/v1/ncube/consents").header("Authorization","Bearer jwt"))
+        mockMvc.perform(get("/baas/v1/ncube/consents").header("Authorization","Bearer jwt")
+                .accept(CBN_OB))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.Data.Consent[0].ConsentId").value("consent-uuid"))
             .andExpect(jsonPath("$.Data.Consent[0].Status").value("Authorised"))
@@ -45,7 +51,7 @@ class NcubeConsentControllerTest {
 
         mockMvc.perform(post("/baas/v1/ncube/consents")
                 .header("Authorization","Bearer jwt")
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(CBN_OB)
                 .content("{\"Data\":{\"Permissions\":[\"ReadAccountsBasic\"],\"ExpirationDateTime\":\"2026-12-31T00:00:00Z\"},\"Risk\":{}}"))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.Data.Consent.ConsentId").value("new-consent-uuid"))

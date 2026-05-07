@@ -1,0 +1,137 @@
+package com.nubbank.baas.ncube.config;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.HexFormat;
+
+/**
+ * Validates inbound HMAC-signed internal-service requests from baas-engine.
+ * Header format:
+ *   Authorization: Internal <hex-hmac>
+ *   X-Internal-Timestamp: <epoch-seconds>
+ * HMAC content: METHOD + "|" + PATH + "|" + TIMESTAMP + "|" + sha256Hex(body)
+ * Replay window: 60 seconds.
+ *
+ * Body bytes are read via {@link CachedBodyHttpServletRequest} so the controller can still
+ * read them downstream (raw HttpServletRequest's input stream is single-use, and Spring's
+ * {@code ContentCachingRequestWrapper} does not replay bytes via {@code getInputStream()}).
+ *
+ * On valid signature, populates {@link NcubeRequestContext} with caller identity.
+ * On invalid signature (or tampered body), leaves context null —
+ * {@link AuthEnforcementFilter} then rejects with 401.
+ */
+@Component
+@Slf4j
+public class InternalServiceAuthFilter extends OncePerRequestFilter {
+
+    private static final long REPLAY_WINDOW_SECONDS = 60;
+    private final String sharedSecret;
+
+    public InternalServiceAuthFilter(@Value("${app.internal-service.shared-secret}") String sharedSecret) {
+        if (sharedSecret == null || sharedSecret.length() < 32) {
+            throw new IllegalStateException("app.internal-service.shared-secret must be set and ≥32 chars");
+        }
+        this.sharedSecret = sharedSecret;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
+            throws ServletException, IOException {
+        // Wrap to allow body to be read here and downstream
+        CachedBodyHttpServletRequest wrapped;
+        try {
+            wrapped = (req instanceof CachedBodyHttpServletRequest w)
+                ? w : new CachedBodyHttpServletRequest(req);
+        } catch (IOException ex) {
+            log.warn("Could not buffer request body for HMAC validation: {}", ex.getMessage());
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            resp.getWriter().write(
+                "{\"data\":null,\"errors\":[{\"code\":\"BAD_REQUEST\","
+                + "\"message\":\"Request body could not be read or exceeds size limit\"}]}");
+            return;
+        }
+        try {
+            byte[] body = wrapped.getCachedBody();
+            String authHeader = wrapped.getHeader("Authorization");
+            String tsHeader = wrapped.getHeader("X-Internal-Timestamp");
+            if (authHeader != null && authHeader.startsWith("Internal ") && tsHeader != null) {
+                // Treat any malformed input (non-numeric ts, hex-decode failure, etc.) as auth-failure
+                // rather than a 500 — Task 1's AuthEnforcementFilter then returns 401.
+                try {
+                    long ts = Long.parseLong(tsHeader);
+                    long now = Instant.now().getEpochSecond();
+                    if (Math.abs(now - ts) <= REPLAY_WINDOW_SECONDS) {
+                        String provided = authHeader.substring("Internal ".length());
+                        String bodyHash = sha256Hex(body);
+                        String signedString = wrapped.getMethod() + "|"
+                            + wrapped.getRequestURI() + "|"
+                            + ts + "|"
+                            + bodyHash;
+                        String expected = computeHmac(signedString);
+                        if (constantTimeEquals(provided, expected)) {
+                            NcubeRequestContext.set("baas-engine");
+                            log.debug("Internal-service HMAC verified for {} {}",
+                                wrapped.getMethod(), wrapped.getRequestURI());
+                        } else {
+                            log.warn("Internal-service HMAC mismatch for {} {} (body={}b)",
+                                wrapped.getMethod(), wrapped.getRequestURI(), body.length);
+                        }
+                    } else {
+                        log.warn("Internal-service timestamp out of window: ts={} now={}", ts, now);
+                    }
+                } catch (IllegalArgumentException ex) {
+                    // Covers NumberFormatException (bad ts) and any hex-decode failures.
+                    log.warn("Internal-service auth header malformed: {}", ex.getMessage());
+                }
+            }
+            chain.doFilter(wrapped, resp);
+        } finally {
+            NcubeRequestContext.clear();
+        }
+    }
+
+    private String computeHmac(String data) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(sharedSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception ex) {
+            throw new IllegalStateException("HMAC computation failed", ex);
+        }
+    }
+
+    private String sha256Hex(byte[] data) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
+        } catch (Exception ex) {
+            throw new IllegalStateException("SHA-256 computation failed", ex);
+        }
+    }
+
+    private boolean constantTimeEquals(String a, String b) {
+        // Inputs are always 64-char hex (HMAC-SHA256 → 32 bytes → 64 hex), but length-equality
+        // short-circuits a tampered or truncated input before it reaches MessageDigest.isEqual,
+        // which is itself constant-time only when the byte arrays are length-equal.
+        if (a.length() != b.length()) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+            a.getBytes(StandardCharsets.UTF_8),
+            b.getBytes(StandardCharsets.UTF_8));
+    }
+}

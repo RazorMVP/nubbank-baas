@@ -1,5 +1,6 @@
 package com.nubbank.baas.ncube.identity;
 
+import com.nubbank.baas.ncube.common.CbnMediaTypes;
 import com.nubbank.baas.ncube.identity.dto.BvnVerificationRequest;
 import com.nubbank.baas.ncube.identity.dto.NinVerificationRequest;
 import com.nubbank.baas.ncube.identity.dto.VerificationResponse;
@@ -17,26 +18,30 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/baas/v1/ncube/identity")
+@RequestMapping(
+    value = "/baas/v1/ncube/identity",
+    produces = CbnMediaTypes.CBN_OB_V1_JSON)
 public class NcubeIdentityController {
 
-    @PostMapping("/verify-bvn")
+    @PostMapping(value = "/verify-bvn", consumes = CbnMediaTypes.CBN_OB_V1_JSON)
     public ResponseEntity<Map<String, Object>> verifyBvn(
             @Valid @RequestBody BvnVerificationRequest req,
             @RequestHeader(value = "Authorization", required = false) String auth) {
         log.debug("BVN verification: {} — Phase 1B stub (Phase 2 calls NIBSS Ncube acmt.023/024)", req.bvn());
+        // stubbed BVN — never echoes caller input
         return ResponseEntity.ok(Map.of("data", new VerificationResponse(
-            req.bvn(), true, "STUB_FIRST", "STUB_LAST",
+            "00000000000", true, "STUB_FIRST", "STUB_LAST",
             null, null, "NIBSS_NCUBE_STUB")));
     }
 
-    @PostMapping("/verify-nin")
+    @PostMapping(value = "/verify-nin", consumes = CbnMediaTypes.CBN_OB_V1_JSON)
     public ResponseEntity<Map<String, Object>> verifyNin(
             @Valid @RequestBody NinVerificationRequest req,
             @RequestHeader(value = "Authorization", required = false) String auth) {
         log.debug("NIN verification: {} — Phase 1B stub", req.nin());
+        // stubbed NIN — never echoes caller input
         return ResponseEntity.ok(Map.of("data", new VerificationResponse(
-            req.nin(), true, "STUB_FIRST", "STUB_LAST",
+            "00000000000", true, "STUB_FIRST", "STUB_LAST",
             null, null, "NIBSS_NCUBE_STUB")));
     }
 }

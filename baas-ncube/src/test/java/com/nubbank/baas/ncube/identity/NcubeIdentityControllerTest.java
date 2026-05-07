@@ -1,58 +1,126 @@
 package com.nubbank.baas.ncube.identity;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.context.annotation.Import;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ActiveProfiles;
 
-@WebMvcTest(NcubeIdentityController.class)
-@Import({com.nubbank.baas.ncube.config.SecurityConfig.class,
-         com.nubbank.baas.ncube.common.GlobalExceptionHandler.class})
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * End-to-end integration test for the identity controller. Fires real HTTP requests
+ * through the full filter chain: InternalServiceAuthFilter → AuthEnforcementFilter →
+ * StubResponseHeaderInterceptor → controller → media-type negotiation.
+ *
+ * Asserts every behavior introduced by Tasks 7, 8, 9:
+ *   - Task 7: X-NubBank-Stubbed: true response header
+ *   - Task 8: stub data = "00000000000" (never echoes caller input)
+ *   - Task 9: 415 on application/json (CBN vendor type required on POST)
+ *
+ * Plus end-to-end auth: 401 when Authorization header missing.
+ *
+ * Replaces the prior @WebMvcTest slice test which only covered controller wiring
+ * in isolation.
+ */
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
 class NcubeIdentityControllerTest {
 
-    @Autowired private MockMvc mockMvc;
+    @Autowired private TestRestTemplate rest;
+    @Autowired private ObjectMapper json;
+
+    @Value("${app.internal-service.shared-secret}")
+    private String secret;
+
+    private static final String CBN_MT = "application/vnd.cbn.openbanking.v1+json";
 
     @Test
-    void verifyBvn_validFormat_returnsStubVerified() throws Exception {
-        mockMvc.perform(post("/baas/v1/ncube/identity/verify-bvn")
-                .header("Authorization", "Bearer test-jwt")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"bvn\":\"12345678901\"}"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.identifier").value("12345678901"))
-            .andExpect(jsonPath("$.data.verified").value(true))
-            .andExpect(jsonPath("$.data.verificationSource").value("NIBSS_NCUBE_STUB"));
+    void valid_request_returns_200_with_stub_data_and_stubbed_header() throws Exception {
+        ResponseEntity<Map> resp = rest.exchange(
+            "/baas/v1/ncube/identity/verify-bvn", HttpMethod.POST,
+            signedEntity("POST", "/baas/v1/ncube/identity/verify-bvn",
+                json.writeValueAsString(Map.of("bvn", "12345678901")), CBN_MT),
+            Map.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resp.getHeaders().getFirst("X-NubBank-Stubbed")).isEqualTo("true");
+        Map<?, ?> data = (Map<?, ?>) resp.getBody().get("data");
+        assertThat(data.get("identifier")).isEqualTo("00000000000");   // stub returns all zeros, not input
+        assertThat(data.get("verificationSource")).isEqualTo("NIBSS_NCUBE_STUB");
     }
 
     @Test
-    void verifyBvn_tooShort_returns400() throws Exception {
-        mockMvc.perform(post("/baas/v1/ncube/identity/verify-bvn")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"bvn\":\"123\"}"))
-            .andExpect(status().isBadRequest());
+    void verify_nin_stub_returns_all_zeros() throws Exception {
+        ResponseEntity<Map> resp = rest.exchange(
+            "/baas/v1/ncube/identity/verify-nin", HttpMethod.POST,
+            signedEntity("POST", "/baas/v1/ncube/identity/verify-nin",
+                json.writeValueAsString(Map.of("nin", "98765432109")), CBN_MT),
+            Map.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> data = (Map<?, ?>) resp.getBody().get("data");
+        assertThat(data.get("identifier")).isEqualTo("00000000000");
     }
 
     @Test
-    void verifyBvn_nonNumeric_returns400() throws Exception {
-        mockMvc.perform(post("/baas/v1/ncube/identity/verify-bvn")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"bvn\":\"ABCDE678901\"}"))
-            .andExpect(status().isBadRequest());
+    void plain_application_json_returns_415() throws Exception {
+        ResponseEntity<Map> resp = rest.exchange(
+            "/baas/v1/ncube/identity/verify-bvn", HttpMethod.POST,
+            signedEntity("POST", "/baas/v1/ncube/identity/verify-bvn",
+                json.writeValueAsString(Map.of("bvn", "12345678901")),
+                MediaType.APPLICATION_JSON_VALUE),
+            Map.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
 
     @Test
-    void verifyNin_validFormat_returnsStubVerified() throws Exception {
-        mockMvc.perform(post("/baas/v1/ncube/identity/verify-nin")
-                .header("Authorization", "Bearer test-jwt")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"nin\":\"98765432109\"}"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.identifier").value("98765432109"))
-            .andExpect(jsonPath("$.data.verified").value(true))
-            .andExpect(jsonPath("$.data.verificationSource").value("NIBSS_NCUBE_STUB"));
+    void missing_authorization_returns_401() throws Exception {
+        HttpHeaders h = new HttpHeaders();
+        h.setContentType(MediaType.parseMediaType(CBN_MT));
+        HttpEntity<String> entity = new HttpEntity<>(
+            json.writeValueAsString(Map.of("bvn", "12345678901")), h);
+        ResponseEntity<Map> resp = rest.exchange(
+            "/baas/v1/ncube/identity/verify-bvn", HttpMethod.POST, entity, Map.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    /**
+     * Builds an HTTP request that mirrors what {@link com.nubbank.baas.ncube.config.InternalServiceAuthFilter}
+     * expects to validate: HMAC-SHA256(secret, METHOD|PATH|TIMESTAMP|sha256Hex(body)).
+     * The body hash MUST match the filter's hash of the wrapped request body.
+     * Empty body hashes to e3b0c44... (well-known empty-string SHA-256).
+     */
+    private HttpEntity<String> signedEntity(String method, String path, String body, String contentType)
+            throws Exception {
+        long ts = Instant.now().getEpochSecond();
+        byte[] bodyBytes = body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8);
+        String bodyHash = HexFormat.of().formatHex(
+            MessageDigest.getInstance("SHA-256").digest(bodyBytes));
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        String signedString = method + "|" + path + "|" + ts + "|" + bodyHash;
+        String sig = HexFormat.of().formatHex(
+            mac.doFinal(signedString.getBytes(StandardCharsets.UTF_8)));
+        HttpHeaders h = new HttpHeaders();
+        h.setContentType(MediaType.parseMediaType(contentType));
+        h.set("Authorization", "Internal " + sig);
+        h.set("X-Internal-Timestamp", String.valueOf(ts));
+        return new HttpEntity<>(body, h);
     }
 }

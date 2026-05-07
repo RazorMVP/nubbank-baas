@@ -8,7 +8,9 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 @RestController
-@RequestMapping("/baas/v1/ncube/consents")
+@RequestMapping(
+    value = "/baas/v1/ncube/consents",
+    produces = CbnMediaTypes.CBN_OB_V1_JSON)
 @RequiredArgsConstructor
 public class NcubeConsentController {
 
@@ -23,7 +25,7 @@ public class NcubeConsentController {
         return new CbnApiResponse<>(Map.of("Consent", consents), new CbnLinks(BASE), new CbnMeta(1));
     }
 
-    @PostMapping
+    @PostMapping(consumes = CbnMediaTypes.CBN_OB_V1_JSON)
     public ResponseEntity<CbnApiResponse<Map<String, Object>>> createConsent(
             @RequestBody CbnConsentRequest req,
             @RequestHeader(value = "Authorization", required = false) String auth) {
