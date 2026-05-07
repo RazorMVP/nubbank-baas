@@ -12,7 +12,12 @@
 
 FROM maven:3.9-eclipse-temurin-21-alpine AS build
 WORKDIR /workspace
+# Layer 1: dependencies. pom.xml only — does not invalidate when src/ changes.
 COPY pom.xml ./
+RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests dependency:go-offline
+# Layer 2: package. src/ change invalidates only this layer; deps stay cached.
+# Tests are skipped here — they require Testcontainers which doesn't run inside
+# `docker build`. Tests run in CI on a host runner before image build.
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests package
 
