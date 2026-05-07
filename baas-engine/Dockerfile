@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1.6
-# Base images pinned to digest for reproducibility. Bump deliberately when refreshing.
+# Base images pinned to manifest-list digests for reproducible builds.
+# To refresh: docker buildx imagetools inspect <image>:<tag> --format '{{.Manifest.Digest}}'
+# Update both FROM-line digests below; verify tag still points to a multi-arch index.
+# Bump deliberately after reviewing upstream release notes.
 #
 # Multi-stage build for baas-engine.
 # Deployment-agnostic: produces a generic Linux container image runnable on
