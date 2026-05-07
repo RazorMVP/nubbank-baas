@@ -31,6 +31,8 @@ USER app
 EXPOSE 8082
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8082/actuator/health/readiness || exit 1
-# Security baseline baked into ENTRYPOINT — not overridable via JAVA_TOOL_OPTIONS env var.
-# To add runtime options at deploy time, append to the deployment's args field.
+# JVM baseline in ENTRYPOINT args — not overridable via JAVA_TOOL_OPTIONS.
+# (Note: _JAVA_OPTIONS and JDK_JAVA_OPTIONS env vars can still influence the JVM.)
+# To add JVM flags at deploy time, override containers[].command in the deployment
+# spec (k8s args: only reaches Spring Boot, because -jar precedes appended args).
 ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
