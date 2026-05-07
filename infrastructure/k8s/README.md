@@ -6,13 +6,13 @@ Vanilla Kubernetes deployment manifests for `baas-engine` and `baas-ncube`. Work
 
 | File | Purpose |
 | ---- | ------- |
-| `00-namespace.yaml` | `nubbank-baas` namespace |
-| `10-secrets.example.yaml` | Template for the `baas-engine-secrets` Secret. **Do not commit a populated copy.** |
-| `20-configmap.yaml` | Non-secret runtime config (DATASOURCE_URL, profile, compliance override) |
-| `30-postgres.yaml` | Reference Postgres StatefulSet — replace with your managed DB |
-| `40-baas-engine.yaml` | Deployment + Service + HPA for the BaaS engine |
-| `50-baas-ncube.yaml` | Deployment + Service for the CBN/NIBSS adapter |
-| `60-ingress.yaml` | Ingress for `api.nubbank.example.com` — replace host as appropriate |
+| `base/00-namespace.yaml` | `nubbank-baas` namespace |
+| `base/10-secrets.example.yaml` | Template for the `baas-engine-secrets` Secret. **Documentation only — NOT included in `base/kustomization.yaml`.** Real secrets are created out-of-band via `kubectl create secret`, SealedSecrets, or Vault. |
+| `base/20-configmap.yaml` | Non-secret runtime config (DATASOURCE_URL, profile, compliance override) |
+| `base/30-postgres.yaml` | Reference Postgres StatefulSet — replace with your managed DB |
+| `base/40-baas-engine.yaml` | Deployment + Service + HPA for the BaaS engine |
+| `base/50-baas-ncube.yaml` | Deployment + Service for the CBN/NIBSS adapter |
+| `base/60-ingress.yaml` | Ingress for `api.nubbank.example.com` — replace host as appropriate |
 
 ## Layout
 
@@ -34,8 +34,8 @@ Substitute the image SHA into the chosen overlay, render, and apply:
 
     SHA=$(git rev-parse HEAD)
     cd infrastructure/k8s/overlays/prod
-    kustomize edit set image ghcr.io/razormvp/baas-engine=ghcr.io/razormvp/baas-engine:sha-${SHA}
-    kustomize edit set image ghcr.io/razormvp/baas-ncube=ghcr.io/razormvp/baas-ncube:sha-${SHA}
+    kustomize edit set image ghcr.io/razormvp/baas-engine=ghcr.io/razormvp/baas-engine:${SHA}
+    kustomize edit set image ghcr.io/razormvp/baas-ncube=ghcr.io/razormvp/baas-ncube:${SHA}
     kubectl apply -k .
 
 CI must commit `kustomization.yaml` back to `base-do-not-deploy` after deploy

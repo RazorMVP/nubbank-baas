@@ -28,6 +28,9 @@ spec:
           # an overlay: `kubectl apply -k overlays/<env>/` with CI substituting the
           # real SHA via `kustomize edit set image`.
           image: ghcr.io/razormvp/baas-ncube:base-do-not-deploy
+          # IfNotPresent is intentional — SHA-tagged production images are immutable,
+          # so re-pulling on every restart is wasteful. `Always` would be marginally
+          # safer for the sentinel tag but penalises every real rollout.
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082

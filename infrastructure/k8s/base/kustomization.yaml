@@ -2,9 +2,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: nubbank-baas
 
+# Secrets are deliberately NOT in this resources list. `10-secrets.example.yaml`
+# is documentation only — its REPLACE_ME values would create a useless Secret
+# in the cluster if applied. Real secrets are created out-of-band:
+#   kubectl -n nubbank-baas create secret generic baas-engine-secrets \
+#     --from-literal=DATASOURCE_USERNAME=... --from-literal=...
+# or via SealedSecrets / Vault / external-secrets-operator.
 resources:
   - 00-namespace.yaml
-  - 10-secrets.example.yaml
   - 20-configmap.yaml
   - 30-postgres.yaml
   - 40-baas-engine.yaml

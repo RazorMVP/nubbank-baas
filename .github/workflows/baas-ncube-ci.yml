@@ -66,7 +66,6 @@ jobs:
           file: baas-ncube/Dockerfile
           push: true
           tags: |
-            ${{ steps.img.outputs.tag }}:latest
             ${{ steps.img.outputs.tag }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
