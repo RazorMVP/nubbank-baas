@@ -23,7 +23,11 @@ spec:
     spec:
       containers:
         - name: baas-ncube
-          image: ghcr.io/razormvp/baas-ncube:latest
+          # Sentinel tag — does NOT exist in GHCR. Direct `kubectl apply -f base/`
+          # fails fast with ImagePullBackOff intentionally. Real deploys go through
+          # an overlay: `kubectl apply -k overlays/<env>/` with CI substituting the
+          # real SHA via `kustomize edit set image`.
+          image: ghcr.io/razormvp/baas-ncube:base-do-not-deploy
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082

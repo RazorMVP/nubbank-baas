@@ -26,9 +26,11 @@ spec:
       # belongs in a kustomization or Helm values overlay, not in the base.
       containers:
         - name: baas-engine
-          # Override the tag at deploy time:
-          #   kubectl set image deployment/baas-engine baas-engine=ghcr.io/.../baas-engine:<sha>
-          image: ghcr.io/razormvp/baas-engine:latest
+          # Sentinel tag — does NOT exist in GHCR. Direct `kubectl apply -f base/`
+          # fails fast with ImagePullBackOff intentionally. Real deploys go through
+          # an overlay: `kubectl apply -k overlays/<env>/` with CI substituting the
+          # real SHA via `kustomize edit set image`.
+          image: ghcr.io/razormvp/baas-engine:base-do-not-deploy
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

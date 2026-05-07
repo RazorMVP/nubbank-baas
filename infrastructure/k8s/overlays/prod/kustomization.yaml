@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Overlays MUST set image SHAs explicitly. CI rewrites these via
+# `kustomize edit set image` before `kubectl apply -k`. Never commit
+# a value other than `base-do-not-deploy` here — CI rewrites it
+# transiently and reverts before the workflow exits, OR uses a
+# separate build artifact directory so the source tree is untouched.
+images:
+  - name: ghcr.io/razormvp/baas-engine
+    newTag: base-do-not-deploy
+  - name: ghcr.io/razormvp/baas-ncube
+    newTag: base-do-not-deploy
