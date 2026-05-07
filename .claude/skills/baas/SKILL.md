@@ -134,7 +134,8 @@ Every partner gets a dedicated PostgreSQL schema. Hibernate SCHEMA strategy rout
 | 1A | `baas-engine` — multi-tenancy + core APIs | ✅ Complete (Session 1, commit `c6c5e47`) |
 | 1A-ext | `baas-engine` — 29 banking modules + 12 critical security fixes | ✅ Complete (Session 4, squash merge `5adeb10`, 84 tests) |
 | 1B | `baas-ncube` — CBN format + BVN/NIN | ✅ Complete (Session 2, commit `97544ce`) |
-| 1C | `baas-backoffice` — React/Vite operations portal | ⬜ Next — start now |
+| 1F-0 | Cross-cutting security baseline (1B C1, C2, C5, I1, I3, I7) | ✅ Complete (Session 5, branch `feature/phase1f-0-cross-cutting-security` HEAD `d8b1802`, 97 engine + 49 ncube tests) — adds `AuthEnforcementFilter`, body-signed HMAC inter-service auth, `StubModeGuard`, `X-NubBank-Stubbed` header, CBN vendor media type, `PiiMaskingConverter` (Logback) |
+| 1C | `baas-backoffice` — React/Vite operations portal | ⬜ Next — start after Phase 1F-0 merges |
 | 1D | `baas-portal` — React developer portal | ⬜ Not started |
 | 1E | Infrastructure — Docker + k8s + CI/CD | ✅ Complete (Session 4) — `Dockerfile` for engine + ncube, `infrastructure/docker-compose.yml`, `infrastructure/k8s/` (vanilla manifests), `.github/workflows/baas-{engine,ncube}-ci.yml` |
 
