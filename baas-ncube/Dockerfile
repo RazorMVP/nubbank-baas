@@ -25,6 +25,6 @@ RUN chown -R app:app /app
 USER app
 EXPOSE 8082
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8082/actuator/health/readiness | grep -q '"status":"UP"' || exit 1
+    CMD curl -fsS http://127.0.0.1:8082/actuator/health/readiness || exit 1
 ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75"
 ENTRYPOINT ["java", "-jar", "app.jar"]
