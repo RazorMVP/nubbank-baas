@@ -43,7 +43,6 @@ spec:
             - containerPort: 8082
               name: http
           envFrom:
-            - configMapRef: { name: baas-engine-config }
             - configMapRef: { name: baas-ncube-config }
             - secretRef:    { name: baas-ncube-secrets }
           securityContext:
