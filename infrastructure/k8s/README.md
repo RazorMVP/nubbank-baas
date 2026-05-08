@@ -71,7 +71,7 @@ because each Deployment revision retains its full pod spec including the SHA tag
 
 ## Pulling from GHCR (private images)
 
-If the `ghcr.io/razormvp/baas-engine` and `ghcr.io/razormvp/baas-ncube` packages are set to private (default for new GHCR repositories), every cluster node needs a pull secret. The first deploy will otherwise fail silently with `ImagePullBackOff` and `kubectl describe pod` will show "pull access denied".
+If the `ghcr.io/razormvp/baas-engine` and `ghcr.io/razormvp/baas-ncube` packages are set to private (default for new GHCR repositories), every cluster node needs a pull secret. The first deploy will otherwise appear to succeed but pods will enter `ImagePullBackOff` and `kubectl describe pod` will show "pull access denied".
 
 ### One-time setup per cluster
 
@@ -83,7 +83,7 @@ kubectl create secret docker-registry ghcr-creds \
   --docker-password=<GH_PAT_WITH_READ_PACKAGES_SCOPE>
 ```
 
-The PAT requires only the `read:packages` scope.
+The PAT requires `read:packages`. If the package is associated with a private repository (the default for new GitHub repos), the PAT also needs `repo` scope — GitHub ties package read access to repository read access in that case. For organization packages, ensure the PAT has SSO authorization for the org.
 
 ### Wiring the secret into Deployments
 
@@ -99,7 +99,7 @@ spec:
         - name: ghcr-creds
 ```
 
-This is currently NOT applied in the base manifests — the existing comment in `base/40-baas-engine.yaml` notes `imagePullSecrets` is intentionally absent because the GHCR package is public. Flip the package to private, and every Deployment in `base/` needs this added.
+This is currently NOT applied in the base manifests. The existing comment in `base/40-baas-engine.yaml` explains why: the base manifests are deliberately vanilla k8s, with provider-specific config (NodeAffinity, PriorityClass, `imagePullSecrets`, etc.) layered in via Kustomize overlays or Helm values rather than baked into the base. To add the pull secret, create a Kustomize patch in your overlay (or a dedicated Component, mirroring the `network-policy` and `pod-disruption-budgets` patterns) — do not edit the base Deployment files directly.
 
 **Via ServiceAccount (more idiomatic, DRY):** create a ServiceAccount with `imagePullSecrets` attached, then point every Deployment at that ServiceAccount. New Deployments inherit the secret automatically:
 
@@ -122,8 +122,15 @@ spec:
       serviceAccountName: baas-default
 ```
 
+Existing running pods do not pick up the new ServiceAccount automatically. After applying the SA + Deployment-spec change, run `kubectl -n nubbank-baas rollout restart deployment/baas-engine deployment/baas-ncube` to move pods onto the new SA.
+
 Recommended for production deployments where new microservices may be added later.
 
 ### Public GHCR alternative
 
-To skip the pull-secret entirely, set the GHCR package to public via the GitHub UI: navigate to the package settings page (`https://github.com/users/razormvp/packages/container/baas-engine/settings`) and toggle "Change visibility" to public. No cluster-side change needed. Use this for sandbox/demo environments only.
+To skip the pull-secret entirely, set the GHCR packages to public via the GitHub UI: navigate to each package's settings page:
+
+- `https://github.com/users/razormvp/packages/container/baas-engine/settings`
+- `https://github.com/users/razormvp/packages/container/baas-ncube/settings`
+
+Toggle "Change visibility" to public on each. No cluster-side change needed. Use this for sandbox/demo environments only.

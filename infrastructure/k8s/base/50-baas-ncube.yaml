@@ -21,6 +21,9 @@ spec:
       labels:
         app: baas-ncube
     spec:
+      # No imagePullSecrets / nodeSelector / tolerations specified — vanilla
+      # k8s only. Provider-specific config (NodeAffinity, PriorityClass, etc.)
+      # belongs in a kustomization or Helm values overlay, not in the base.
       securityContext:
         runAsNonRoot: true
         runAsUser: 100          # `app` user in baas-ncube Dockerfile (Alpine `adduser -S` system UID)
