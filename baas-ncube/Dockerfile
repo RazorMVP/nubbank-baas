@@ -12,7 +12,7 @@
 #
 # Required runtime env vars:
 #   DATASOURCE_URL, DATASOURCE_USERNAME, DATASOURCE_PASSWORD (if persisting state)
-#   NIBSS_NPS_BASE_URL — the NIBSS environment URL (sandbox vs prod)
+#   NPS_ENDPOINT — the NIBSS environment URL (sandbox vs prod). Renamed from NIBSS_NPS_BASE_URL in Task 8.
 
 # ─── Stage 1: build ────────────────────────────────────────────────────────────
 FROM maven:3.9-eclipse-temurin-21-alpine@sha256:a24c967778799ee42665a84d9f94e170ae6dc35788c8d2e218071a086b601768 AS build
