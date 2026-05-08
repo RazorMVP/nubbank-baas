@@ -1,3 +1,6 @@
+# kind: Component is the canonical Kustomize pattern for cross-cutting concerns
+# merged into other kustomizations. Note: v1alpha1 is the only stable API for
+# kind: Component as of Kustomize 5.x — do NOT "upgrade" to v1beta1.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 

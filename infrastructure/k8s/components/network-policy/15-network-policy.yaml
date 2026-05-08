@@ -1,6 +1,12 @@
 ---
 # Default-deny: all pods in nubbank-baas accept no ingress and have no egress
 # unless an explicit allow rule is matched below.
+#
+# Note on postgres: no explicit egress rule exists for postgres. This is
+# intentional for the current single-instance sandbox use. If you add
+# streaming replication, a backup sidecar that ships off-cluster, or
+# postgres_fdw, you must add an egress rule for postgres here — otherwise
+# those connections will silently fail under default-deny.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -11,6 +17,8 @@ spec:
   policyTypes: [Ingress, Egress]
 ---
 # Allow: ingress controller → baas-engine
+# Uses kubernetes.io/metadata.name (auto-injected since K8s 1.21) — the manually-
+# applied `name=ingress-nginx` label was unreliable and silently dropped traffic.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -21,10 +29,26 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        - namespaceSelector: { matchLabels: { name: ingress-nginx } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
       ports:
         - protocol: TCP
           port: 8080
+---
+# Allow: ingress controller → baas-ncube (Ingress routes /open-banking here)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-ncube
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-ncube } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+      ports:
+        - protocol: TCP
+          port: 8082
 ---
 # Allow: baas-engine → postgres
 apiVersion: networking.k8s.io/v1
@@ -58,7 +82,7 @@ spec:
         - protocol: TCP
           port: 8082
 ---
-# Allow: baas-ncube → external (NIBSS) on 443. DNS allowed via kube-system.
+# Allow: baas-ncube egress (DNS via kube-system on UDP+TCP 53; external IPs on 443 for NIBSS)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -69,11 +93,21 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
-        - namespaceSelector: { matchLabels: { name: kube-system } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
       ports:
         - protocol: UDP
           port: 53
-    - to: []   # any external IP (NIBSS) — empty list means "match all" per K8s NetworkPolicy spec
+        - protocol: TCP
+          port: 53
+    # External-only on 443 (excludes RFC1918 in-cluster ranges to prevent lateral movement).
+    # If your cluster CIDR uses non-RFC1918 ranges, add them to `except:` below.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
       ports:
         - protocol: TCP
           port: 443
@@ -89,9 +123,11 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
-        - namespaceSelector: { matchLabels: { name: kube-system } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
     - to:
         - podSelector: { matchLabels: { app: postgres } }

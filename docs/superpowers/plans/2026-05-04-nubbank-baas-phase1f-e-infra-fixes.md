@@ -761,7 +761,7 @@ spec:
         - podSelector: { matchLabels: { app: baas-engine } }
       ports:
         - protocol: TCP
-          port: 8081
+          port: 8082
 ---
 # Allow: baas-ncube → external (NIBSS) on 443. DNS allowed via kube-system.
 apiVersion: networking.k8s.io/v1
@@ -807,7 +807,7 @@ spec:
         - podSelector: { matchLabels: { app: baas-ncube } }
       ports:
         - protocol: TCP
-          port: 8081
+          port: 8082
 ```
 
 The file path is `infrastructure/k8s/components/network-policy/15-network-policy.yaml`. Body is identical to the YAML block above (six NetworkPolicy resources joined by `---`).
