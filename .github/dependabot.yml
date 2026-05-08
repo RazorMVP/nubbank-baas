@@ -1,0 +1,33 @@
+# Dependabot configuration for SHA-pinned GitHub Actions.
+#
+# All `uses:` references in .github/workflows/* are SHA-pinned (per Task 17).
+# Without automated updates, those pins rot — upstream security patches don't
+# reach the workflow. This config opens weekly PRs replacing each SHA + comment
+# with the new SHA + updated comment, preserving the two-space pin format.
+#
+# Grouped updates: actions/* (GitHub-maintained) bundle together; docker/*
+# (Docker Inc.) bundle together; security tools (Trivy, sbom-action, codeql)
+# bundle together. Reduces PR noise while keeping vendor-scoped review.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      gh-actions:
+        patterns:
+          - "actions/*"
+      docker-actions:
+        patterns:
+          - "docker/*"
+      security-actions:
+        patterns:
+          - "aquasecurity/*"
+          - "anchore/*"
+          - "github/codeql-action"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
