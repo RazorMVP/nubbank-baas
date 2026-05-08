@@ -21,6 +21,13 @@ spec:
       labels:
         app: baas-ncube
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100          # `app` user in baas-ncube Dockerfile (Alpine `adduser -S` system UID)
+        runAsGroup: 101         # `app` group GID
+        fsGroup: 101            # so the /tmp emptyDir is writable by the app user
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: baas-ncube
           # Sentinel tag — does NOT exist in GHCR. Direct `kubectl apply -f base/`
@@ -39,6 +46,14 @@ spec:
             - configMapRef: { name: baas-engine-config }
             - configMapRef: { name: baas-ncube-config }
             - secretRef:    { name: baas-engine-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 100m
@@ -60,6 +75,9 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
             failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

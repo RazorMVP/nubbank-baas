@@ -24,6 +24,13 @@ spec:
       # No imagePullSecrets / nodeSelector / tolerations specified — vanilla
       # k8s only. Provider-specific config (NodeAffinity, PriorityClass, etc.)
       # belongs in a kustomization or Helm values overlay, not in the base.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100          # `app` user in baas-engine Dockerfile (Alpine `adduser -S` system UID)
+        runAsGroup: 101         # `app` group GID
+        fsGroup: 101            # so the /tmp emptyDir is writable by the app user
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: baas-engine
           # Sentinel tag — does NOT exist in GHCR. Direct `kubectl apply -f base/`
@@ -41,6 +48,14 @@ spec:
           envFrom:
             - configMapRef: { name: baas-engine-config }
             - secretRef:    { name: baas-engine-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 250m
@@ -62,6 +77,9 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
             failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
