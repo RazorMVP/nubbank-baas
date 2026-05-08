@@ -68,3 +68,62 @@ CI must commit `kustomization.yaml` back to `base-do-not-deploy` after deploy
 
 `kubectl rollout undo deployment/baas-engine -n nubbank-baas` revives the prior commit's image
 because each Deployment revision retains its full pod spec including the SHA tag.
+
+## Pulling from GHCR (private images)
+
+If the `ghcr.io/razormvp/baas-engine` and `ghcr.io/razormvp/baas-ncube` packages are set to private (default for new GHCR repositories), every cluster node needs a pull secret. The first deploy will otherwise fail silently with `ImagePullBackOff` and `kubectl describe pod` will show "pull access denied".
+
+### One-time setup per cluster
+
+```bash
+kubectl create secret docker-registry ghcr-creds \
+  --namespace nubbank-baas \
+  --docker-server=ghcr.io \
+  --docker-username=<GH_USER> \
+  --docker-password=<GH_PAT_WITH_READ_PACKAGES_SCOPE>
+```
+
+The PAT requires only the `read:packages` scope.
+
+### Wiring the secret into Deployments
+
+Two patterns:
+
+**Per-Deployment (the plan's default):** add `imagePullSecrets:` to each Deployment's `spec.template.spec`:
+
+```yaml
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: ghcr-creds
+```
+
+This is currently NOT applied in the base manifests — the existing comment in `base/40-baas-engine.yaml` notes `imagePullSecrets` is intentionally absent because the GHCR package is public. Flip the package to private, and every Deployment in `base/` needs this added.
+
+**Via ServiceAccount (more idiomatic, DRY):** create a ServiceAccount with `imagePullSecrets` attached, then point every Deployment at that ServiceAccount. New Deployments inherit the secret automatically:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: baas-default
+  namespace: nubbank-baas
+imagePullSecrets:
+  - name: ghcr-creds
+```
+
+Then on each Deployment:
+
+```yaml
+spec:
+  template:
+    spec:
+      serviceAccountName: baas-default
+```
+
+Recommended for production deployments where new microservices may be added later.
+
+### Public GHCR alternative
+
+To skip the pull-secret entirely, set the GHCR package to public via the GitHub UI: navigate to the package settings page (`https://github.com/users/razormvp/packages/container/baas-engine/settings`) and toggle "Change visibility" to public. No cluster-side change needed. Use this for sandbox/demo environments only.
