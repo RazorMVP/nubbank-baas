@@ -43,4 +43,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
 # (Note: _JAVA_OPTIONS and JDK_JAVA_OPTIONS env vars can still influence the JVM.)
 # To add JVM flags at deploy time, override containers[].command in the deployment
 # spec (k8s args: only reaches Spring Boot, because -jar precedes appended args).
-ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75", "-XX:ErrorFile=/tmp/hs_err_pid%p.log", "-jar", "/app/app.jar"]

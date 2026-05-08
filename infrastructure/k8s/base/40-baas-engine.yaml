@@ -27,7 +27,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 100          # `app` user in baas-engine Dockerfile (Alpine `adduser -S` system UID)
-        runAsGroup: 101         # `app` group GID
+        runAsGroup: 101         # `app` group GID — note 101, not 100: GID 100 is Alpine's built-in `users` group, so addgroup -S allocates the next free GID (101)
         fsGroup: 101            # so the /tmp emptyDir is writable by the app user
         seccompProfile:
           type: RuntimeDefault
@@ -79,7 +79,8 @@ spec:
             failureThreshold: 3
       volumes:
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 128Mi
 ---
 apiVersion: v1
 kind: Service
