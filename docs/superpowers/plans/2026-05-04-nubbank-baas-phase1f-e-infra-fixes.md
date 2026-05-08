@@ -89,7 +89,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
 
 (`/readiness` instead of `/health` — readiness aggregates DB connectivity, which is what we want; and `--start-period=120s` for slow Flyway migrations on first boot.)
 
-- [ ] **Step 3: Same changes in `baas-ncube/Dockerfile`** — replace `8080` with `8081` in the curl URL.
+- [ ] **Step 3: Same changes in `baas-ncube/Dockerfile`** — replace `8080` with `8082` in the curl URL.
 
 - [ ] **Step 4: Update `infrastructure/docker-compose.yml`** healthchecks:
 
@@ -102,7 +102,7 @@ healthcheck:
   retries: 3
 ```
 
-For ncube, change port to 8081.
+For ncube, change port to 8082.
 
 - [ ] **Step 5: Build + verify**
 
@@ -981,7 +981,7 @@ readinessProbe:
   failureThreshold: 3
 ```
 
-(For ncube replace `8080` with `8081`.)
+(For ncube replace `8080` with `8082`.)
 
 - [ ] **Step 2: Confirm `application.yml` has probe endpoints enabled**
 
