@@ -60,21 +60,28 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-          # startupProbe: gives Flyway/Spring up to 150s (30 × 5s) on cold boot before
-          # liveness kicks in. Once succeeds once, kubelet ignores it and runs
-          # liveness/readiness on their own schedules.
+          # startupProbe: gates BOTH liveness and readiness checks until Spring/Flyway
+          # finishes booting. Allows up to 150s (30 × 5s) on cold boot. Once succeeds,
+          # kubelet stops polling startupProbe forever; liveness and readiness then run
+          # on their own independent schedules. Without this gate, slow first-boot
+          # Flyway runs would be killed by liveness before completing.
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
               port: http
-            failureThreshold: 30
+            failureThreshold: 30  # 30 × 5s = 150s ceiling; covers cold Flyway boot (currently 4 migrations; bump if migration count grows significantly)
             periodSeconds: 5
+            timeoutSeconds: 3
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: http
             periodSeconds: 30
             failureThreshold: 3
+            timeoutSeconds: 3
+          # initialDelaySeconds: 10 — measured from when startupProbe succeeds, not
+          # container start. Provides a 10s JIT warm-up window after Spring's HTTP
+          # server responds before kubelet begins gating traffic via Service endpoints.
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
@@ -82,6 +89,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 3
+            timeoutSeconds: 3
       volumes:
         - name: tmp
           emptyDir:
