@@ -24,8 +24,8 @@ jobs:
       run:
         working-directory: baas-ncube
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9  # v4
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -34,7 +34,7 @@ jobs:
         run: ./mvnw -B test
       - name: Upload test report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: surefire-reports
           path: baas-ncube/target/surefire-reports/
@@ -46,10 +46,10 @@ jobs:
     outputs:
       image-tag: ${{ steps.img.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -62,7 +62,7 @@ jobs:
           lower_owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
           echo "tag=ghcr.io/${lower_owner}/baas-ncube" >> "$GITHUB_OUTPUT"
       - name: Build and push image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
         with:
           context: baas-ncube
           file: baas-ncube/Dockerfile
@@ -88,13 +88,13 @@ jobs:
       packages: read   # required: Trivy and sbom-action both pull the image from GHCR
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Trivy scan image for HIGH/CRITICAL CVEs
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@b2933f565dbc598b29947660e66259e3c7bc8561  # v0.20.0
         with:
           image-ref: ${{ needs.build-and-push.outputs.image-tag }}:${{ github.sha }}
           format: sarif
@@ -106,12 +106,12 @@ jobs:
           ignorefile: .trivyignore
       - name: Upload Trivy SARIF to GitHub Security tab
         if: always()   # upload even on Trivy failure so findings are visible
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@7fd177fa680c9881b53cdab4d346d32574c9f7f4  # v3
         with:
           sarif_file: trivy-results.sarif
       - name: Generate SBOM (SPDX JSON)
         if: always()   # generate SBOM even when Trivy fails — needed for triage
-        uses: anchore/sbom-action@v0.17.0
+        uses: anchore/sbom-action@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5  # v0.17.0
         with:
           image: ${{ needs.build-and-push.outputs.image-tag }}:${{ github.sha }}
           format: spdx-json
@@ -124,9 +124,9 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - name: Trivy filesystem scan (PR — catches dependency CVEs before merge)
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@b2933f565dbc598b29947660e66259e3c7bc8561  # v0.20.0
         with:
           scan-type: fs
           scan-ref: baas-ncube
@@ -137,6 +137,6 @@ jobs:
           ignorefile: .trivyignore
       - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@7fd177fa680c9881b53cdab4d346d32574c9f7f4  # v3
         with:
           sarif_file: trivy-results.sarif
