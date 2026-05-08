@@ -69,3 +69,40 @@ jobs:
             ${{ steps.img.outputs.tag }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: true   # SLSA L1 attestation embedded in image manifest
+          sbom: true         # OCI image SBOM (buildx-generated, separate from anchore step below)
+
+  security-scan:
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Compute image tag
+        id: img
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          lower_owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "tag=ghcr.io/${lower_owner}/baas-ncube" >> "$GITHUB_OUTPUT"
+      - name: Trivy scan image for HIGH/CRITICAL CVEs
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ steps.img.outputs.tag }}:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'   # fail the job on any HIGH/CRITICAL finding
+      - name: Upload Trivy SARIF to GitHub Security tab
+        if: always()   # upload even on failure so findings are visible
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+      - name: Generate SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0.17.0
+        with:
+          image: ${{ steps.img.outputs.tag }}:${{ github.sha }}
+          format: spdx-json
+          artifact-name: baas-ncube-sbom-${{ github.sha }}.spdx.json
