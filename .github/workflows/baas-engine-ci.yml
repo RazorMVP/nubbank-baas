@@ -50,6 +50,8 @@ jobs:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.img.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -76,8 +78,12 @@ jobs:
             ${{ steps.img.outputs.tag }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: true   # SLSA L1 attestation embedded in image manifest
-          sbom: true         # OCI image SBOM (buildx-generated, separate from anchore step below)
+          # provenance: SLSA L1 metadata embedded in OCI manifest (unsigned).
+          # Task 18 adds `id-token: write` to enable keyless signing → L3 attestation.
+          provenance: true
+          # sbom: buildx-generated SBOM embedded in OCI manifest — for sigstore/cosign verifiers.
+          # A human-readable SPDX JSON artifact is also produced by anchore/sbom-action below.
+          sbom: true
 
   security-scan:
     needs: build-and-push
@@ -86,30 +92,58 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      packages: read   # required: Trivy and sbom-action both pull the image from GHCR
     steps:
-      - name: Compute image tag
-        id: img
-        env:
-          OWNER: ${{ github.repository_owner }}
-        run: |
-          lower_owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
-          echo "tag=ghcr.io/${lower_owner}/baas-engine" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Trivy scan image for HIGH/CRITICAL CVEs
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          image-ref: ${{ steps.img.outputs.tag }}:${{ github.sha }}
+          image-ref: ${{ needs.build-and-push.outputs.image-tag }}:${{ github.sha }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
           exit-code: '1'   # fail the job on any HIGH/CRITICAL finding
+          # To suppress a false positive or accept a risk, add the CVE ID to /.trivyignore
+          # with an expiry date and link to the risk-acceptance ticket.
+          ignorefile: .trivyignore
       - name: Upload Trivy SARIF to GitHub Security tab
-        if: always()   # upload even on failure so findings are visible
+        if: always()   # upload even on Trivy failure so findings are visible
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
       - name: Generate SBOM (SPDX JSON)
+        if: always()   # generate SBOM even when Trivy fails — needed for triage
         uses: anchore/sbom-action@v0.17.0
         with:
-          image: ${{ steps.img.outputs.tag }}:${{ github.sha }}
+          image: ${{ needs.build-and-push.outputs.image-tag }}:${{ github.sha }}
           format: spdx-json
           artifact-name: baas-engine-sbom-${{ github.sha }}.spdx.json
+
+  pr-security-scan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem scan (PR — catches dependency CVEs before merge)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: fs
+          scan-ref: baas-engine
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignorefile: .trivyignore
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
