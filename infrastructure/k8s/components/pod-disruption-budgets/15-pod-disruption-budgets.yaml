@@ -1,0 +1,62 @@
+# PodDisruptionBudgets prevent simultaneous voluntary eviction (kubectl drain,
+# node-pool upgrade, autoscaler scale-down) of all replicas of a workload.
+#
+# Packaged as a Kustomize Component (not in base/) so dev overlays remain free
+# of PDBs — local kind/minikube/k3s clusters can drain freely. Staging and prod
+# opt in via `components: [../../components/pod-disruption-budgets]`.
+#
+# minAvailable: 1 semantics by workload:
+#   - postgres (StatefulSet, 1 replica)
+#       Blocks ALL voluntary disruption. Operators MUST do explicit DB failover
+#       before any node drain — opportunistic drain will fail with
+#       "Cannot evict pod as it would violate the pod's disruption budget".
+#   - baas-engine (HPA min=2, max=10)
+#       Permits draining all-but-one at any replica count. At low scale (2 replicas)
+#       this is one-at-a-time. At HPA max (10 replicas), 9 can be drained
+#       simultaneously — a 90% capacity hit. Production deployments under heavy
+#       load may want minAvailable: 50% via an overlay patch instead.
+#   - baas-ncube (fixed replicas=2, no HPA)
+#       Always permits draining 1 of 2.
+#
+# Why minAvailable, not maxUnavailable: minAvailable scales with replica count
+# (HPA-friendly). maxUnavailable: 0 would block ALL disruption regardless of count
+# — too restrictive for stateless workloads.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: baas-engine-pdb
+  namespace: nubbank-baas
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: baas-engine
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: baas-ncube-pdb
+  namespace: nubbank-baas
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: baas-ncube
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres-pdb
+  namespace: nubbank-baas
+spec:
+  # postgres has replicas=1 — this PDB blocks ALL voluntary pod eviction.
+  # Operator drain remediation: temporarily delete the PDB, drain, restore:
+  #   kubectl -n nubbank-baas delete pdb postgres-pdb
+  #   kubectl drain <node> --ignore-daemonsets
+  #   kubectl -n nubbank-baas apply -f <restore-file>
+  # Or coordinate a real DB failover before draining.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: postgres

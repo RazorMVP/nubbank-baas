@@ -19,4 +19,3 @@ resources:
   - 40-baas-engine.yaml
   - 50-baas-ncube.yaml
   - 60-ingress.yaml
-  - 70-pod-disruption-budgets.yaml
