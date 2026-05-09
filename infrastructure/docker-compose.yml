@@ -22,7 +22,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"   # localhost-only; never exposed to LAN
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -71,7 +71,13 @@ services:
       DATASOURCE_USERNAME: ${POSTGRES_USER}
       DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
-      NIBSS_NPS_BASE_URL: ${NIBSS_NPS_BASE_URL:-http://stub.local}
+      NPS_ENDPOINT: ${NPS_ENDPOINT:-http://stub.local}          # renamed from NIBSS_NPS_BASE_URL (Task 8)
+      NPS_LIVE: ${NPS_LIVE:-false}
+      NPS_MEMBER_ID: ${NPS_MEMBER_ID:-999058}
+      NPS_BICFI: ${NPS_BICFI:-999058}
+      NPS_INSTITUTION_NAME: ${NPS_INSTITUTION_NAME:-NubBank BaaS}
+      NPS_SIGNING_ENABLED: ${NPS_SIGNING_ENABLED:-false}
+      NPS_ENCRYPTION_ENABLED: ${NPS_ENCRYPTION_ENABLED:-false}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
     ports:
       - "${BAAS_NCUBE_PORT:-8082}:8082"
