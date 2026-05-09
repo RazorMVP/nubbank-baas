@@ -1,0 +1,141 @@
+---
+# Default-deny: all pods in nubbank-baas accept no ingress and have no egress
+# unless an explicit allow rule is matched below.
+#
+# Note on postgres: no explicit egress rule exists for postgres. This is
+# intentional for the current single-instance sandbox use. If you add
+# streaming replication, a backup sidecar that ships off-cluster, or
+# postgres_fdw, you must add an egress rule for postgres here — otherwise
+# those connections will silently fail under default-deny.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: nubbank-baas
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Allow: ingress controller → baas-engine
+# Uses kubernetes.io/metadata.name (auto-injected since K8s 1.21) — the manually-
+# applied `name=ingress-nginx` label was unreliable and silently dropped traffic.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-engine
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-engine } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow: ingress controller → baas-ncube (Ingress routes /open-banking here)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-ncube
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-ncube } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+      ports:
+        - protocol: TCP
+          port: 8082
+---
+# Allow: baas-engine → postgres
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-engine-to-postgres
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: postgres } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: baas-engine } }
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Allow: baas-engine → baas-ncube (port 8082, NOT 8081 per plan; verified against application.yml + Dockerfile)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-engine-to-ncube
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-ncube } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: baas-engine } }
+      ports:
+        - protocol: TCP
+          port: 8082
+---
+# Allow: baas-ncube egress (DNS via kube-system on UDP+TCP 53; external IPs on 443 for NIBSS)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ncube-egress
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-ncube } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # External-only on 443 (excludes RFC1918 in-cluster ranges to prevent lateral movement).
+    # If your cluster CIDR uses non-RFC1918 ranges, add them to `except:` below.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# Allow: baas-engine egress (DNS, postgres, ncube on 8082)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-engine-egress
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-engine } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector: { matchLabels: { app: postgres } }
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector: { matchLabels: { app: baas-ncube } }
+      ports:
+        - protocol: TCP
+          port: 8082

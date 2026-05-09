@@ -1,0 +1,17 @@
+target/
+*.class
+*.jar
+.git/
+.idea/
+*.iml
+.vscode/
+.env
+.env.*
+.mvn/
+mvnw
+src/test/
+docs/
+*.md
+.DS_Store
+Dockerfile
+.dockerignore

@@ -1,0 +1,106 @@
+# Reference Postgres deployment for environments without a managed DB.
+# In a real cloud deployment, replace this with the managed equivalent
+# (RDS, Cloud SQL, AlloyDB, Aiven, etc.) and only keep the Service stub
+# that points to the external endpoint.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: nubbank-baas
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: nubbank-baas
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70           # postgres user in postgres:16-alpine (UID 70 per docker-library/postgres alpine Dockerfile)
+        runAsGroup: 70
+        fsGroup: 70             # chown mounted volume so postgres can write
+                                # NOTE: kubelet recursively chowns the volume on every pod start.
+                                # For existing PVCs (e.g. restored from backup), this can stall
+                                # pod startup for 10+ minutes silently on 20Gi+ volumes.
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          # Pinned digest for reproducibility — refresh via `docker buildx imagetools inspect postgres:16-alpine --format '{{.Manifest.Digest}}'`.
+          image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: nubbank_baas
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: baas-engine-secrets
+                  key: DATASOURCE_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: baas-engine-secrets
+                  key: DATASOURCE_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # postgres writes to /var/run/postgresql, /tmp, etc.
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              memory: "2Gi"   # sandbox default — overlays for staging/prod should patch this for production workloads (typical 8–32Gi)
+                               # leave CPU unlimited — DB workloads burst, throttling causes timeouts
+          # `-U postgres` is intentional: postgres image's initdb always creates the
+          # `postgres` superuser regardless of POSTGRES_USER (which creates an additional user).
+          # k8s does not expand env vars in exec.command, so substitution wouldn't work anyway.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          # readinessProbe uses the same command but tighter timing (10s period vs 30s) —
+          # readiness gates Service endpoint membership; liveness gates restart. Both share
+          # failureThreshold: 6 (= 1m for readiness, 3m for liveness) to absorb checkpoint stalls.
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi

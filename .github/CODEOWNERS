@@ -1,0 +1,39 @@
+# CODEOWNERS for nubbank-baas
+# Review required from listed owners on every PR that touches matched paths.
+#
+# Note: CODEOWNERS only enforces reviews when branch protection on main has
+# "Require review from Code Owners" enabled. Configure that under
+# Settings → Branches → main → Branch protection rule.
+
+# Infrastructure — manifests, Dockerfiles, CI workflows, dependency automation
+/infrastructure/**           @RazorMVP
+/.github/workflows/**        @RazorMVP
+/.github/dependabot.yml      @RazorMVP
+/baas-engine/Dockerfile      @RazorMVP
+/baas-ncube/Dockerfile       @RazorMVP
+
+# Build files — dependency versions affect CVE surface
+/baas-engine/pom.xml         @RazorMVP
+/baas-ncube/pom.xml          @RazorMVP
+
+# Security-sensitive code paths
+/baas-engine/src/main/java/com/nubbank/baas/engine/audit/**            @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/auth/**             @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/config/**           @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/openbanking/**      @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/partner/**          @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/role/**             @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/compliance/**       @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/tenant/**           @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/twofa/**            @RazorMVP
+/baas-ncube/src/main/java/com/nubbank/baas/ncube/config/**             @RazorMVP
+/baas-ncube/src/main/java/com/nubbank/baas/ncube/consent/**            @RazorMVP
+
+# Database migrations — once landed, never edited
+/baas-engine/src/main/resources/db/migration/**                        @RazorMVP
+
+# Regulatory + compliance docs
+/docs/regulatory/**          @RazorMVP
+
+# CODEOWNERS itself — meta-protection
+/.github/CODEOWNERS          @RazorMVP

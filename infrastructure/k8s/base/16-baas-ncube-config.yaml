@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baas-ncube-config
+  namespace: nubbank-baas
+data:
+  # Spring Boot active profile — ncube no longer pulls baas-engine-config to avoid
+  # leaking engine-only keys (DATASOURCE_URL, APP_COMPLIANCE_ALLOW_STUB). Set to match
+  # whatever profile the cluster targets; overlays should patch this per environment.
+  SPRING_PROFILES_ACTIVE: "production"
+  NPS_ENDPOINT: "https://nps-sandbox.nibss-plc.com.ng"   # replace per environment
+  NPS_LIVE: "false"   # set to "true" only when wired to live NIBSS
+  NPS_MEMBER_ID: "999058"
+  NPS_BICFI: "999058"
+  NPS_INSTITUTION_NAME: "NubBank BaaS"

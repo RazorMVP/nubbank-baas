@@ -305,7 +305,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 5 — 2026-05-07)
+## Confirmed Platform Versions (Session 6 — 2026-05-09)
 
 ### BaaS Engine (`baas-engine/`)
 
@@ -323,7 +323,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
-| **Last git commit** | `d8b1802` | Session 5 — Phase 1F-0 cross-cutting security baseline; 97 tests passing on `feature/phase1f-0-cross-cutting-security` |
+| **Last git commit** | `f102ae0` | Session 6 — Phase 1F-E infrastructure hardening; 97 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -335,7 +335,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Java** | 21 | Records, sealed classes, pattern matching |
 | **NPS spec** | v1.2 | pacs.008.001.12, acmt.023.001.04 |
 | **CBN vendor media type** | `application/vnd.cbn.openbanking.v1+json` | Required on all controllers; `consumes` method-level on POST/PUT only; `produces` class-level (Session 5) |
-| **Last git commit** | `d8b1802` | Session 5 — Phase 1F-0; 49 tests passing on `feature/phase1f-0-cross-cutting-security` |
+| **Last git commit** | `f102ae0` | Session 6 — Phase 1F-E infrastructure hardening; 49 tests passing |
 
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
@@ -594,6 +594,17 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 - `PartnerContextFilter` must `clear()` in `finally` — never skip
 - Schema name validated against `[a-zA-Z0-9_]+` before any SQL execution
 - Testcontainers integration tests: use `api.version=1.41` system property (Docker Desktop 4.x+ requirement)
+
+---
+
+## Phase 1F-E Gotchas (Infrastructure Hardening — Session 6)
+
+| Issue | Fix |
+|-------|-----|
+| **NetworkPolicy default-deny pattern uses wrong namespace selector** | Must use `kubernetes.io/metadata.name` (auto-injected by K8s ≥1.21 on every Namespace object) in `namespaceSelector` — NOT a manually applied `name:` label. Manually applied labels can be stripped, renamed, or forgotten. The auto-injected label is immutable by non-admin users. |
+| **Base manifests reference a sentinel image tag that will fail to pull** | `infrastructure/k8s/base/` uses `:base-do-not-deploy` as a sentinel. CI must substitute real SHAs via `kustomize edit set image ghcr.io/…/baas-engine=ghcr.io/…/baas-engine:sha-${SHA}` before `kubectl apply`. Forgetting this step causes ImagePullBackOff in every overlay. |
+| **GHCR imagePullSecrets — two setup paths** | (1) Create a `docker-registry` Secret named `ghcr-pull-secret` in the cluster namespace and reference it in `serviceAccountName`'s `imagePullSecrets`, OR (2) patch the `default` ServiceAccount's `imagePullSecrets` list. Path (1) is preferred (explicit per-workload). Required PAT scopes: `read:packages`. Full setup documented in `infrastructure/k8s/README.md`. |
+| **`/actuator/health` exact match blocks `/readiness` and `/liveness` sub-paths** | `requestMatchers("/actuator/health").permitAll()` is an exact Spring Security path match. With `management.endpoint.health.probes.enabled: true`, Spring Boot exposes `/actuator/health/readiness` and `/actuator/health/liveness` as distinct paths — both return 404 because the exact matcher does not cover sub-paths. Fix: `requestMatchers("/actuator/health", "/actuator/health/**").permitAll()`. Applied to both `baas-engine` and `baas-ncube` `SecurityConfig.java`. |
 
 ---
 

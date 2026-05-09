@@ -34,7 +34,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/baas/v1/auth/**").permitAll()
                 .requestMatchers("/baas/v1/partners/register").permitAll()
-                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                 // AuthEnforcementFilter handles 401 for the rest. Spring Security
                 // permits everything here so our filter can produce a JSON error

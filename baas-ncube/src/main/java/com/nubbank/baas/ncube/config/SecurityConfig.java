@@ -27,7 +27,7 @@ public class SecurityConfig {
             .addFilterBefore(internalServiceAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(authEnforcementFilter, InternalServiceAuthFilter.class)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                 .anyRequest().permitAll()  // AuthEnforcementFilter handles 401 envelope
             );

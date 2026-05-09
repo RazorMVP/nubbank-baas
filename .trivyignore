@@ -1,0 +1,16 @@
+# Trivy CVE suppression file.
+# Format: one CVE ID per line, optionally with an expiry date and justification.
+#
+# Example:
+#   CVE-2021-44228  # Log4Shell — not applicable, no Log4j dependency
+#   CVE-2023-99999 exp:2026-12-31  # accepted risk; mitigation: WAF rule ABC-123
+#
+# Process to add a suppression:
+#   1. Open a risk-acceptance ticket linked to the CVE
+#   2. Append the CVE ID below with a one-line justification (and expiry date if a temporary waiver)
+#   3. Reference the ticket in the commit message
+#   4. Re-run CI to verify the suppression takes effect
+#
+# Audit rule: every entry without `exp:` is a permanent waiver and must have an annual review.
+# Active suppressions list:
+#   (none)

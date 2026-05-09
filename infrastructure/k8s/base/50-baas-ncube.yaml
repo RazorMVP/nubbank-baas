@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baas-ncube
+  namespace: nubbank-baas
+  labels:
+    app: baas-ncube
+    app.kubernetes.io/component: integration
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: baas-ncube
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: baas-ncube
+    spec:
+      # No imagePullSecrets / nodeSelector / tolerations specified — vanilla
+      # k8s only. Provider-specific config (NodeAffinity, PriorityClass, etc.)
+      # belongs in a kustomization or Helm values overlay, not in the base.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100          # `app` user in baas-ncube Dockerfile (Alpine `adduser -S` system UID)
+        runAsGroup: 101         # `app` group GID — note 101, not 100: GID 100 is Alpine's built-in `users` group, so addgroup -S allocates the next free GID (101)
+        fsGroup: 101            # so the /tmp emptyDir is writable by the app user
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: baas-ncube
+          # Sentinel tag — does NOT exist in GHCR. Direct `kubectl apply -f base/`
+          # fails fast with ImagePullBackOff intentionally. Real deploys go through
+          # an overlay: `kubectl apply -k overlays/<env>/` with CI substituting the
+          # real SHA via `kustomize edit set image`.
+          image: ghcr.io/razormvp/baas-ncube:base-do-not-deploy
+          # IfNotPresent is intentional — SHA-tagged production images are immutable,
+          # so re-pulling on every restart is wasteful. `Always` would be marginally
+          # safer for the sentinel tag but penalises every real rollout.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+              name: http
+          envFrom:
+            - configMapRef: { name: baas-ncube-config }
+            - secretRef:    { name: baas-ncube-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi  # was 512Mi — ISO 20022 XML payloads can be large
+          # startupProbe: gates BOTH liveness and readiness checks until Spring/Flyway
+          # finishes booting. Allows up to 150s (30 × 5s) on cold boot. Once succeeds,
+          # kubelet stops polling startupProbe forever; liveness and readiness then run
+          # on their own independent schedules. Without this gate, slow first-boot
+          # Flyway runs would be killed by liveness before completing.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            failureThreshold: 30  # 30 × 5s = 150s ceiling; covers cold Flyway boot (currently 4 migrations; bump if migration count grows significantly)
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 3
+          # initialDelaySeconds: 10 — measured from when startupProbe succeeds, not
+          # container start. Provides a 10s JIT warm-up window after Spring's HTTP
+          # server responds before kubelet begins gating traffic via Service endpoints.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 3
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: baas-ncube
+  namespace: nubbank-baas
+spec:
+  type: ClusterIP
+  selector:
+    app: baas-ncube
+  ports:
+    - port: 80
+      targetPort: 8082
+      name: http
+---
+# Horizontal autoscaling — vanilla k8s metrics-server. Cloud-provider-specific
+# autoscalers (KEDA, AWS Karpenter) belong in an overlay, not in the base.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: baas-ncube
+  namespace: nubbank-baas
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: baas-ncube
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60  # JVM saturates GC/heap before CPU hits 70%

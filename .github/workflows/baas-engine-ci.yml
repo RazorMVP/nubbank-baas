@@ -21,18 +21,19 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  packages: write
+  contents: read   # minimum for actions/checkout; jobs that need more declare it explicitly
 
 jobs:
   test:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: baas-engine
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9  # v4
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -41,7 +42,7 @@ jobs:
         run: ./mvnw -B test
       - name: Upload test report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: surefire-reports
           path: baas-engine/target/surefire-reports/
@@ -49,12 +50,18 @@ jobs:
   build-and-push:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write    # only this job needs to push to GHCR
+      id-token: write    # for keyless SLSA provenance attestation
     runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.img.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -67,13 +74,88 @@ jobs:
           lower_owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
           echo "tag=ghcr.io/${lower_owner}/baas-engine" >> "$GITHUB_OUTPUT"
       - name: Build and push image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
         with:
           context: baas-engine
           file: baas-engine/Dockerfile
           push: true
           tags: |
-            ${{ steps.img.outputs.tag }}:latest
             ${{ steps.img.outputs.tag }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # provenance: SLSA L1 metadata embedded in OCI manifest (unsigned).
+          # Task 18 adds `id-token: write` to enable keyless signing → L3 attestation.
+          provenance: true
+          # sbom: buildx-generated SBOM embedded in OCI manifest — for sigstore/cosign verifiers.
+          # A human-readable SPDX JSON artifact is also produced by anchore/sbom-action below.
+          sbom: true
+
+  security-scan:
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: read   # required: Trivy and sbom-action both pull the image from GHCR
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Trivy scan image for HIGH/CRITICAL CVEs
+        uses: aquasecurity/trivy-action@b2933f565dbc598b29947660e66259e3c7bc8561  # v0.20.0
+        with:
+          image-ref: ${{ needs.build-and-push.outputs.image-tag }}:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'   # fail the job on any HIGH/CRITICAL finding
+          # To suppress a false positive or accept a risk, add the CVE ID to /.trivyignore
+          # with an expiry date and link to the risk-acceptance ticket.
+          trivyignores: .trivyignore
+      - name: Upload Trivy SARIF to GitHub Security tab
+        if: always()   # upload even on Trivy failure so findings are visible
+        uses: github/codeql-action/upload-sarif@7fd177fa680c9881b53cdab4d346d32574c9f7f4  # v3
+        with:
+          sarif_file: trivy-results.sarif
+      - name: Generate SBOM (SPDX JSON)
+        if: always()   # generate SBOM even when Trivy fails — needed for triage
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
+        with:
+          image: ${{ needs.build-and-push.outputs.image-tag }}:${{ github.sha }}
+          format: spdx-json
+          artifact-name: baas-engine-sbom-${{ github.sha }}.spdx.json
+
+  pr-security-scan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - name: Trivy filesystem scan (PR — informational; uploads SARIF for visibility)
+        uses: aquasecurity/trivy-action@b2933f565dbc598b29947660e66259e3c7bc8561  # v0.20.0
+        with:
+          scan-type: fs
+          scan-ref: baas-engine
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          # PR scan is informational only. The image-time scan on push-to-main
+          # (security-scan job above) is the strict gate that blocks publishing
+          # vulnerable images. Failing the PR on pre-existing transitive CVEs in
+          # the dependency tree (which weren't introduced by the PR) creates a
+          # treadmill where every PR fights upstream advisories regardless of
+          # what it changed. SARIF still uploads for visibility.
+          exit-code: '0'
+          ignore-unfixed: true   # only act on CVEs with an upstream fix available
+          trivyignores: .trivyignore
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@7fd177fa680c9881b53cdab4d346d32574c9f7f4  # v3
+        with:
+          sarif_file: trivy-results.sarif
