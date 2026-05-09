@@ -5,11 +5,16 @@
 # "Require review from Code Owners" enabled. Configure that under
 # Settings → Branches → main → Branch protection rule.
 
-# Infrastructure — manifests, Dockerfiles, CI workflows
+# Infrastructure — manifests, Dockerfiles, CI workflows, dependency automation
 /infrastructure/**           @RazorMVP
 /.github/workflows/**        @RazorMVP
+/.github/dependabot.yml      @RazorMVP
 /baas-engine/Dockerfile      @RazorMVP
 /baas-ncube/Dockerfile       @RazorMVP
+
+# Build files — dependency versions affect CVE surface
+/baas-engine/pom.xml         @RazorMVP
+/baas-ncube/pom.xml          @RazorMVP
 
 # Security-sensitive code paths
 /baas-engine/src/main/java/com/nubbank/baas/engine/audit/**            @RazorMVP
@@ -17,6 +22,8 @@
 /baas-engine/src/main/java/com/nubbank/baas/engine/config/**           @RazorMVP
 /baas-engine/src/main/java/com/nubbank/baas/engine/openbanking/**      @RazorMVP
 /baas-engine/src/main/java/com/nubbank/baas/engine/partner/**          @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/role/**             @RazorMVP
+/baas-engine/src/main/java/com/nubbank/baas/engine/compliance/**       @RazorMVP
 /baas-engine/src/main/java/com/nubbank/baas/engine/tenant/**           @RazorMVP
 /baas-engine/src/main/java/com/nubbank/baas/engine/twofa/**            @RazorMVP
 /baas-ncube/src/main/java/com/nubbank/baas/ncube/config/**             @RazorMVP
