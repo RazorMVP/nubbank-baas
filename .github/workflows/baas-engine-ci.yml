@@ -21,11 +21,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  packages: write
+  contents: read   # minimum for actions/checkout; jobs that need more declare it explicitly
 
 jobs:
   test:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -49,6 +50,10 @@ jobs:
   build-and-push:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write    # only this job needs to push to GHCR
+      id-token: write    # for keyless SLSA provenance attestation
     runs-on: ubuntu-latest
     outputs:
       image-tag: ${{ steps.img.outputs.tag }}
