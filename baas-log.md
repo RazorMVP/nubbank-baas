@@ -197,6 +197,100 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 
 ## Change History
 
+### Session 6 — 2026-05-09
+**Phase 1F-E infrastructure hardening — closes 6 critical, 13 important, 9 minor 1E findings across 22 tasks on `feature/phase1f-e-infra`. Plus: security fix — `/actuator/health/**` blocked by SecurityConfig (engine + ncube). Branch HEAD `f102ae0` + security-fix commit.**
+
+#### Tasks Completed
+
+| Task | Files Changed | 1E Refs Closed |
+|------|---------------|----------------|
+| 1 — Dockerfile healthcheck binary (curl) | 2 Dockerfiles | C1, I13 |
+| 2 — Deterministic jar copy (`finalName=app`) | 2 pom.xml | C2 |
+| 3 — Maven dependency:go-offline split for layer cache | 2 Dockerfiles | I12 |
+| 4 — JVM hardening flags into ENTRYPOINT | 2 Dockerfiles | C3 |
+| 5 — Pin base images to manifest digests | 2 Dockerfiles | C4 |
+| 6 — `.dockerignore` files for both modules | 2 `.dockerignore` | I14 |
+| 7 — Kustomize tree (base + dev/staging/prod overlays) | `infrastructure/k8s/` restructure | I1 |
+| 8 — `baas-ncube-config` ConfigMap (NPS_ENDPOINT rename) | 2 overlay files | I2, m9 |
+| 9 — Postgres StatefulSet hardening (SecurityContext, resources, pg_isready) | `30-postgres.yaml` | I3, m10 |
+| 10 — PodSecurityContext on engine + ncube (UID 100, GID 101) | `40-baas-engine.yaml`, `50-baas-ncube.yaml` | I4 |
+| 11 — NetworkPolicy as Kustomize Component (`kubernetes.io/metadata.name` selectors) | `components/network-policy/` | C5 |
+| 12 — Split `baas-ncube-secrets` from `baas-engine-secrets` (least privilege) | `17-baas-ncube-secrets.example.yaml`, overlays | I5 |
+| 13 — startupProbe + readiness/liveness path correctness, named ports | `40-baas-engine.yaml`, `50-baas-ncube.yaml` | I6, m5 |
+| 14 — PodDisruptionBudgets as Kustomize Component | `components/pod-disruption-budgets/` | I7, m8 |
+| 15 — GHCR imagePullSecrets workflow documented in README | `infrastructure/k8s/README.md` | m12 |
+| 16 — Trivy CVE + SBOM (dual-source) + SLSA L1 provenance in CI | `.github/workflows/` | C6, I9 |
+| 17 — Pin all GitHub Actions to commit SHAs + Dependabot | `.github/workflows/`, `dependabot.yml` | I10, m4 |
+| 18 — Scope `packages: write` to build-and-push job only | `.github/workflows/` | I8 |
+| 19 — Compose Postgres → 127.0.0.1; `<CHANGE_ME>` placeholders; rename NIBSS_NPS_BASE_URL→NPS_ENDPOINT; add 6 missing NPS_* vars | `infrastructure/docker-compose.yml`, `.env.example` | I2, m2 |
+| 20 — CODEOWNERS (21 paths: infra/security/poms/roles/compliance) | `.github/CODEOWNERS` | m7 |
+| 21 — HPA target 70→60, ncube memory 512→768Mi, add ncube HPA, ingress host TODO | `60-ingress.yaml`, HPA overlays | m1 |
+| 22 (this session) — Kustomize render validation + Docker build + compose smoke test + docs | Various doc files | — |
+| BONUS — SecurityConfig `/actuator/health` → `/actuator/health/**` (engine + ncube) | 2 `SecurityConfig.java` | Bug caught in smoke test |
+
+#### Key Patterns / Decisions
+
+- **Kustomize Components for opt-in cross-cutting concerns** — NetworkPolicy and PDBs as `components/` allow staging/prod to include them while dev stays lean; base manifests remain minimal
+- **`kubernetes.io/metadata.name` selectors** — K8s 1.21+ auto-injects this label on Namespace objects so NetworkPolicy egress `namespaceSelector` works without manually applied labels
+- **Sentinel image tag `:base-do-not-deploy`** — base manifests use a sentinel that will fail to pull; CI substitutes real SHAs via `kustomize edit set image` per overlay, making accidental prod deploy with stale base impossible
+- **All GHA actions pinned to commit SHA** — `@v4` aliases are mutable; SHA pins prevent supply-chain attacks; Dependabot set to weekly digest updates for `github-actions` ecosystem
+- **`packages: write` scoped to build-and-push job only** — replaces, not merges with, workflow-level permission; minimises blast radius if the push step is compromised
+- **HPA averageUtilization 60%** — JVM workloads exhibit GC-induced CPU spikes; 80% leaves no headroom; 60% triggers scale-out before latency impact
+- **SecurityConfig must permit `/actuator/health/**`** — found during smoke test: Spring Boot's `management.endpoint.health.probes.enabled=true` exposes `/actuator/health/readiness` and `/actuator/health/liveness` as sub-paths; `requestMatchers("/actuator/health")` is an exact match that returns 404 for sub-paths; Dockerfile `HEALTHCHECK` + k8s probes both target `/readiness`
+
+#### Build Verification
+
+```
+cd ~/nubbank-baas/baas-engine && ./mvnw test
+[INFO] Tests run: 97, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+
+cd ~/nubbank-baas/baas-ncube && ./mvnw test
+[INFO] Tests run: 49, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+```
+
+#### Step-by-Step Verification Results
+
+| Step | Result | Notes |
+|------|--------|-------|
+| Step 1 — kustomize render (all overlays) | ✅ Pass | dev: 12 docs, 0 NP, 0 PDB, 2 HPA; staging/prod: 22 docs, 7 NP, 3 PDB, 2 HPA |
+| Step 2 — docker build (engine + ncube) | ✅ Pass | Both exit 0; layers fully cached from prior tasks |
+| Step 3 — compose smoke test | ✅ Pass | Both `/actuator/health/readiness` return `{"status":"UP"}` after security fix |
+
+#### Confirmed Platform Versions
+
+**baas-engine (`baas-engine/`):**
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| **Spring Boot** | 3.5.0 | Parent BOM |
+| **Java** | 21 | LTS |
+| **Maven base image** | `maven:3.9-eclipse-temurin-21-alpine@sha256:a24c967778799ee42665a84d9f94e170ae6dc35788c8d2e218071a086b601768` | Build stage |
+| **JRE base image** | `eclipse-temurin:21-jre-alpine@sha256:ad0cdd9782db550ca7dde6939a16fd850d04e683d37d3cff79d84a5848ba6a5a` | Runtime stage |
+| **Last git commit** | `f102ae0` | Task 21 — HPA/memory tuning; plus security-fix commit this session |
+
+**baas-ncube (`baas-ncube/`):**
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| **Spring Boot** | 3.5.0 | No DB, no Redis, no Flyway — pure adapter |
+| **Java** | 21 | LTS |
+| **Maven base image** | `maven:3.9-eclipse-temurin-21-alpine@sha256:a24c967778799ee42665a84d9f94e170ae6dc35788c8d2e218071a086b601768` | Build stage |
+| **JRE base image** | `eclipse-temurin:21-jre-alpine@sha256:ad0cdd9782db550ca7dde6939a16fd850d04e683d37d3cff79d84a5848ba6a5a` | Runtime stage |
+| **Last git commit** | `f102ae0` | Task 21 — plus security-fix commit this session |
+
+#### Findings Deferred (per plan, not in-task scope)
+
+| ID | Description | Reason |
+|----|-------------|--------|
+| I11 | HPA on CPU only, not request-rate/memory | Defer until real load data exists under production traffic |
+| m3 | cert-manager / external-dns documentation | Cluster-specific tooling; covered with TODO comments in ingress manifest |
+| m6 | Maven cache + GHA cache redundancy | Documentation note only; no functional bug; acceptable trade-off |
+| m11 | CI `pull_request` trigger semantics | Documentation-only concern; current behaviour is correct for the branch model |
+
+---
+
 ### Session 5 — 2026-05-07
 **Phase 1F-0: cross-cutting security baseline — 6 retroactive 1B findings closed (4 critical, 2 important) on `feature/phase1f-0-cross-cutting-security`. Branch HEAD `d8b1802`. Closes 1B C1, C2, C5, I1, I3, I7.**
 
