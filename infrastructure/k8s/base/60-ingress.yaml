@@ -16,10 +16,10 @@ spec:
   # ingressClassName: nginx
   tls:
     - hosts:
-        - api.nubbank.example.com
+        - api.nubbank.example.com  # TODO: replace with real host before deploy
       secretName: baas-engine-tls
   rules:
-    - host: api.nubbank.example.com
+    - host: api.nubbank.example.com  # TODO: replace with real host before deploy
       http:
         paths:
           - path: /baas/v1

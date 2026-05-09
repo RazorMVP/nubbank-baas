@@ -132,4 +132,4 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 70
+          averageUtilization: 60  # was 70 — JVM saturates GC/heap before CPU hits 70%

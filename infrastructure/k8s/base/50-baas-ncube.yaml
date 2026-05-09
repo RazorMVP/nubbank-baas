@@ -62,7 +62,7 @@ spec:
               memory: 256Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 768Mi  # was 512Mi — ISO 20022 XML payloads can be large
           # startupProbe: gates BOTH liveness and readiness checks until Spring/Flyway
           # finishes booting. Allows up to 150s (30 × 5s) on cold boot. Once succeeds,
           # kubelet stops polling startupProbe forever; liveness and readiness then run
@@ -111,3 +111,25 @@ spec:
     - port: 80
       targetPort: 8082
       name: http
+---
+# Horizontal autoscaling — vanilla k8s metrics-server. Cloud-provider-specific
+# autoscalers (KEDA, AWS Karpenter) belong in an overlay, not in the base.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: baas-ncube
+  namespace: nubbank-baas
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: baas-ncube
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60  # JVM saturates GC/heap before CPU hits 70%
