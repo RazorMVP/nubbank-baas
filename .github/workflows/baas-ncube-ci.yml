@@ -6,11 +6,14 @@ on:
     paths:
       - 'baas-ncube/**'
       - '.github/workflows/baas-ncube-ci.yml'
+      # .trivyignore controls the strict CVE gate; rerun CI when it changes.
+      - '.trivyignore'
   pull_request:
     branches: [main]
     paths:
       - 'baas-ncube/**'
       - '.github/workflows/baas-ncube-ci.yml'
+      - '.trivyignore'
   workflow_dispatch:
 
 permissions:

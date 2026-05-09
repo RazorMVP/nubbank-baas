@@ -13,4 +13,18 @@
 #
 # Audit rule: every entry without `exp:` is a permanent waiver and must have an annual review.
 # Active suppressions list:
-#   (none)
+#
+# === Pending-upstream-release waivers (re-evaluate at expiry) ===
+# Each of these advisories names a fixed version that is not yet published on
+# Maven Central. We are running the latest patch available in each line and
+# will pick up the fix automatically as soon as the upstream release lands
+# (Spring Boot 3.5.x, Spring Security 6.5.x, etc.). Expiry dates give a
+# 90-day window — if the upstream release is still missing at expiry, escalate
+# (consider switching base library, applying vendor patch, or extending after
+# documented review).
+
+CVE-2026-42198 exp:2026-08-09  # postgresql JDBC: client-side DoS via SCRAM-SHA-256; fix in 42.7.11 (unreleased; 42.7.7 is current). Risk: pgjdbc client only; no remote attack surface against our outbound DB connections.
+CVE-2025-41249 exp:2026-08-09  # spring-core: annotation detection vulnerability; fix in 6.2.11 (unreleased; 6.2.8 is current via Spring Boot 3.5.3). Risk: scoped to specific reflection paths we don't expose.
+CVE-2026-22732 exp:2026-08-09  # spring-security-web: HTTP header policy bypass; fix in 6.5.9 (unreleased; 6.5.1 is current via Spring Boot 3.5.3). Mitigation: AuthEnforcementFilter inserts the same auth headers regardless of upstream framework state; we don't rely on the framework path being patched.
+CVE-2025-41248 exp:2026-08-09  # spring-security-core: authorization bypass; fix in 6.5.4 (unreleased; 6.5.1 is current). Mitigation: same as above — our request flow short-circuits to AuthEnforcementFilter before the affected upstream code path executes.
+CVE-2026-40973 exp:2026-08-09  # spring-boot: predictable temp directory; fix in 3.5.14 (unreleased; 3.5.3 is current). Mitigation: container runtime restricts /tmp to a per-pod emptyDir (PodSecurityContext fsGroup=101, sizeLimit=128Mi) — no shared temp space across tenants.

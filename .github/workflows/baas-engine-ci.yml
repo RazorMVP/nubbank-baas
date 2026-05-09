@@ -13,11 +13,14 @@ on:
     paths:
       - 'baas-engine/**'
       - '.github/workflows/baas-engine-ci.yml'
+      # .trivyignore controls the strict CVE gate; rerun CI when it changes.
+      - '.trivyignore'
   pull_request:
     branches: [main]
     paths:
       - 'baas-engine/**'
       - '.github/workflows/baas-engine-ci.yml'
+      - '.trivyignore'
   workflow_dispatch:
 
 permissions:
