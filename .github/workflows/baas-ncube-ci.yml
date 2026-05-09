@@ -92,6 +92,10 @@ jobs:
       security-events: write
       packages: read   # required: Trivy and sbom-action both pull the image from GHCR
     steps:
+      # Checkout is required so .trivyignore is present in the workspace —
+      # trivy-action treats a missing trivyignores path as fatal and aborts
+      # before scanning, which would silently turn off the strict CVE gate.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
