@@ -32,6 +32,11 @@
              Spring Boot 3.5.3 BOM ships older versions still flagged by Trivy. -->
         <postgresql.version>42.7.7</postgresql.version>
         <netty.version>4.2.1.Final</netty.version>
+        <!-- Override embedded Tomcat from Spring Boot 3.5.3 BOM (10.1.42) to
+             10.1.54 — closes 8 HIGH/CRITICAL CVEs in tomcat-embed-core
+             (CVE-2026-34487, 34483, 24734, 29145; CVE-2025-55752, 53506,
+             52520, 48989). Stays on the 10.1.x branch shipped by Spring Boot. -->
+        <tomcat.version>10.1.54</tomcat.version>
         <jasypt.version>3.0.5</jasypt.version>
         <testcontainers.version>1.20.4</testcontainers.version>
     </properties>

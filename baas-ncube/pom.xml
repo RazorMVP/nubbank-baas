@@ -22,6 +22,9 @@
         <!-- Override transitive netty to latest patched 4.2.x; closes
              CVE-2025-58057, CVE-2026-42583 in netty-codec. -->
         <netty.version>4.2.1.Final</netty.version>
+        <!-- Override embedded Tomcat from Spring Boot 3.5.3 BOM (10.1.42) to
+             10.1.54 — closes 8 HIGH/CRITICAL CVEs in tomcat-embed-core. -->
+        <tomcat.version>10.1.54</tomcat.version>
     </properties>
     <dependencyManagement>
         <dependencies>
