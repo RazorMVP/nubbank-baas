@@ -138,7 +138,7 @@ Every partner gets a dedicated PostgreSQL schema. Hibernate SCHEMA strategy rout
 | 1C | `baas-backoffice` — React/Vite operations portal | ⬜ Next — start after Phase 1F-0 merges |
 | 1D | `baas-portal` — React developer portal | ⬜ Not started |
 | 1E | Infrastructure — Docker + k8s + CI/CD | ✅ Complete (Session 4) — `Dockerfile` for engine + ncube, `infrastructure/docker-compose.yml`, `infrastructure/k8s/` (vanilla manifests), `.github/workflows/baas-{engine,ncube}-ci.yml` |
-| 1F-E | Infrastructure hardening — 22 tasks, 28 findings (6C + 13I + 9m) | ✅ Branch `feature/phase1f-e-infra` ready for review/merge, 22/22 tasks complete; includes Kustomize tree restructure, NetworkPolicy + PDB components, image digest pins, JVM hardening, compose hardening, GHCR CI + SBOM + SLSA L1, Dependabot, CODEOWNERS, HPA tuning, SecurityConfig `/actuator/health/**` fix |
+| 1F-E | Infrastructure hardening — 22 tasks, 28 findings (6C + 13I + 9m) | ✅ Complete (Session 6, merge commit `ac5687b`, tag `phase1f-e-merged`, PR #5, 22/22 tasks, 40 commits); includes Kustomize tree restructure, NetworkPolicy + PDB components, image digest pins, JVM hardening, compose hardening, GHCR CI + SBOM + SLSA L1, Dependabot, CODEOWNERS, HPA tuning, SecurityConfig `/actuator/health/**` fix |
 
 ### Phase 2 — Model A (Fintech/Neobank)
 
