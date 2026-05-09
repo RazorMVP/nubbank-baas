@@ -7,7 +7,10 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.0</version>
+        <!-- 3.5.3 brings security patches across the Spring Boot BOM:
+             spring-core, spring-web, spring-security, spring-webmvc patch advisories.
+             Bump deliberately; review release notes before pushing further. -->
+        <version>3.5.3</version>
         <relativePath/>
     </parent>
 
@@ -21,10 +24,33 @@
         <java.version>21</java.version>
         <lombok.version>1.18.38</lombok.version>
         <springdoc.version>2.8.6</springdoc.version>
-        <nimbus-jose.version>9.37.3</nimbus-jose.version>
+        <!-- nimbus-jose-jwt 9.48 is the last 9.x release (API-compatible with 9.37.3)
+             and brings cumulative security fixes. Major bump 9 → 10 deferred until we
+             validate PartnerJwtService against 10.x's API changes. -->
+        <nimbus-jose.version>9.48</nimbus-jose.version>
+        <!-- Override transitive postgresql JDBC + netty-codec to latest patched versions.
+             Spring Boot 3.5.3 BOM ships older versions still flagged by Trivy. -->
+        <postgresql.version>42.7.7</postgresql.version>
+        <netty.version>4.2.1.Final</netty.version>
         <jasypt.version>3.0.5</jasypt.version>
         <testcontainers.version>1.20.4</testcontainers.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Pin netty across all transitive paths (Spring's WebClient, Lettuce/Redis,
+                 PostgreSQL R2DBC, etc.) to a CVE-patched 4.2.x release. The Spring Boot
+                 3.5.3 BOM still references 4.1.x which is flagged by Trivy
+                 (CVE-2025-58057, CVE-2026-42583). -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -58,6 +84,9 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
+            <!-- Override Spring Boot 3.5.3 BOM (42.7.5) to latest patch (42.7.7);
+                 closes CVE-2025-49146 and related postgresql JDBC advisories. -->
+            <version>${postgresql.version}</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>

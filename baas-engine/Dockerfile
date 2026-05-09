@@ -17,7 +17,7 @@
 #   JWT_SECRET, ENCRYPTION_KEY
 
 # ─── Stage 1: build ────────────────────────────────────────────────────────────
-FROM maven:3.9-eclipse-temurin-21-alpine@sha256:a24c967778799ee42665a84d9f94e170ae6dc35788c8d2e218071a086b601768 AS build
+FROM maven:3.9-eclipse-temurin-21-alpine@sha256:856fe78872c59d3b584a64d07693d5433cbf44e35b5ba1f2c911147f39f54266 AS build
 WORKDIR /workspace
 # Layer 1: dependencies. pom.xml only — does not invalidate when src/ changes.
 COPY pom.xml ./
@@ -29,8 +29,14 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests package
 
 # ─── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM eclipse-temurin:21-jre-alpine@sha256:ad0cdd9782db550ca7dde6939a16fd850d04e683d37d3cff79d84a5848ba6a5a
-RUN apk add --no-cache curl && \
+FROM eclipse-temurin:21-jre-alpine@sha256:704db3c40204a44f471191446ddd9cda5d60dab40f0e15c6507b815ed897238b
+# Apply latest Alpine package patches before installing curl. The base-image
+# digest already points to the freshest published manifest, but `apk upgrade`
+# pulls any out-of-band CVE patches that landed in the Alpine repo since the
+# image was published — closes residual base-OS CVEs Trivy flags against the
+# image filesystem (e.g. busybox/openssl/sqlite advisories).
+RUN apk upgrade --no-cache && \
+    apk add --no-cache curl && \
     addgroup -S app && adduser -S app -G app
 WORKDIR /app
 COPY --from=build /workspace/target/app.jar app.jar
