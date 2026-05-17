@@ -2,8 +2,8 @@
 
 **Reference:** CBN Operational Guidelines for Open Banking in Nigeria (Approved March 2023)
 **Document:** `docs/regulatory/CBN-Open-Banking-Operational-Guidelines-2023.md`
-**Last Updated:** Session 4 — 2026-05-03
-**Assessed Against:** Phase 1A-ext baas-engine (squash merge commit `5adeb10`)
+**Last Updated:** Session 7+1 audit — 2026-05-17
+**Assessed Against:** Phase 1A-ext + 1F-0 (cross-cutting security) + 1F-E (infrastructure hardening). HEAD: `fe00832`. Tests: 97 engine + 49 ncube — all green.
 
 ---
 
@@ -23,7 +23,7 @@
 | CBN Requirement | Status | Notes | Planned Phase |
 |----------------|--------|-------|--------------|
 | REST architectural style | ✅ | Spring Boot REST throughout | Phase 1A |
-| JSON data interchange format | ✅ | Jackson + ApiResponse envelope | Phase 1A |
+| JSON data interchange format | ✅ | Jackson + ApiResponse envelope. CBN vendor media type `application/vnd.cbn.openbanking.v1+json` enforced on POST/PUT (Session 5, `OpenBankingMediaType`) | Phase 1A |
 | ISO 20022 financial data standard | ⚠️ | pacs.008.001.12 and acmt.023.001.04 XML models built (Phase 1B); live NPS routing deferred to Phase 2 | Phase 2 live activation |
 | SSL/HTTPS for all connections | ✅ | Enforced at infrastructure level (Vercel + K8s ingress TLS) | Phase 1E |
 | OAuth 2.0 authentication | ✅ | Keycloak FAPI 2.0 for Open Banking flows | Phase 1A |
@@ -73,17 +73,17 @@
 
 | CBN Requirement | Status | Notes | Planned Phase |
 |----------------|--------|-------|--------------|
-| OAuth 2.0 + OpenID Connect (minimum) | ✅ | Keycloak FAPI 2.0 | Phase 1A |
+| OAuth 2.0 + OpenID Connect (minimum) | ✅ | Keycloak FAPI 2.0. `AuthEnforcementFilter` (Session 5) provides default-deny on `/baas/v1/**` so new endpoints are protected by default rather than relying on per-service `requireContext()` discipline. | Phase 1A |
 | FAPI (Financial-grade API) specifications | ✅ | Keycloak FAPI 2.0 profile configured | Phase 1A |
 | Multi-Factor Authentication (MFA) | ⚠️ | Keycloak MFA enabled; not enforced end-to-end in BaaS flow | Phase 2 |
-| Mutual TLS (mTLS) for machine-to-machine | ❌ | API key auth used (SHA-256); mTLS not yet implemented | Phase 3 |
+| Mutual TLS (mTLS) for machine-to-machine | ❌ | Partner → engine: API key (SHA-256) + Partner JWT (HMAC). Engine ↔ ncube: body-signed HMAC-SHA256 (`InternalServiceAuthFilter`, Session 5 — closes the inter-service auth gap differently). True cert-based mTLS still required by CBN — pending Phase 3. | Phase 3 |
 | JWT token format and expiry | ✅ | Partner JWT: HMAC-SHA256, 24h expiry | Phase 1A |
 | Asymmetric JWT keys (RSA/EC — JWS RFC 7515) | ❌ | Currently HMAC-SHA256; CBN requires asymmetric keys for non-repudiation | Phase 2 |
 | JSON Web Encryption (JWE RFC 7516) | ❌ | Message-level encryption not yet implemented | Phase 3 |
 | JSON Web Signature (JWS RFC 7515) | ❌ | Message signing not yet implemented | Phase 2 |
 | TLS 1.2 minimum (mutual auth RFC 8705) | ⚠️ | TLS enforced at infra level; mutual auth not yet | Phase 3 |
 | TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 cipher | ⚠️ | Infra-level TLS config needed | Phase 1E |
-| Zero-trust architecture | ⚠️ | Schema isolation provides data-level zero trust; network zero-trust pending | Phase 3 |
+| Zero-trust architecture | ⚠️ | Data-level zero-trust via Hibernate SCHEMA isolation (Phase 1A). Network-level zero-trust via Kustomize `network-policy` component (Phase 1F-E, Session 6) — pod-to-pod ingress/egress restrictions. Identity-level zero-trust (mTLS, per-request authZ) still pending. | Phase 3 |
 | Role-based access control (RBAC) | ✅ | Partner roles: PARTNER_ADMIN, TELLER, LOAN_OFFICER, COMPLIANCE, FINANCE | Phase 1A |
 
 ---
@@ -177,10 +177,10 @@
 
 | CBN Requirement | Status | Notes | Planned Phase |
 |----------------|--------|-------|--------------|
-| Comply with NDPR (Nigeria Data Protection Regulation) | ✅ | **PII field-level encryption ACTIVE (AES-GCM-256, Session 4)** — Customer name/email/phone/BVN/NIN; ClientIdentifier document_key; ClientAddress street/city/postal_code. Verified via `PiiEncryptionTest` — row on disk is ciphertext. | Phase 1 ✅ |
+| Comply with NDPR (Nigeria Data Protection Regulation) | ✅ | **PII field-level encryption ACTIVE (AES-GCM-256, Session 4)** — Customer name/email/phone/BVN/NIN; ClientIdentifier document_key; ClientAddress street/city/postal_code. Verified via `PiiEncryptionTest` — row on disk is ciphertext. **PII log masking ACTIVE (Logback `PiiMaskingConverter`, Session 5)** — context-anchored regex masks PAN, BVN, NIN, NUBAN in application logs; deliberately scoped out of MDC values, structured args, and exception messages to avoid false positives on trace IDs / Unix timestamps. | Phase 1 ✅ |
 | Data retention and destruction policy | ⚠️ | 10-year retention defined; destruction policy documentation pending | Phase 3 |
 | Customer right to data portability | ❌ | Data export API not yet implemented | Phase 3 |
-| Data loss prevention (DLP) | ⚠️ | Field-level encryption is the primary DLP mechanism (active Session 4); additional DLP layers pending | Phase 3 |
+| Data loss prevention (DLP) | ✅ | Two-layer DLP active: (1) at-rest field-level encryption AES-GCM-256 (Session 4) and (2) Logback `PiiMaskingConverter` masking PAN/BVN/NIN/NUBAN in production logs (Session 5). Egress DLP (e.g. content-aware proxies) remains a Phase 3+ topic but is not a CBN baseline requirement. | Phase 1 ✅ |
 
 ---
 
@@ -212,8 +212,8 @@
 
 | CBN Requirement | Status | Notes | Planned Phase |
 |----------------|--------|-------|--------------|
-| BCP with quarterly failover exercises | ❌ | K8s HPA defined; BCP documentation pending | Phase 1E |
-| 30-minute failover threshold | ⚠️ | Multi-AZ K8s deployment planned; not yet deployed | Phase 1E |
+| BCP with quarterly failover exercises | ⚠️ | Infrastructure prerequisites in place: HPA tuning + Pod Disruption Budgets component (Phase 1F-E, Session 6) + NetworkPolicy component. BCP documentation and quarterly exercise schedule still owed. | Phase 1E |
+| 30-minute failover threshold | ⚠️ | HPA + Pod Disruption Budgets tuned (Phase 1F-E, Session 6) improve graceful degradation under single-pod loss. Multi-AZ K8s deployment still planned, not yet provisioned. | Phase 1E |
 | Disaster Recovery Plan | ❌ | PostgreSQL backup strategy not yet documented | Phase 1E |
 | BCP/DRP tested every 6 months | ❌ | Policy not yet formalized | Phase 4 |
 
@@ -231,10 +231,10 @@
 | KPI & Performance | 3 | 3 | 6 | 🟡 Phase 2 |
 | Event Logging & Retention | 2 | 1 | 0 | ✅ |
 | AML/CFT | 0 | 2 | 2 | 🟡 Phase 2–3 |
-| Data Privacy (NDPR) | 1 | 2 | 1 | 🟡 Phase 3 (encryption-at-rest now ✅; portability + destruction policy + extra DLP pending) |
+| Data Privacy (NDPR) | 2 | 1 | 1 | 🟡 Phase 3 (at-rest encryption ✅ Session 4, log-time PII masking ✅ Session 5; portability + destruction policy pending) |
 | Reporting | 0 | 1 | 3 | 🟡 Phase 2–3 |
 | Consent API Operations | 3 | 0 | 3 | 🟡 Phase 2 |
-| Business Continuity | 0 | 1 | 3 | 🟡 Phase 1E |
+| Business Continuity | 0 | 2 | 2 | 🟡 Phase 1E (HPA + PDB + NetworkPolicy ✅ Session 6; BCP/DRP docs + Multi-AZ deploy + 6-month exercise cycle still owed) |
 
 ---
 

@@ -9,8 +9,8 @@
 
 | Sub-system | Status | Last Session |
 |------------|--------|-------------|
-| `baas-engine` — Phase 1A + 1A-ext | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; **84 tests passing**) | Session 4 (`5adeb10`) |
-| `baas-ncube` — Phase 1B | ✅ Complete (9 tasks, 21 tests, smoke test live) | Session 2 |
+| `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **97 tests passing**) | Session 4 (`5adeb10`); security baseline Session 5 |
+| `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-backoffice` — React | ⬜ Not started — Phase 1C next | — |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
