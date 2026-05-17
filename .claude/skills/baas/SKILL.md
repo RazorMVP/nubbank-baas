@@ -57,7 +57,16 @@ Use this skill whenever working on the NubBank BaaS platform (`nubbank-baas/` re
   Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
   git push origin main
   ```
-  The pre-push hook blocks if `Confirmed Platform Versions` is missing from either `baas-log.md` or `CLAUDE.md`.
+
+  **Pre-push hook gate:**
+  - Blocks if `Confirmed Platform Versions` is missing from either `baas-log.md` or `CLAUDE.md`.
+
+  **Hook setup (one-time per clone):**
+  ```bash
+  cd ~/nubbank-baas
+  git config core.hooksPath .githooks
+  ```
+  `.githooks/pre-push` is committed to the repo; `core.hooksPath` is a per-clone pointer Git uses to find hooks. Bypass with `git push --no-verify` only after writing a one-line reason in `baas-log.md` under the current session entry.
 
 ### Rationalisation Traps — These Are Not Valid Reasons to Skip
 
@@ -71,6 +80,73 @@ Use this skill whenever working on the NubBank BaaS platform (`nubbank-baas/` re
 | "Figma diagrams are optional" | They are the visual spec shared with stakeholders. Stale diagrams create confusion. |
 | "CBN gap analysis was updated last session" | Last session's analysis doesn't cover this session's changes. |
 | "The API docs can wait until we have more endpoints" | One missing endpoint breaks partner integrations silently. |
+
+---
+
+## 🎯 Expert Review — On Request
+
+The Expert Review is an **opt-in second-pass tool**, not a gate. Invoke it when you (or the user) want a sanity check on a non-trivial decision. There is no per-session, per-commit, or per-controller requirement to produce one — forced cadence creates churn without insight.
+
+When invoked, produce the block in § Review Format using the persona in § The Expert Persona.
+
+### The Expert Persona
+
+A software engineer with **20+ years building core banking applications for leading banks across the world** (US, UK, Europe, Africa, Asia). They have lived through:
+
+- Production incidents at 3am during financial year-ends
+- Mainframe COBOL → Java microservices migrations
+- Regulator audits across jurisdictions (FCA, CBN, BSP, FRB, MAS)
+- Card scheme certifications (Visa, Mastercard, Verve)
+- ISO 8583, ISO 20022, FAPI 2.0, Open Banking UK, PSD2
+- Multi-tenant SaaS-for-banks projects with real money flowing
+
+They have the scars. They do not pad. They do not give participation trophies. They call out only what genuinely matters.
+
+### Review Format
+
+```markdown
+---
+
+### 🎯 Expert Review (20+ yrs core banking)
+
+**What you got right**
+- [Only the genuinely solid parts — no padding. If nothing is truly solid, say so plainly.]
+
+**What you oversimplified or got wrong**
+- [Specific oversights: missing failure modes, transaction-boundary errors, idempotency gaps, regulator-facing gaps, security holes, missed concurrency cases, reconciliation blind spots, audit-trail omissions. Name files, fields, edge cases. Generalities are useless.]
+
+**Best practice recommendation for *this* context**
+- [What the expert would actually do given NubBank BaaS's stack — Java 21 / Spring Boot 3.5 / Hibernate SCHEMA multi-tenancy / Partner JWT + API key / Redis rate limiting / CBN regulatory environment / current Phase position. Not generic advice — context-specific and actionable.]
+
+---
+```
+
+### When You Should Consider Invoking It
+
+The Expert Review is most valuable before committing to a decision that is **expensive to reverse**:
+
+- A multi-file architectural decision before implementing
+- A new state machine touching money movement (payment, reversal, settlement, dispute)
+- A schema change that touches multi-tenancy, audit, or consent
+- Anything that touches CBN OBR, FAPI 2.0, ISO 20022, BVN/NIN
+- Before opening a PR with significant security or payment surface
+- At a phase boundary (see § Phase-Gate Review below — this is the primary place the review is exercised)
+
+It is **not** required on every session, every commit, or every controller change.
+
+### Trigger Word
+
+When the user types `expert review`, `expert critique`, `second pass`, or `review your last answer`, immediately produce the Expert Review block for the most recent substantive answer.
+
+### Anti-Patterns the Expert Avoids
+
+- **"This is great, but..."** — if it's truly great, name what specifically. If there is a "but", lead with it.
+- **Theoretical risk dumps** — only call out what's likely in *this* codebase, *this* phase. Don't list every CWE under the sun.
+- **Rewrite-first reflex** — recommend small targeted fixes over architectural overhauls when the fix is local.
+- **"Best practice" without specifics** — name the practice, cite where it came from (Mifos, FAPI 2.0 §x, CBN §y, ISO 20022 message type), and explain why it applies here.
+- **Yes-man tone** — the entire purpose is to catch oversimplification. If the original answer was wrong, say so directly.
+- **Hindsight rephrasing** — don't simply repeat what was already said in the main answer dressed as a critique. The review must add new information or sharpen a real risk.
+- **Out-of-phase critique** — if the gap requires Phase N+1 work that is not yet scoped, file it as `[deferred-to-phase-N+1]` in the phase-gate review, not as an open in-flight critique.
 
 ---
 
@@ -151,6 +227,36 @@ Virtual account pool + loan APIs + metering + billing engine
 ### Phase 4 — Model C (Licensed Bank)
 
 DB isolation provisioner + Platform Admin screens + white-label capability
+
+---
+
+## Phase-Gate Review
+
+The primary place the Expert Review (§ Expert Review — On Request) is exercised. Run a structured review against the **whole phase's deliverables as a unit** — not session-by-session — at the points listed below.
+
+### When This Fires
+
+- A sub-plan reaches ✅ Complete in the § Phase Build Order table (1A done, 1F-0 done, 1F-E done, etc.)
+- A pre-prod milestone is reached
+- A real production incident traces back to a decision made during a specific phase
+
+### Procedure
+
+1. Enumerate what landed: `git log --oneline <phase-start-sha>..<phase-end-sha> -- baas-engine/ baas-ncube/`
+2. Invoke the Expert Review persona against the **whole phase as a unit** — not per file, not per commit.
+3. Capture the review in `docs/phase-gate-reviews.md` with one row per phase. Each row should carry an explicit closure state:
+   - `[resolved] <sha>` — fixed inside the phase or the next one
+   - `[deferred-to-phase-N]` — scoped to a later phase, not in-flight
+   - `[accepted-risk] <one-line reason>` — known limitation accepted for this phase
+   - `[wontfix] <one-line reason>` — closed; not pursuing
+   - `↑ Promoted <sha>` — lifted into `CLAUDE.md` § Known Gotchas
+4. Surface items into `CLAUDE.md` § Known Gotchas only when they're patterns future sessions need to remember.
+
+### Why Phase-Gate Not Per-Session
+
+A 20-year expert engineer evaluating an in-flight session always finds something to flag — there is no natural stop condition. Per-session reviews compound into a backlog you can never empty. Phase-gate review gives bounded scope, real closure, and an explicit "deferred to later phase" lifecycle state that closes the row without pretending the work is done.
+
+There is no hook, CI check, or required artifact enforcing this. It is governance, not enforcement.
 
 ---
 

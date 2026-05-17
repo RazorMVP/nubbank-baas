@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# .githooks/pre-push — NubBank BaaS push gate.
+#
+# Wire up after clone:  git config core.hooksPath .githooks
+# Bypass intentionally: git push --no-verify  (and document why in baas-log.md)
+#
+# Enforces:
+#   Gate 1 — 'Confirmed Platform Versions' block present in baas-log.md AND CLAUDE.md
+#
+# Referenced by .claude/skills/baas/SKILL.md § Session Completion Gate item 9.
+
+set -euo pipefail
+
+EXIT=0
+
+LOG_PATH='baas-log.md'
+CLAUDE_PATH='CLAUDE.md'
+
+# ────────────────────────────────────────────────────────────
+# Gate 1 — 'Confirmed Platform Versions' block (file-state check, runs once)
+# ────────────────────────────────────────────────────────────
+for path in "$LOG_PATH" "$CLAUDE_PATH"; do
+  if [ -f "$path" ] && ! grep -q "Confirmed Platform Versions" "$path"; then
+    echo "✗ Pre-push gate 1: '$path' is missing the 'Confirmed Platform Versions' block."
+    echo "    See .claude/skills/baas/SKILL.md § Session Completion Gate item 2."
+    EXIT=1
+  fi
+done
+
+if [ "$EXIT" -ne 0 ]; then
+  echo ""
+  echo "Push blocked. To bypass intentionally: 'git push --no-verify' and document the reason"
+  echo "in baas-log.md under the current session entry."
+fi
+
+exit "$EXIT"

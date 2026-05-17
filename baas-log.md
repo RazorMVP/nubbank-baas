@@ -197,6 +197,53 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 
 ## Change History
 
+### Session 7 — 2026-05-17
+**Introduce opt-in Expert Review + Phase-Gate Review pattern; unwind per-session enforcement and CI mirror.**
+
+#### New/Updated Files
+
+| File | Change |
+| --- | --- |
+| `.claude/skills/baas/SKILL.md` | Modified — replaced "Expert Review — Required After Every Substantive Answer" with "Expert Review — On Request" (opt-in tool). Added "Phase-Gate Review" section as the primary place the review is exercised, with explicit closure-state vocabulary (`[resolved]`, `[deferred-to-phase-N]`, `[accepted-risk]`, `[wontfix]`). Removed Session Completion Gate item 9 (per-session Expert Review capture) and the "Session Start Re-grounding" section. Item 10 collapsed into item 9 (commit/push). |
+| `.githooks/pre-push` | New (uncommitted previously) — 36 lines, Gate 1 only (`Confirmed Platform Versions` presence in `baas-log.md` + `CLAUDE.md`). Gate 2 (risk-path summary enforcement) and the `risk-paths.txt` loader were not introduced in the committed state. |
+| `.github/pull_request_template.md` | New — Summary / Scope / Test plan / Risks / rollback / Links. Comment header notes the opt-in Expert Review trigger word. No gate-related checklist sections. |
+| `docs/phase-gate-reviews.md` | New — phase-gate aggregation table + 13-row historical seed (real critiques from Sessions 1–6, all `↑ Promoted [backfill]` to `CLAUDE.md` § Known Gotchas) + Topic Tags + column-aware `awk -F'\|'` audit helpers. Renamed from the never-committed `docs/expert-review-summary.md`. |
+
+**Files created in working tree during session but not committed** (intentionally — they belonged to the unwound per-session gate):
+
+- `.githooks/risk-paths.txt`
+- `.github/workflows/expert-review-gate.yml`
+- `.github/BRANCH-PROTECTION.md`
+
+#### Key Decisions
+
+1. **Per-session forced Expert Review was identified as having no natural stop condition.** A 20+ year banking engineer with scars always finds something to flag; without an exit criterion the summary doc becomes a backlog you can never empty, and Re-grounding at every session start compounds the load. The fix is *not* a tougher rule — it's removing the forced cadence and moving the review to phase boundaries.
+2. **Kept the Expert Review persona, format, anti-patterns, and trigger word.** The 20+ year persona is a real tool; what was wrong was treating it as a gate. It is now opt-in: invoked when expensive-to-reverse decisions are on the table, or when the user types `expert review` / `second pass` / `review your last answer`.
+3. **Introduced Phase-Gate Review as the primary exercise point.** One review per phase against the whole phase's deliverables, captured in `docs/phase-gate-reviews.md` with an explicit closure state. Closure states `[deferred-to-phase-N]` and `[accepted-risk]` close the row without pretending the work is done — solves the "row sits unpromoted forever" trap that the per-session model created.
+4. **Stripped Gate 2 from `.githooks/pre-push`.** Kept Gate 1 (`Confirmed Platform Versions` block presence) — cheap, load-bearing, and not part of the merry-go-round. The hook is local-only; setup is unchanged: `git config core.hooksPath .githooks` after clone.
+5. **Removed the CI mirror workflow (`expert-review-gate.yml`) and the branch-protection required check** on `RazorMVP/nubbank-baas:main`. Branch protection itself is retained: force-push off, deletions off, conversation resolution on, code-owner reviews on, 0 required approvals (solo-developer setup). Verified via `gh api /repos/RazorMVP/nubbank-baas/branches/main/protection` read-back — `required_status_checks` is now `null`.
+6. **Historical 13-row backfill from Sessions 1–6 preserved** in the new `docs/phase-gate-reviews.md` § Historical Seed block. All 13 rows are `↑ Promoted [backfill]` and already in `CLAUDE.md` § Known Gotchas — they are not in-flight critiques. They remain as institutional memory and as test data for the awk audit helpers.
+7. **PR template rewritten** to remove the Expert Review checklist. Reviewers now see a clean Summary / Scope / Test plan / Risks / Links structure. The opt-in trigger word is documented in the comment header so contributors know it's available without being mandatory.
+
+#### Build Verification
+
+Skipped — this session touched zero Java files. Per Session Completion Gate item 1, "Only sessions that touched zero Java files may skip."
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):**
+
+| Component | Version | Git ref |
+| --- | --- | --- |
+| Spring Boot | 3.5.0 | `ac5687b` |
+| Java | 21 | `ac5687b` |
+| Nimbus JOSE+JWT | 9.37.3 | `ac5687b` |
+| Last git commit | `ac5687b` | Session 6 — Phase 1F-E merge |
+
+No engine code changed in this session; engine SHA carries forward from Session 6's Phase 1F-E merge.
+
+---
+
 ### Session 6 — 2026-05-09
 **Phase 1F-E infrastructure hardening — closes 6 critical, 13 important, 9 minor 1E findings across 22 tasks on `feature/phase1f-e-infra`. Plus: security fix — `/actuator/health/**` blocked by SecurityConfig (engine + ncube). Branch HEAD `f102ae0` + security-fix commit.**
 
