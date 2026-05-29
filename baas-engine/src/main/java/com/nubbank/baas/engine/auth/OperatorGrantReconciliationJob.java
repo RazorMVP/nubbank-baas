@@ -19,7 +19,8 @@ public class OperatorGrantReconciliationJob {
 
     @Scheduled(cron = "0 30 2 * * *") // 02:30 daily
     public void reconcile() {
-        log.info("Operator grant reconciliation tick (stub-mode: no-op until DEF-1C-17)");
+        log.info("Operator grant reconciliation tick (stub-mode: no-op until DEF-1C-17, directory={})",
+                 directory.getClass().getSimpleName());
         // Live implementation (DEF-1C-17): for each active partner schema, set PartnerContext,
         // load distinct user_roles.user_id, compare with directory.activeSubjects(partnerId),
         // and revokeAllGrants(sub) for each subject absent from the directory.
