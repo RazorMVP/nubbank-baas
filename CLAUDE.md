@@ -305,7 +305,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 6 — 2026-05-09)
+## Confirmed Platform Versions (Session 8 — 2026-05-30)
 
 ### BaaS Engine (`baas-engine/`)
 
@@ -318,12 +318,13 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Java** | 21 | LTS; records, sealed classes, pattern matching |
 | **Hibernate** | 6.x (managed) | SCHEMA multi-tenancy via `MultiTenantConnectionProvider` |
 | **Flyway** | 10.x (managed) | `flyway-database-postgresql` required for Spring Boot 3.3+ |
-| **Nimbus JOSE+JWT** | 9.37.3 | HMAC-SHA256 Partner JWT |
+| **Nimbus JOSE+JWT** | 9.37.3 | HMAC-SHA256 Partner JWT; Keycloak operator JWTs validated via Spring Security `NimbusJwtDecoder` (oauth2-resource-server starter, Session 8) |
+| **Spring Security OAuth2 Resource Server** | 6.5.x (managed) | `spring-boot-starter-oauth2-resource-server` — multi-issuer Keycloak operator JWT validation (Session 8) |
 | **Jasypt** | 3.0.5 | (legacy dep — replaced by hand-rolled `FieldEncryptor` AES-GCM-256, Session 4) |
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
-| **Last git commit** | `f102ae0` | Session 6 — Phase 1F-E infrastructure hardening; 97 tests passing |
+| **Last git commit** | `1010ca9` | Session 8 — Phase 1C Foundation (operator identity + Hybrid RBAC); 111 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -523,6 +524,24 @@ All missing baas-engine modules are now implemented. 74 tests, BUILD SUCCESS, br
 | `TenantJdbcTemplate` (multi-tenant raw JDBC) | `common/` | ✅ Built |
 | `PartnerContext.userId` (from JWT sub) | `tenant/` | ✅ Built |
 
+### Completed in Session 8 — Phase 1C Foundation
+
+**Operator Identity & RBAC (Phase 1C Foundation, Session 8)** — Keycloak multi-issuer operator JWT validation (`auth/keycloak/*`), Hybrid RBAC wired to `@PreAuthorize` via `AuthorityResolver` + `MethodSecurityConfig`, 30-role tenant catalogue (`tenant/V3`), operator deprovisioning + reconciliation seam. ✅
+
+| Module | Package | Status |
+|--------|---------|--------|
+| Keycloak multi-issuer JWT decoder (per-issuer JWKS cache) | `auth/keycloak/` | ✅ Built |
+| Operator JWT resolver (allowlist + active-status gate + fail-closed) | `auth/keycloak/` | ✅ Built |
+| `PartnerContextFilter` multi-branch (`iss` routing: admin/operator/HMAC) | `tenant/` | ✅ Built |
+| `AuthorityResolver` (operator→RBAC-scoped; first-party→full tenant) | `auth/` | ✅ Built |
+| `MethodSecurityConfig` (`@EnableMethodSecurity`) | `config/` | ✅ Built |
+| 30-role tenant catalogue + core-role grants + maker-checker flag | `db/migration/tenant/V3` | ✅ Built |
+| `OperatorProvisioningService` (`revokeAllGrants`) | `auth/` | ✅ Built |
+| Nightly reconciliation seam (`OperatorGrantReconciliationJob` + stub) | `auth/` | ✅ Built (stub; live impl DEF-1C-17) |
+| `keycloak_issuer` column + partial unique index | `db/migration/public/V3` | ✅ Built |
+| `AccessDeniedException` → 403 `ACCESS_DENIED` envelope | `common/` | ✅ Built |
+| `SecurityConfig` scoped `@Order(2)` + `securityMatcher` | `config/` | ✅ Built |
+
 ### Pending (Later sub-plans)
 
 | Module | Sub-plan | Status |
@@ -642,6 +661,12 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | Class-level `@RequestMapping(consumes = ...)` rejects partner GETs with 415 | Spring inherits class-level `consumes` to all methods including GET. A partner sending `Accept` only on a GET hits 415. Move `consumes` to method-level on POST/PUT only; keep `produces` at class level for response content negotiation. Pattern used by ncube CBN vendor media type. |
 | `HttpMediaTypeNotSupportedException` propagates as 500 | No matching `@ExceptionHandler` in `GlobalExceptionHandler` falls through to the framework's default 500 handler. Add `@ExceptionHandler(HttpMediaTypeNotSupportedException.class)` → 415 and `@ExceptionHandler(HttpMediaTypeNotAcceptableException.class)` → 406. |
 | Inter-service call has no auth between trusted services | `permitAll()` for internal endpoints leaves them open to anyone who can reach the service network. Use body-signed HMAC-SHA256: `Authorization: Internal <hex-hmac>` + `X-Internal-Timestamp`; HMAC content `METHOD then PATH then TIMESTAMP then sha256Hex(body)` (pipe-separated); 60s replay window; constant-time hex compare; ≥32-char shared secret enforced at filter construction. See `InternalServiceClient` (engine, signer) + `InternalServiceAuthFilter` (ncube, validator). |
+| **Operator vs first-party authority boundary** — `PartnerContextFilter.populateAuthorities()` switches on `PartnerContext.authMode()` | `OPERATOR_JWT` → RBAC-scoped codes from `user_roles`; default (`API_KEY`, `JWT`) → full tenant authority. A new authMode added later falls through to FULL authority by default — evaluate explicitly (DEF-1C-15). |
+| **`iss`-branch routing in `PartnerContextFilter`** — admin-issuer → no context (401 on partner API); known partner issuer → `OperatorJwtResolver.resolve` | The early `return` in the operator branch is load-bearing: a known-issuer token that fails crypto must NOT fall through to the HMAC verifier. `iss=null` → legacy HMAC `PartnerJwtService.validate`. |
+| **`AccessDeniedException` → 403 envelope via `@ControllerAdvice`** — because the chain uses `anyRequest().permitAll()`, `ExceptionTranslationFilter` never fires | The `@PreAuthorize` denial is resolved by `GlobalExceptionHandler` into the standard `ACCESS_DENIED` envelope. Add an `AccessDeniedHandler` only if the chain ever stops using `permitAll()`. |
+| **`app.keycloak.admin-issuer` dormant until set** — unset in dev/prod-without-env → binds to "" → admin-rejection branch never matches | Still secure: admin tokens hit `UNKNOWN_ISSUER`→401. MUST be set before the Custodian admin chain ships. |
+| **`live-keycloak` profile requires a `KeycloakUserDirectory` bean** — the stub is `@Profile("!live-keycloak")` | Activating `live-keycloak` without a `@Profile("live-keycloak")` impl fails context startup (`OperatorGrantReconciliationJob` requires the bean). See DEF-1C-17. |
+| **`PARTNER_ADMIN` role grant is bounded to V1–V2 permissions** — tenant `V3` CROSS JOINs all permissions at seed time | Any later migration adding permission codes must also grant them to `PARTNER_ADMIN` in that migration (DEF-1C-16). |
 
 ---
 
