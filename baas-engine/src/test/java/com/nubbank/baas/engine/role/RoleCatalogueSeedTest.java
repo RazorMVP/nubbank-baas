@@ -13,6 +13,7 @@ class RoleCatalogueSeedTest extends AbstractIntegrationTest {
     @Autowired PartnerOrganizationRepository orgRepo;
     @Autowired TenantProvisioningService provisioning;
     @Autowired RoleRepository roleRepo;
+    @Autowired PermissionRepository permRepo;
 
     @Test
     void provisionSeeds30Roles() {
@@ -27,12 +28,19 @@ class RoleCatalogueSeedTest extends AbstractIntegrationTest {
             "PRODUCTION", "API_KEY", null));
         try {
             List<String> names = roleRepo.findAll().stream().map(Role::getName).toList();
-            assertThat(names).hasSize(30);
-            assertThat(names).contains("PARTNER_ADMIN", "TELLER", "CREDIT_APPROVER",
-                "REMITTANCE_OFFICER", "AUDITOR_READONLY");
+            assertThat(names).containsExactlyInAnyOrder(
+                "PARTNER_ADMIN","BRANCH_MANAGER","OPERATIONS_MANAGER","PRODUCT_MANAGER","SYSTEM_CONFIGURATOR",
+                "CUSTOMER_SERVICE_OFFICER","RELATIONSHIP_MANAGER","TELLER","HEAD_TELLER","CUSTOMER_SUPPORT",
+                "ACCOUNT_OFFICER","KYC_OFFICER","LOAN_OFFICER","CREDIT_ANALYST","CREDIT_APPROVER",
+                "COLLECTIONS_OFFICER","LOAN_OPERATIONS_OFFICER","PAYMENTS_OFFICER","REMITTANCE_OFFICER","TREASURY_OFFICER",
+                "CARD_OPERATIONS_OFFICER","RECONCILIATION_OFFICER","COMPLIANCE_OFFICER","AML_ANALYST","FRAUD_ANALYST",
+                "RISK_OFFICER","FINANCE_OFFICER","FINANCIAL_CONTROLLER","INTERNAL_AUDITOR","AUDITOR_READONLY");
             Role teller = roleRepo.findAll().stream()
                 .filter(r -> r.getName().equals("TELLER")).findFirst().orElseThrow();
-            assertThat(teller.getPermissions()).extracting("code").contains("DEPOSIT", "WITHDRAW");
+            assertThat(teller.getPermissions()).extracting("code").contains("READ_ACCOUNT","DEPOSIT","WITHDRAW");
+            Permission approveLoan = permRepo.findAll().stream()
+                .filter(p -> p.getCode().equals("APPROVE_LOAN")).findFirst().orElseThrow();
+            assertThat(approveLoan.isCanMakerChecker()).isTrue();
         } finally { PartnerContext.clear(); }
     }
 }

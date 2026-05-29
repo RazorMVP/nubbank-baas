@@ -36,7 +36,10 @@ UPDATE permissions SET can_maker_checker = true WHERE code = 'APPROVE_LOAN';
 
 -- Core-role grants (drawn from the 13 permissions seeded by V2). Other roles seeded empty here
 -- and granted as controllers are annotated per module (DEF-1C-16).
--- PARTNER_ADMIN -> all permissions.
+-- PARTNER_ADMIN -> all permissions. NOTE: this CROSS JOIN is bounded to the permissions
+-- that exist at V3 apply-time (those seeded by V1-V2). Any future migration that adds new
+-- permission codes MUST also grant them to PARTNER_ADMIN here (in that new migration) —
+-- the grant does NOT auto-extend. See DEF-1C-16.
 INSERT INTO role_permissions (role_id, permission_id)
   SELECT r.id, p.id FROM roles r CROSS JOIN permissions p WHERE r.name = 'PARTNER_ADMIN';
 
