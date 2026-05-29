@@ -65,4 +65,13 @@ class OperatorJwtResolverTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> resolver.resolve(JWKS.sign(issuer, UUID.randomUUID().toString(), 300)))
             .isInstanceOf(BaasException.class);
     }
+
+    @Test
+    void rejectsExpiredToken() {
+        String issuer = "https://auth.nubbank.test/realms/baas-partner-" + UUID.randomUUID();
+        activeOrg(issuer);
+        assertThatThrownBy(() ->
+            resolver.resolve(JWKS.sign(issuer, UUID.randomUUID().toString(), -60)))
+            .isInstanceOf(BaasException.class);
+    }
 }

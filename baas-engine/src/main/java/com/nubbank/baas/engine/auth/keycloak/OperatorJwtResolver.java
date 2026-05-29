@@ -18,7 +18,11 @@ public class OperatorJwtResolver {
     private final PartnerOrganizationRepository orgRepo;
     private final OperatorJwtProperties props;
 
-    /** @return the issuer string if this token is parseable, else null. */
+    /**
+     * Reads the {@code iss} claim WITHOUT verifying the signature, purely to route the token
+     * to the right validator. Real cryptographic verification happens later in {@link #resolve}.
+     * @return the issuer string if this token is parseable, else null.
+     */
     public String peekIssuer(String token) {
         try { return SignedJWT.parse(token).getJWTClaimsSet().getIssuer(); }
         catch (Exception e) { return null; }

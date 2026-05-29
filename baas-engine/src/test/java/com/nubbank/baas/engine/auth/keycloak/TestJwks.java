@@ -15,7 +15,7 @@ import java.util.Date;
 
 /** Generates an in-memory RSA key + matching offline {@link JwtDecoder} for operator-JWT tests. */
 public final class TestJwks {
-    public final RSAKey key;
+    private final RSAKey key;
     public TestJwks() {
         try { this.key = new RSAKeyGenerator(2048).keyID("test-kid").generate(); }
         catch (JOSEException e) { throw new RuntimeException(e); }

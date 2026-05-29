@@ -83,6 +83,9 @@ public class PartnerContextFilter extends OncePerRequestFilter {
             log.debug("Admin-issuer token presented to partner API — rejected (no partner context)");
             return;
         }
+        // Known Keycloak issuer: resolve here and RETURN even on failure — must NOT fall through
+        // to the HMAC verifier, or a bad Keycloak token for a known issuer would get a second
+        // (wrong) validation path. The return in the catch is load-bearing security, not flow sugar.
         if (issuer != null) {
             try { PartnerContext.set(operatorResolver.resolve(token)); return; }
             catch (Exception ex) { log.debug("Operator JWT resolution failed: {}", ex.getMessage()); return; }
