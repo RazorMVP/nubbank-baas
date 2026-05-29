@@ -1,5 +1,6 @@
 package com.nubbank.baas.engine.tenant;
 
+import com.nubbank.baas.engine.auth.AuthorityResolver;
 import com.nubbank.baas.engine.auth.PartnerJwtService;
 import com.nubbank.baas.engine.auth.keycloak.OperatorJwtResolver;
 import com.nubbank.baas.engine.partner.PartnerApiKeyRepository;
@@ -24,6 +25,7 @@ public class PartnerContextFilter extends OncePerRequestFilter {
     private final PartnerJwtService jwtService;
     private final PartnerApiKeyRepository apiKeyRepo;
     private final OperatorJwtResolver operatorResolver;
+    private final AuthorityResolver authorityResolver;
 
     private static final String API_KEY_PREFIX = "ApiKey ";
     private static final String BEARER_PREFIX   = "Bearer ";
@@ -35,10 +37,27 @@ public class PartnerContextFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         try {
             resolveContext(request);
+            populateAuthorities();
             chain.doFilter(request, response);
         } finally {
-            PartnerContext.clear(); // always clear — prevents ThreadLocal leaks in thread pools
+            PartnerContext.clear();
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
         }
+    }
+
+    private void populateAuthorities() {
+        PartnerContext ctx = PartnerContext.get();
+        if (ctx == null) return;
+        java.util.List<String> codes = switch (ctx.authMode()) {
+            case "OPERATOR_JWT" -> authorityResolver.operatorAuthorities(java.util.UUID.fromString(ctx.userId()));
+            default -> authorityResolver.fullTenantAuthorities(); // API_KEY, HMAC JWT
+        };
+        var authorities = codes.stream()
+            .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
+            .map(a -> (org.springframework.security.core.GrantedAuthority) a).toList();
+        var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+            ctx.userId() == null ? ctx.partnerId() : ctx.userId(), null, authorities);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
     }
 
     private void resolveContext(HttpServletRequest request) {
