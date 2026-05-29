@@ -94,5 +94,13 @@ class CustomerAuthzTest extends AbstractIntegrationTest {
                 "email","a@b.com","phone","123","dateOfBirth","1990-01-01","nationalId","X1"),
                 bearer(sub.toString())), Map.class);
         assertThat(createResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        assertThat(createResp.getBody()).isNotNull();
+        assertThat(createResp.getBody()).containsKey("errors");
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String,Object>> errors =
+            (java.util.List<java.util.Map<String,Object>>) createResp.getBody().get("errors");
+        assertThat(errors).isNotEmpty();
+        assertThat(errors.get(0).get("code")).isEqualTo("ACCESS_DENIED");
     }
 }
