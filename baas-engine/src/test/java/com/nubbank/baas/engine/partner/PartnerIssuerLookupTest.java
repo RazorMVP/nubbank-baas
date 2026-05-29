@@ -27,7 +27,27 @@ class PartnerIssuerLookupTest extends AbstractIntegrationTest {
     void statusGatesAuth() {
         assertThat(PartnerStatus.BASIC.isActiveForAuth()).isTrue();
         assertThat(PartnerStatus.SANDBOX.isActiveForAuth()).isTrue();
+        assertThat(PartnerStatus.PRO.isActiveForAuth()).isTrue();
+        assertThat(PartnerStatus.ENTERPRISE.isActiveForAuth()).isTrue();
         assertThat(PartnerStatus.SUSPENDED.isActiveForAuth()).isFalse();
         assertThat(PartnerStatus.PENDING_REVIEW.isActiveForAuth()).isFalse();
+    }
+
+    @Test
+    void rejectsDuplicateKeycloakIssuer() {
+        String issuer = "https://auth.nubbank.test/realms/baas-partner-" + java.util.UUID.randomUUID();
+        orgRepo.saveAndFlush(PartnerOrganization.builder()
+            .name("Dup A").status(PartnerStatus.BASIC).tier(PartnerTier.BASIC)
+            .environment(PartnerEnvironment.PRODUCTION)
+            .schemaName("partner_" + java.util.UUID.randomUUID().toString().replace("-", ""))
+            .keycloakIssuer(issuer).contactEmail("dupa@test.com").build());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+            orgRepo.saveAndFlush(PartnerOrganization.builder()
+                .name("Dup B").status(PartnerStatus.BASIC).tier(PartnerTier.BASIC)
+                .environment(PartnerEnvironment.PRODUCTION)
+                .schemaName("partner_" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                .keycloakIssuer(issuer).contactEmail("dupb@test.com").build()))
+            .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 }
