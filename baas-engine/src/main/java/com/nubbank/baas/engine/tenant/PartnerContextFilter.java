@@ -10,12 +10,18 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -41,23 +47,41 @@ public class PartnerContextFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
         } finally {
             PartnerContext.clear();
-            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+            SecurityContextHolder.clearContext();
         }
     }
 
     private void populateAuthorities() {
         PartnerContext ctx = PartnerContext.get();
         if (ctx == null) return;
-        java.util.List<String> codes = switch (ctx.authMode()) {
-            case "OPERATOR_JWT" -> authorityResolver.operatorAuthorities(java.util.UUID.fromString(ctx.userId()));
-            default -> authorityResolver.fullTenantAuthorities(); // API_KEY, HMAC JWT
-        };
-        var authorities = codes.stream()
-            .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
-            .map(a -> (org.springframework.security.core.GrantedAuthority) a).toList();
-        var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-            ctx.userId() == null ? ctx.partnerId() : ctx.userId(), null, authorities);
-        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+
+        List<String> codes;
+        if ("OPERATOR_JWT".equals(ctx.authMode())) {
+            UUID operatorId;
+            try {
+                operatorId = UUID.fromString(ctx.userId());
+            } catch (IllegalArgumentException ex) {
+                // Operator subject is not a UUID — cannot map to user_roles. Fail closed:
+                // leave the SecurityContext empty so AuthEnforcementFilter returns 401.
+                log.warn("Operator JWT subject is not a valid UUID — denying request");
+                return;
+            }
+            codes = authorityResolver.operatorAuthorities(operatorId);
+        } else {
+            // First-party credentials (API_KEY, JWT) get full tenant authority.
+            // NOTE: any future authMode added here falls through to FULL authority by default —
+            // when introducing a new authMode, decide explicitly whether it belongs here or
+            // needs its own RBAC-scoped branch (see DEF-1C-15).
+            codes = authorityResolver.fullTenantAuthorities();
+        }
+
+        List<GrantedAuthority> authorities = codes.stream()
+            .map(SimpleGrantedAuthority::new)
+            .map(a -> (GrantedAuthority) a)
+            .toList();
+        String principal = ctx.userId() == null ? ctx.partnerId() : ctx.userId();
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken(principal, null, authorities));
     }
 
     private void resolveContext(HttpServletRequest request) {
