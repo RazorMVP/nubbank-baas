@@ -32,3 +32,10 @@ Foundation publishes these so parallel tracks build against stable shapes.
 - Admin JWTs carry NO `partner_id`; the admin-issuer (`app.keycloak.admin-issuer`) is recognised by
   `OperatorJwtResolver.isAdminIssuer(...)` and is rejected on the partner API (no PartnerContext set →
   401 via AuthEnforcementFilter).
+- NOTE for the Custodian track: `PartnerContextFilter`, `AuthEnforcementFilter`, and `RateLimitFilter` are
+  `@Component OncePerRequestFilter` beans, so Spring Boot auto-registers them at the servlet level IN ADDITION
+  to the explicit `addFilterBefore/After` wiring in the partner chain. This is benign with a single chain
+  (OncePerRequestFilter prevents double execution). When adding the `@Order(1)` admin chain, register a
+  `FilterRegistrationBean` with `setEnabled(false)` for these filters (or drop `@Component` and wire them only
+  via the chains) so servlet-level registration order cannot diverge from the security-chain order across two
+  chains.
