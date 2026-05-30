@@ -1,0 +1,5 @@
+fep:
+  hmac-secret: test-shared-secret-min-32-chars-long-okay
+  card:
+    base-url: http://localhost:0
+  tcp-port: 0

@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.nubbank.baas.fep.FepContextTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.156 s -- in com.nubbank.baas.fep.FepContextTest
