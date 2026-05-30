@@ -15,9 +15,31 @@ Foundation publishes these so parallel tracks build against stable shapes.
 
 ## 2. BIN-lookup contract (Card → FEP)
 - `baas-card` exposes `GET /internal/v1/bins/{bin}` (HMAC inter-service auth) →
-  `{ "partnerId": "<uuid>", "schemaName": "partner_<uuid>" }` or 404.
+  `{ "partnerId": "<uuid>", "schemaName": "partner_<uuid>" }` or 404. **Implemented by Track-Card** (Task 2).
 - `baas-fep` calls this after extracting DE2 PAN → 6/8-digit BIN; caches 5 min (Caffeine).
 - Unknown BIN → FEP returns ISO 8583 RC `91`, no PAN echo.
+- **BIN normalization (shared invariant — BOTH tracks MUST implement identically):** take the PAN's leading
+  digits, keep the first 8 (or fewer if the PAN is shorter), then **left-align and zero-pad to 8 chars**.
+  Card stores `bin_start`/`bin_end` in this normalized 8-char form and range-matches on it
+  (`BinService.normalize`); FEP normalizes the PAN the same way before lookup (`BinResolver.bin`). If either
+  side diverges, every lookup misses. Range match: `bin_start <= bin8 AND bin_end >= bin8 AND active`.
+
+## 2a. Card authorization-decision contract (FEP → Card)
+
+- `baas-card` exposes `POST /internal/v1/authorize` (HMAC inter-service auth). **Implemented by Track-Card**
+  (Task 6); **consumed by Track-FEP** (Task 6).
+- Request body (field-for-field identical on both sides — `AuthorizationDecisionRequest` on Card,
+  `AuthorizationDecision.Request` on FEP):
+  `{ "partnerId": "<uuid>", "schemaName": "partner_<uuid>", "pan": "<full PAN from DE2>",
+     "amountMinor": <long, minor units>, "currency": "<ISO 4217 numeric, e.g. 566>" }`.
+- Response body: `{ "decision": "APPROVE|DECLINE", "responseCode": "<ISO 8583 DE39>", "message": "<text>" }`.
+- Card resolves the card by **`pan_hash` = HMAC-SHA256(app.encryption.key, pan)** (the FEP holds only the PAN,
+  never a card id). RC mapping (Phase 1C stub): `00` approve · `56` no such card · `62` blocked/cancelled ·
+  `54` not usable (ISSUED/EXPIRED) · `61` exceeds per-txn limit. Balance check is a stub (always sufficient).
+- **PAN safety:** neither side logs the PAN; FEP omits DE2 from any unrouteable (`91`) response.
+- **Envelope:** both internal endpoints (§2 lookup + §2a authorize) return the standard `ApiResponse` envelope
+  `{ "data": {...}, "meta": {...}, "errors": null }`. The shapes above are the `data` payload — FEP's
+  `HttpCardClient` reads `.data`. (Stage-5 integration verifies this live; FEP unit tests mock `CardClient`.)
 
 ## 3. Admin namespace reservation (Custodian, Platform-Admin)
 - `/baas-admin/v1/**` is reserved for the NubBank admin chain.
