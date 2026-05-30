@@ -1,0 +1,37 @@
+spring:
+  datasource:
+    # url/username/password are injected at runtime by @DynamicPropertySource in
+    # AbstractCardIntegrationTest using the Testcontainers-managed postgres:16-alpine container.
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 60000
+  flyway:
+    enabled: true
+    # Public flyway runs BOTH card-public AND the engine-owned test-public stand-in,
+    # so the public.partner_organizations / partner_api_keys tables card READS exist
+    # in tests (card does not own their migration).
+    locations: classpath:db/migration/card-public,classpath:db/migration/test-public
+    schemas: public
+    default-schema: public
+    table: flyway_schema_history_card
+    baseline-on-migrate: true
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        multiTenancy: SCHEMA
+  # NOTE: no spring.autoconfigure.exclude block for Redis — baas-card removed
+  # spring-boot-starter-data-redis from the pom, so the RedisAutoConfiguration
+  # classes are NOT on the classpath. Listing them here would throw at startup.
+
+app:
+  jwt:
+    secret: test-secret-key-that-is-at-least-32-characters-long-for-hmac
+    expiry-hours: 1
+  encryption:
+    key: test-encryption-key-exactly-32c!
+  internal-service:
+    shared-secret: test-shared-secret-min-32-chars-long-okay

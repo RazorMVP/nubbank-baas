@@ -1,0 +1,7 @@
+-- Card tenant schema (partner_{uuid} / sandbox_{uuid}). Owned by baas-card.
+-- Runs under the card-specific Flyway history table (flyway_schema_history_card).
+--
+-- This single V1 migration is EXTENDED by later tasks with the full
+-- card_products, cards, and card_limits table definitions (Tasks 3-5).
+-- It must remain a single V1 file. Intentionally comment-only for Task 1 so the
+-- migration location is valid; Flyway accepts comment-only migrations.
