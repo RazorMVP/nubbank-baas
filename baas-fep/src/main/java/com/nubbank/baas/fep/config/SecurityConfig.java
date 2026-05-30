@@ -16,16 +16,21 @@ import org.springframework.security.web.SecurityFilterChain;
  *
  * Policy: permit /actuator/health/** for liveness/readiness probes;
  * deny everything else — including any accidentally-added endpoints.
+ *
+ * This chain is intentionally catch-all (no securityMatcher) so there is no
+ * fallthrough to Spring Boot's auto-configured default chain and the
+ * UserDetailsServiceAutoConfiguration generated-password warning is suppressed.
  */
 @Configuration
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain actuatorChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain fepChain(HttpSecurity http) throws Exception {
         http
-            .securityMatcher("/actuator/**")
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .formLogin(f -> f.disable())
+            .httpBasic(h -> h.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**").permitAll()
                 .anyRequest().denyAll()
