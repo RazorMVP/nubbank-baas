@@ -9,9 +9,9 @@
 
 | Sub-system | Status | Last Session |
 |------------|--------|-------------|
-| `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **97 tests passing**) | Session 4 (`5adeb10`); security baseline Session 5 |
+| `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**) | Session 8 (`1010ca9`) |
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
-| `baas-backoffice` — React | ⬜ Not started — Phase 1C next | — |
+| `baas-backoffice` — React | 🟡 In progress — Phase 1C Foundation (backend enablers) done Session 8; React app + remaining tracks pending | — |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
 | Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles for engine + ncube, `infrastructure/docker-compose.yml`, vanilla k8s manifests in `infrastructure/k8s/`, GHCR CI workflows) | Session 4 |
@@ -196,6 +196,58 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 8 — 2026-05-30
+**Phase 1C Foundation track — operator identity (Keycloak multi-issuer) + Hybrid RBAC + 30-role catalogue (`1010ca9`).**
+
+First track of Phase 1C. Adds the human-operator authentication/authorization foundation to `baas-engine`, layered **additively** over the existing HMAC partner-JWT + API-key path. Executed via subagent-driven development: 10 tasks, fresh implementer + spec-compliance review + code-quality review per task, plus a final holistic review (READY TO MERGE).
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-engine/pom.xml` | + `spring-boot-starter-oauth2-resource-server` (provides `NimbusJwtDecoder`) |
+| `partner/PartnerOrganization.java` + `PartnerOrganizationRepository.java` | + `keycloakIssuer` field/column + `findByKeycloakIssuer` |
+| `partner/PartnerStatus.java` | + `isActiveForAuth()` (SANDBOX/BASIC/PRO/ENTERPRISE true; SUSPENDED/PENDING_REVIEW false) |
+| `db/migration/public/V3__operator_identity.sql` | `keycloak_issuer` column + partial unique index |
+| `auth/keycloak/OperatorJwtProperties.java` | `app.keycloak.admin-issuer` config record |
+| `auth/keycloak/OperatorJwtDecoderFactory.java` + `JwksOperatorJwtDecoderFactory.java` | testable per-issuer JWKS decoder seam (cached) |
+| `auth/keycloak/OperatorJwtResolver.java` | Keycloak operator JWT → `PartnerContext` (allowlisted issuer, active-status gate, crypto-verified, fail-closed) |
+| `tenant/PartnerContextFilter.java` | branch on `iss` (admin→reject, operator→resolve, null→HMAC fallback); `populateAuthorities()`; clears both `PartnerContext` + `SecurityContextHolder` in `finally` |
+| `auth/AuthorityResolver.java` | operator → RBAC-scoped permission codes; first-party (API_KEY/JWT) → full tenant authority |
+| `role/UserRoleRepository.java` + `role/PermissionRepository.java` | `findPermissionCodesByUserId`, `findAllCodes` |
+| `config/MethodSecurityConfig.java` | `@EnableMethodSecurity` |
+| `customer/CustomerController.java` | `@PreAuthorize` CREATE_CUSTOMER / READ_CUSTOMER (demonstration) |
+| `common/GlobalExceptionHandler.java` | `AccessDeniedException` → 403 `ACCESS_DENIED` envelope |
+| `db/migration/tenant/V3__role_catalogue.sql` | 30 partner roles + core-role grants + maker-checker on `APPROVE_LOAN` |
+| `auth/OperatorProvisioningService.java` | `revokeAllGrants(sub)` (orphan-grant mitigation) |
+| `auth/KeycloakUserDirectory.java` + `StubKeycloakUserDirectory.java` + `auth/OperatorGrantReconciliationJob.java` | nightly reconciliation seam (no-op stub; live impl DEF-1C-17) |
+| `config/SecurityConfig.java` | partner chain scoped `@Order(2)` + `securityMatcher` (admin-chain readiness) |
+| `src/main/resources/application.yml` | `app.keycloak.admin-issuer` env placeholder |
+| `docs/deferred-items.md` | DEF-1C-01..19 registry (new) |
+| `docs/contracts/phase1c-interfaces.md` | operator-auth / BIN-lookup / admin-namespace contracts (new) |
+| 9 new test files | issuer lookup, decoder factory, operator JWT resolver (+ `TestJwks`), authority resolver, customer authz, role catalogue seed, operator provisioning |
+
+#### Key Decisions
+- **Operator auth is additive, not a replacement** — multi-issuer Keycloak validation branches on the JWT `iss`; legacy HMAC tokens have `iss=null` and fall through to `PartnerJwtService` unchanged.
+- **Authority boundary** — first-party partner credentials (API key, HMAC partner-login) get the FULL tenant authority set; delegated Keycloak operators get RBAC-scoped authorities from tenant-schema `user_roles`. Granular RBAC for HMAC users deferred (DEF-1C-15).
+- **Fail-closed everywhere** — non-UUID operator subject, unknown issuer, suspended/pending partner, expired/forged token → empty SecurityContext → 401; an admin-issuer token presented to the partner API gets no context (→401). The early `return` in the operator branch of `resolveJwt` is load-bearing: a known-issuer token that fails crypto must NOT fall through to the HMAC verifier.
+- **Method security demonstrated on `CustomerController` only**; per-module `@PreAuthorize` rollout deferred (DEF-1C-16). `AccessDeniedException`→403 envelope reaches `@ControllerAdvice` (not `ExceptionTranslationFilter`) because the chain uses `anyRequest().permitAll()` — verified by a response-body assertion.
+- **30-role catalogue** seeded per tenant schema (tenant `V3`); 12 core roles granted from the 13 V2 permissions; the `PARTNER_ADMIN` CROSS JOIN is bounded to V1–V2 permissions (future permission migrations must extend it — DEF-1C-16).
+- **SecurityConfig** scoped (`@Order(2)` + `securityMatcher`) so the Custodian track can add an `@Order(1)` `/baas-admin/v1/**` chain without conflict.
+
+#### Build Verification
+Tests run: 111, Failures: 0, Errors: 0 — BUILD SUCCESS
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.0 | `1010ca9` |
+| Java | 21 | `1010ca9` |
+| Spring Security | 6.5.x (+ `spring-boot-starter-oauth2-resource-server` → `NimbusJwtDecoder` for Keycloak operator JWTs) | `1010ca9` |
+| Nimbus JOSE+JWT | 9.x | `1010ca9` |
+| Last git commit | `1010ca9` | Session 8 — Phase 1C Foundation; 111 tests passing |
 
 ### Session 7 — 2026-05-17
 **Introduce opt-in Expert Review + Phase-Gate Review pattern; unwind per-session enforcement and CI mirror.**

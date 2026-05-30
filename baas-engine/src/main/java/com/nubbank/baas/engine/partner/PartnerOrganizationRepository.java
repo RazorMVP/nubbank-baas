@@ -7,4 +7,5 @@ import java.util.UUID;
 public interface PartnerOrganizationRepository extends JpaRepository<PartnerOrganization, UUID> {
     Optional<PartnerOrganization> findBySchemaName(String schemaName);
     boolean existsByName(String name);
+    Optional<PartnerOrganization> findByKeycloakIssuer(String keycloakIssuer);
 }

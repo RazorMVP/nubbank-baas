@@ -51,6 +51,12 @@ app:
     basic-rpm: 100
     pro-rpm: 500
     enterprise-rpm: 2000
+  keycloak:
+    # NubBank admin (staff) realm issuer URL. Set in production via env var.
+    # When unset, admin tokens simply resolve to UNKNOWN_ISSUER -> 401 (still secure);
+    # setting it activates the dedicated admin-issuer rejection branch in OperatorJwtResolver
+    # and is REQUIRED before the Custodian admin chain (/baas-admin/v1/**) is introduced.
+    admin-issuer: ${KEYCLOAK_ADMIN_ISSUER:}
 
 management:
   endpoints:

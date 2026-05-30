@@ -35,6 +35,9 @@ public class PartnerOrganization {
     @Column(length = 500)
     private String website;
 
+    @Column(name = "keycloak_issuer", length = 500)
+    private String keycloakIssuer;
+
     @Column(name = "contact_email", length = 255)
     private String contactEmail;
 

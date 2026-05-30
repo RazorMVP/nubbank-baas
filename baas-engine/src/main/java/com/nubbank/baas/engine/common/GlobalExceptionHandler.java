@@ -1,7 +1,9 @@
 package com.nubbank.baas.engine.common;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -25,6 +27,12 @@ public class GlobalExceptionHandler {
             .orElse(new FieldError("unknown", "unknown", "Validation failed"));
         return ResponseEntity.badRequest()
             .body(ApiResponse.fieldError("VALIDATION_ERROR", first.getDefaultMessage(), first.getField()));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiResponse.error("ACCESS_DENIED", "Insufficient permissions"));
     }
 
     @ExceptionHandler(Exception.class)
