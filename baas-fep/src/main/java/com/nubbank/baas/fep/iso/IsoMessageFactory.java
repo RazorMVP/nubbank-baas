@@ -47,8 +47,13 @@ public class IsoMessageFactory {
 
     /**
      * Pack the message to its wire-format byte array.
+     * <p>
+     * This factory's packager is always (re)applied before packing, overriding any
+     * packager the caller set, to prevent cross-factory packing bugs where an
+     * {@link ISOMsg} created by a different factory or packager would otherwise be
+     * packed with incompatible field definitions.
      *
-     * @param m message to pack (packager is set/overridden to the factory packager)
+     * @param m message to pack
      * @return packed bytes
      */
     public byte[] pack(ISOMsg m) {
