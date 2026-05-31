@@ -28,9 +28,9 @@ public class CardClientConfig {
     @Bean(name = "cardRestTemplate")
     public RestTemplate cardRestTemplate(RestTemplateBuilder builder, FepProperties fepProperties) {
         String secret = fepProperties.hmacSecret();
-        if (secret == null || secret.length() < 32) {
+        if (secret.length() < 32) {
             throw new IllegalStateException(
-                "fep.hmac-secret must be set and be at least 32 characters long");
+                "fep.hmac-secret must be at least 32 characters");
         }
         return builder
             .connectTimeout(Duration.ofSeconds(3))

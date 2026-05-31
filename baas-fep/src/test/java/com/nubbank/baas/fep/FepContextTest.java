@@ -1,9 +1,11 @@
 package com.nubbank.baas.fep;
 
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -16,6 +18,7 @@ class FepContextTest {
     @Test
     void healthReady() {
         var r = rest.getForEntity("/actuator/health/readiness", String.class);
-        org.assertj.core.api.Assertions.assertThat(r.getStatusCode().is2xxSuccessful()).isTrue();
+        Assertions.assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Assertions.assertThat(r.getBody()).contains("UP");
     }
 }
