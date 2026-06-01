@@ -29,9 +29,26 @@ public class PanHasher {
 
     private static final String HMAC_ALGO = "HmacSHA256";
 
+    /**
+     * Minimum acceptable length (in chars) for the configured HMAC key. A blank or
+     * trivially short key would silently weaken the deterministic {@code pan_hash}
+     * fingerprint the frozen authorize contract relies on, so we fail fast at startup.
+     */
+    private static final int MIN_KEY_LENGTH = 16;
+
     private final byte[] keyBytes;
 
     public PanHasher(@Value("${app.encryption.key}") String configuredKey) {
+        if (configuredKey == null || configuredKey.isBlank()) {
+            throw new IllegalStateException(
+                "app.encryption.key must be configured for PAN hashing — it is null or blank");
+        }
+        if (configuredKey.length() < MIN_KEY_LENGTH) {
+            // Never include the key value in the message.
+            throw new IllegalStateException(
+                "app.encryption.key is too short for PAN hashing — must be at least "
+                    + MIN_KEY_LENGTH + " characters");
+        }
         this.keyBytes = configuredKey.getBytes(StandardCharsets.UTF_8);
     }
 
