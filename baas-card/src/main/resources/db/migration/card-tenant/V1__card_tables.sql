@@ -21,3 +21,27 @@ CREATE TABLE IF NOT EXISTS card_products (
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
+
+-- Task 4 — issued cards. TENANT table (NO partner_id; the schema is the boundary).
+-- Columns match the Card entity exactly (snake_case).
+--
+-- PAN SAFETY: the full PAN lives ONLY in pan_encrypted (AES-GCM via FieldEncryptor).
+-- pan_hash is the deterministic HMAC-SHA256(app.encryption.key, full PAN) hex
+-- fingerprint — UNIQUE within this schema (prevents duplicate cards) and the lookup
+-- key Task 6's authorize resolves a card by. The UNIQUE constraint already creates
+-- the index used by findByPanHash, so no separate index is needed.
+CREATE TABLE IF NOT EXISTS cards (
+    id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id    UUID          NOT NULL,
+    customer_ref  VARCHAR(100),
+    pan_encrypted VARCHAR(500)  NOT NULL,
+    pan_hash      VARCHAR(64)   NOT NULL UNIQUE,
+    pan_last4     VARCHAR(4)    NOT NULL,
+    bin           VARCHAR(8)    NOT NULL,
+    expiry_ym     VARCHAR(4)    NOT NULL,
+    status        VARCHAR(20)   NOT NULL,
+    virtual       BOOLEAN       NOT NULL,
+    version       BIGINT        NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
