@@ -49,7 +49,7 @@ public class MessageRouter {
             case "0200" -> financialHandler.handle(req);
             case "0400" -> reversalHandler.handle(req);
             case "0800" -> networkHandler.handle(req);
-            default     -> error(req, "30");   // format error / unsupported MTI
+            default     -> error(mti, "30");   // format error / unsupported MTI
         };
     }
 
@@ -70,14 +70,15 @@ public class MessageRouter {
     // ── Private helpers ──────────────────────────────────────────────────────
 
     /**
-     * Build an error response for a given request with the specified response code.
+     * Build an error response for the given (already-extracted) request MTI with the
+     * specified response code.
      *
-     * @param req the original request (used to derive the response MTI)
-     * @param rc  ISO 8583 response code, e.g. {@code "30"}
+     * @param reqMti the 4-character request MTI, already extracted by the caller
+     * @param rc     ISO 8583 response code, e.g. {@code "30"}
      * @return a response message with DE39 set to {@code rc}
      */
-    private ISOMsg error(ISOMsg req, String rc) {
-        ISOMsg m = iso.create(responseMti(mti(req)));
+    private ISOMsg error(String reqMti, String rc) {
+        ISOMsg m = iso.create(responseMti(reqMti));
         set(m, IsoField.RESPONSE_CODE, rc);
         return m;
     }
