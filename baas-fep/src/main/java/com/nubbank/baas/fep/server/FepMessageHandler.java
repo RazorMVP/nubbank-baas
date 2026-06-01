@@ -47,17 +47,18 @@ public class FepMessageHandler extends SimpleChannelInboundHandler<ByteBuf> {
         in.readBytes(raw);
 
         // NOTE: do NOT log 'raw' — it contains the full ISO 8583 frame including the PAN.
-        ISOMsg response;
+        byte[] out;
         try {
             ISOMsg request = iso.unpack(raw);
-            response = router.route(request);
+            ISOMsg response = router.route(request);
+            out = iso.pack(response);
         } catch (Exception e) {
             // Log only the exception message — never the raw bytes or any ISO field.
             log.warn("FEP processing error: {}", e.getMessage());
-            response = router.systemError();
+            out = iso.pack(router.systemError());
         }
 
-        ctx.writeAndFlush(Unpooled.wrappedBuffer(iso.pack(response)));
+        ctx.writeAndFlush(Unpooled.wrappedBuffer(out));
     }
 
     @Override

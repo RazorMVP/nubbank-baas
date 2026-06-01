@@ -64,13 +64,16 @@ public class FepTcpServer {
      * ephemeral port; this method reflects the real bound port after {@link #start()}.
      */
     public int getBoundPort() {
+        if (channel == null || channel.localAddress() == null) {
+            throw new IllegalStateException("FEP TCP server is not bound");
+        }
         return ((InetSocketAddress) channel.localAddress()).getPort();
     }
 
     @PreDestroy
     public void stop() {
         if (channel != null) {
-            channel.close();
+            channel.close().syncUninterruptibly();
         }
         if (boss != null) {
             boss.shutdownGracefully();
