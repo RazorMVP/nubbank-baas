@@ -9,14 +9,17 @@ import org.springframework.stereotype.Component;
 /**
  * Handles ISO 8583 Reversal Requests (MTI {@code 0400}).
  *
- * <p><strong>STUB — full reversal flow implemented in Task 6. Returns RC 96
- * (system error / not-yet-implemented) as a placeholder.</strong>
+ * <p><strong>Phase 1C STUB — approve all reversals.</strong>
+ * Real reversal matching (find the original authorization by STAN/RRN, reverse the
+ * balance hold, and post a reversal GL entry) is deferred to Phase 2 (DEF-1C-25).
  *
- * <p>This stub depends only on {@link IsoMessageFactory}.  Do NOT add BinResolver,
- * CardClient, or any other Task-5/6 dependencies here — those arrive when this class
- * is rewritten in the appropriate task.
+ * <p>Note: DE90 (Original Data Elements) is NOT defined in the Phase-1C packager
+ * ({@code iso8583-1987-fields.xml} covers DE1–DE70 only).  DE90 is therefore not
+ * read from the request and not set on the response — that processing belongs to
+ * Phase 2 along with the full reversal-matching logic.
  *
- * <p><strong>PAN safety:</strong> this stub never logs any field values.
+ * <p><strong>PAN safety:</strong> this handler never reads or logs any field values
+ * that could contain a PAN.  DE2 is not touched.
  */
 @Component
 @RequiredArgsConstructor
@@ -25,16 +28,25 @@ public class ReversalHandler {
     private final IsoMessageFactory iso;
 
     /**
-     * STUB — full reversal flow implemented in Task 6. Returns RC 96 placeholder.
+     * Handle an incoming ISO 8583 reversal request.
+     *
+     * <p>STUB approve — real reversal (match + reverse original, DE90) deferred to
+     * Phase 2 (DEF-1C-25).
      *
      * @param req the incoming 0400 reversal request
-     * @return a 0410 response with RC 96 (not yet implemented)
+     * @return a 0410 response with RC {@code "00"} (approved) and echoed STAN / TRANSMISSION_DTS
      */
     public ISOMsg handle(ISOMsg req) {
-        // STUB — full reversal flow implemented in Task 6. Placeholder RC 96.
+        // STUB approve — real reversal (match + reverse original, DE90) deferred to Phase 2 (DEF-1C-25).
         ISOMsg resp = iso.create(MessageRouter.responseMti(MessageRouter.mti(req)));
-        // NOTE: set(int, String) does NOT declare ISOException — no try/catch needed.
-        resp.set(IsoField.RESPONSE_CODE, "96");
+        if (req.hasField(IsoField.STAN)) {
+            resp.set(IsoField.STAN, req.getString(IsoField.STAN));
+        }
+        if (req.hasField(IsoField.TRANSMISSION_DTS)) {
+            resp.set(IsoField.TRANSMISSION_DTS, req.getString(IsoField.TRANSMISSION_DTS));
+        }
+        // STUB approve — real reversal deferred to Phase 2 (DEF-1C-25)
+        resp.set(IsoField.RESPONSE_CODE, "00");
         return resp;
     }
 }
