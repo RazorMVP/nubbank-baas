@@ -45,3 +45,19 @@ CREATE TABLE IF NOT EXISTS cards (
     created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
+
+-- Task 5 — per-card limits. TENANT table (NO partner_id; the schema is the boundary).
+-- Columns match the CardLimit entity exactly (snake_case; money = NUMERIC(19,4)).
+-- card_id UNIQUE enforces one-limit-row-per-card and backstops the find-or-create
+-- upsert. All four amounts are nullable — a null amount means "no limit" (unlimited).
+-- (No created_at column by design — updated_at is set on prePersist + preUpdate.)
+CREATE TABLE IF NOT EXISTS card_limits (
+    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    card_id          UUID         NOT NULL UNIQUE,
+    daily_purchase   NUMERIC(19,4),
+    daily_withdrawal NUMERIC(19,4),
+    per_txn          NUMERIC(19,4),
+    monthly          NUMERIC(19,4),
+    version          BIGINT       NOT NULL DEFAULT 0,
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
+);

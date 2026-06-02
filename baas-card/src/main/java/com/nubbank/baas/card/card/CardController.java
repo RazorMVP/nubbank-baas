@@ -3,6 +3,9 @@ package com.nubbank.baas.card.card;
 import com.nubbank.baas.card.card.dto.CardResponse;
 import com.nubbank.baas.card.card.dto.IssueCardRequest;
 import com.nubbank.baas.card.common.ApiResponse;
+import com.nubbank.baas.card.limit.CardLimitService;
+import com.nubbank.baas.card.limit.dto.CardLimitResponse;
+import com.nubbank.baas.card.limit.dto.UpdateCardLimitsRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,6 +32,7 @@ import java.util.UUID;
 public class CardController {
 
     private final CardService cardService;
+    private final CardLimitService cardLimitService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<CardResponse>> issue(
@@ -47,5 +51,19 @@ public class CardController {
             @PathVariable UUID id,
             @RequestParam String command) {
         return ResponseEntity.ok(ApiResponse.ok(cardService.executeCommand(id, command)));
+    }
+
+    // ---- per-card limits (delegated to CardLimitService) ----
+
+    @PutMapping("/{id}/limits")
+    public ResponseEntity<ApiResponse<CardLimitResponse>> updateLimits(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateCardLimitsRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(cardLimitService.updateLimits(id, request)));
+    }
+
+    @GetMapping("/{id}/limits")
+    public ResponseEntity<ApiResponse<CardLimitResponse>> getLimits(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(cardLimitService.getLimits(id)));
     }
 }
