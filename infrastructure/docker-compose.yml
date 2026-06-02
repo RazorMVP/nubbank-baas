@@ -1,6 +1,6 @@
 # NubBank BaaS — local / on-prem development stack.
 #
-# Spins up: PostgreSQL 16 + baas-engine + baas-ncube.
+# Spins up: PostgreSQL 16 + baas-engine + baas-ncube + baas-fep.
 #
 # Usage:
 #   cd infrastructure
@@ -81,6 +81,33 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
     ports:
       - "${BAAS_NCUBE_PORT:-8082}:8082"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/actuator/health/readiness"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  baas-fep:
+    build:
+      context: ../baas-fep
+      dockerfile: Dockerfile
+    image: baas-fep:local
+    restart: unless-stopped
+    # Enabled at Stage 5 when Track-Card's baas-card block merges into this file:
+    # depends_on:
+    #   baas-card:
+    #     condition: service_started
+    environment:
+      CARD_BASE_URL: http://baas-card:8081
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      # Container listen port — kept in lockstep with the published host port below
+      # so overriding BAAS_FEP_TCP_PORT moves both ends together.
+      FEP_TCP_PORT: ${BAAS_FEP_TCP_PORT:-8583}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+    ports:
+      - "${BAAS_FEP_HTTP_PORT:-8083}:8082"
+      - "${BAAS_FEP_TCP_PORT:-8583}:${BAAS_FEP_TCP_PORT:-8583}"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/actuator/health/readiness"]
       interval: 30s

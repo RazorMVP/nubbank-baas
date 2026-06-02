@@ -30,7 +30,11 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests package
 
 # ─── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre-alpine@sha256:704db3c40204a44f471191446ddd9cda5d60dab40f0e15c6507b815ed897238b
-# Apply latest Alpine package patches before installing curl.
+# Apply latest Alpine package patches before installing curl. The base-image
+# digest already points to the freshest published manifest, but `apk upgrade`
+# pulls any out-of-band CVE patches that landed in the Alpine repo since the
+# image was published — closes residual base-OS CVEs Trivy flags against the
+# image filesystem (e.g. busybox/openssl/sqlite advisories).
 RUN apk upgrade --no-cache && \
     apk add --no-cache curl && \
     addgroup -S app && adduser -S app -G app
