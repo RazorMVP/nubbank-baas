@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NubBank BaaS — Card API Reference</title>
+<style>
+  :root {
+    --ink: #11161c;
+    --muted: #5b6776;
+    --line: #e2e8f0;
+    --accent: #1e2833;
+    --bg: #ffffff;
+    --code-bg: #f5f7fa;
+    --get: #1b873f;
+    --post: #b15c00;
+    --put: #1f5fb5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.55;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+  header.page { border-bottom: 2px solid var(--accent); padding-bottom: 1.25rem; margin-bottom: 1.5rem; }
+  header.page h1 { margin: 0 0 .25rem; font-size: 1.85rem; }
+  header.page .sub { color: var(--muted); font-size: .95rem; }
+  h2 { margin-top: 2.75rem; font-size: 1.35rem; border-bottom: 1px solid var(--line); padding-bottom: .4rem; }
+  h3 { margin-top: 1.75rem; font-size: 1.05rem; }
+  p { margin: .6rem 0; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code { background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px; font-size: .87em; }
+  pre { background: var(--code-bg); padding: .9rem 1rem; border-radius: 6px; overflow-x: auto; font-size: .82rem; border: 1px solid var(--line); }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; vertical-align: top; padding: .55rem .7rem; border-bottom: 1px solid var(--line); }
+  th { background: #f8fafc; font-weight: 600; }
+  .m { font-weight: 700; font-size: .78rem; letter-spacing: .03em; }
+  .m.get { color: var(--get); }
+  .m.post { color: var(--post); }
+  .m.put { color: var(--put); }
+  .path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85rem; }
+  .note { background: #fff8e6; border: 1px solid #f0d98a; border-radius: 6px; padding: .75rem 1rem; margin: 1rem 0; font-size: .9rem; }
+  .note strong { color: #8a5d00; }
+  .callout { background: #eef4fb; border: 1px solid #c7ddf2; border-radius: 6px; padding: .75rem 1rem; margin: 1rem 0; font-size: .9rem; }
+  ul { margin: .5rem 0; padding-left: 1.3rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <h1>NubBank BaaS — Card API Reference</h1>
+  <div class="sub">Service <code>baas-card</code> · Phase 1C Track-Card · Card spine: products, issuance &amp; lifecycle, per-card limits, BIN ranges</div>
+</header>
+
+<section id="intro">
+  <h2>Overview</h2>
+  <p>The Card API lets partners issue and manage card products and cards. All partner-facing endpoints are served under the base path <code>/baas/v1</code>.</p>
+
+  <h3>Authentication</h3>
+  <p>Every partner request must carry one of the following credentials. Both resolve to full tenant authority in Phase 1C (operator-JWT RBAC on card endpoints is deferred).</p>
+  <ul>
+    <li><strong>Partner JWT (HMAC-SHA256):</strong> <code>Authorization: Bearer &lt;jwt&gt;</code></li>
+    <li><strong>API key:</strong> <code>Authorization: ApiKey &lt;key&gt;</code></li>
+  </ul>
+
+  <h3>Response envelope</h3>
+  <p>Every response uses the standard envelope:</p>
+  <pre>{
+  "data":   { ... },     // resource payload (or null on error)
+  "meta":   { ... },     // pagination / metadata
+  "errors": [ ... ]      // array of { code, message } on failure
+}</pre>
+  <div class="note"><strong>PAN safety:</strong> a card's full Primary Account Number (PAN) is never returned by any endpoint and is never logged. Card responses expose <code>maskedPan</code> only; the PAN is stored AES-GCM encrypted at rest.</div>
+</section>
+
+<section id="card-products">
+  <h2>Card Products</h2>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/card-products</span></td>
+        <td>Create a card product. Returns <code>201</code>.</td>
+        <td>
+          <strong>Request</strong> <code>CreateCardProductRequest</code>:
+          <pre>{
+  "name": "Virtual Debit",
+  "cardType": "DEBIT",
+  "currency": "NGN",        // 3-letter ISO 4217
+  "binStart": "50677500",   // optional
+  "defaultDailyLimit": 500000  // optional
+}</pre>
+          <strong>Response</strong> <code>CardProductResponse</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;", "name": "Virtual Debit", "cardType": "DEBIT",
+  "currency": "NGN", "binStart": "50677500",
+  "defaultDailyLimit": 500000, "active": true,
+  "createdAt": "&lt;timestamp&gt;"
+}</pre>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/card-products</span></td>
+        <td>List card products. Returns <code>200</code>.</td>
+        <td><strong>Response</strong>: array of <code>CardProductResponse</code> (shape above).</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="cards">
+  <h2>Cards</h2>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/cards</span></td>
+        <td>Issue a card against a product. Returns <code>201</code>.</td>
+        <td>
+          <strong>Request</strong> <code>IssueCardRequest</code>:
+          <pre>{
+  "productId": "&lt;uuid&gt;",
+  "customerRef": "cust-001",  // optional
+  "virtual": true
+}</pre>
+          <strong>Response</strong> <code>CardResponse</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;", "productId": "&lt;uuid&gt;",
+  "customerRef": "cust-001", "maskedPan": "506775******1234",
+  "expiryYm": "2906", "status": "ISSUED",
+  "virtual": true, "createdAt": "&lt;timestamp&gt;"
+}</pre>
+          <em>maskedPan only — never the raw PAN.</em>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/cards</span></td>
+        <td>List cards. Returns <code>200</code>.</td>
+        <td><strong>Response</strong>: array of <code>CardResponse</code> (shape above).</td>
+      </tr>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/cards/{id}?command={activate|block|unblock|cancel}</span></td>
+        <td>Drive a lifecycle state-machine transition on the card. Returns <code>200</code>.</td>
+        <td><strong>Response</strong>: updated <code>CardResponse</code> with the new <code>status</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="card-limits">
+  <h2>Card Limits</h2>
+  <p>Per-card spending limits. A card with no limit row set is treated as <strong>unlimited</strong> (the limits view returns all-null in that case).</p>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m put">PUT</span><br><span class="path">/baas/v1/cards/{id}/limits</span></td>
+        <td>Set / update per-card limits. Returns <code>200</code>.</td>
+        <td>
+          <strong>Request</strong> <code>UpdateCardLimitsRequest</code> (all optional):
+          <pre>{
+  "dailyPurchase": 1000000,
+  "dailyWithdrawal": 500000,
+  "perTxn": 200000,
+  "monthly": 10000000
+}</pre>
+          <strong>Response</strong> <code>CardLimitResponse</code>:
+          <pre>{
+  "cardId": "&lt;uuid&gt;", "dailyPurchase": 1000000,
+  "dailyWithdrawal": 500000, "perTxn": 200000,
+  "monthly": 10000000, "updatedAt": "&lt;timestamp&gt;"
+}</pre>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/cards/{id}/limits</span></td>
+        <td>Read the current limits. Returns <code>200</code>.</td>
+        <td><strong>Response</strong>: <code>CardLimitResponse</code> (all-null fields = unlimited).</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="bin-ranges">
+  <h2>BIN Ranges</h2>
+  <p>Bank Identification Number ranges used to route card transactions to the owning partner. BIN values are normalized left-aligned and zero-padded to 8 characters.</p>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/bins</span></td>
+        <td>Register a BIN range. Returns <code>201</code>.</td>
+        <td>
+          <strong>Request</strong> <code>RegisterBinRangeRequest</code>:
+          <pre>{
+  "binStart": "50677500",
+  "binEnd": "50677599",
+  "scheme": "VERVE"   // optional
+}</pre>
+          <strong>Response</strong> <code>BinRangeResponse</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;", "binStart": "50677500",
+  "binEnd": "50677599", "scheme": "VERVE", "active": true
+}</pre>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/bins</span></td>
+        <td>List registered BIN ranges. Returns <code>200</code>.</td>
+        <td><strong>Response</strong>: array of <code>BinRangeResponse</code> (shape above).</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="internal">
+  <h2>Internal (service-to-service)</h2>
+  <p>These endpoints are <strong>not</strong> partner-facing. They are authenticated with body-signed HMAC (<code>InternalServiceAuthFilter</code>) and carry no partner context. They are consumed by Track-FEP and both shapes are frozen in the cross-track interface contract.</p>
+
+  <h3>BIN lookup (contract §2)</h3>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/internal/v1/bins/{bin}</span></td>
+        <td>Resolve a BIN to its owning partner/schema. Returns <code>200</code> or <code>404 BIN_NOT_FOUND</code>. Runs tenant-less (BIN table is public-schema).</td>
+        <td>
+          <code>ApiResponse&lt;BinLookupResponse&gt;</code>, <code>data</code>:
+          <pre>{
+  "partnerId": "&lt;uuid&gt;",
+  "schemaName": "partner_&lt;uuid&gt;"
+}</pre>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Authorization decision (contract §2a)</h3>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/internal/v1/authorize</span></td>
+        <td>Authorize a transaction for a card. Returns <code>200</code>. Card resolves the card by <code>pan_hash = HMAC-SHA256(app.encryption.key, pan)</code>.</td>
+        <td>
+          <strong>Request</strong> <code>AuthorizationDecisionRequest</code>:
+          <pre>{
+  "partnerId": "&lt;uuid&gt;",
+  "schemaName": "partner_&lt;uuid&gt;",
+  "pan": "&lt;full PAN from DE2&gt;",
+  "amountMinor": 50000,        // long, minor units
+  "currency": "566"            // ISO 4217 numeric
+}</pre>
+          <strong>Response</strong> <code>ApiResponse&lt;AuthorizationDecisionResponse&gt;</code>, <code>data</code>:
+          <pre>{
+  "decision": "APPROVE",       // APPROVE | DECLINE
+  "responseCode": "00",        // ISO 8583 DE39
+  "message": "approved"
+}</pre>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Response-code mapping (Phase 1C stub)</h3>
+  <table>
+    <thead><tr><th>RC (DE39)</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>00</code></td><td>Approve</td></tr>
+      <tr><td><code>56</code></td><td>No such card</td></tr>
+      <tr><td><code>62</code></td><td>Card blocked / cancelled</td></tr>
+      <tr><td><code>54</code></td><td>Card not usable (ISSUED / EXPIRED)</td></tr>
+      <tr><td><code>61</code></td><td>Exceeds per-transaction limit</td></tr>
+    </tbody>
+  </table>
+  <div class="callout">The balance check is a Phase 1C stub — always sufficient (deferred: real balance check via baas-engine, DEF-1C-23).</div>
+  <div class="note"><strong>PAN safety:</strong> the authorization decision stub logs only the resulting decision and response code — never the PAN, card id, or any cardholder data.</div>
+</section>
+
+<footer>
+  NubBank BaaS · Card API Reference · generated Session 9 (2026-06-02). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2 and §2a).
+</footer>
+
+</div>
+</body>
+</html>

@@ -11,6 +11,7 @@
 |------------|--------|-------------|
 | `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**) | Session 8 (`1010ca9`) |
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
+| `baas-card` — Phase 1C Track-Card | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize stub; 56 tests) | Session 9 (`6fdd270`) |
 | `baas-backoffice` — React | 🟡 In progress — Phase 1C Foundation (backend enablers) done Session 8; React app + remaining tracks pending | — |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
@@ -196,6 +197,56 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 9 — 2026-06-02
+**Phase 1C Track-Card — `baas-card` card spine (products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize stub) — 56 tests (`6fdd270`).**
+
+New standalone microservice `baas-card` (port 8081), built on the same shared PostgreSQL as `baas-engine` with Hibernate SCHEMA multi-tenancy. Card-owned tables migrate under a dedicated Flyway history table (`flyway_schema_history_card`) so card and engine never collide on the shared DB. Tasks 1–7 (the entire service) implemented and committed across 78 files / 5171 insertions from base `b40da63`; this session is the documentation/gate close-out.
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-card/pom.xml`, `CardApplication.java` | Spring Boot 3.5.3 scaffold; port 8081; oauth2-resource-server present |
+| `tenant/*` | Ported multi-tenancy (`PartnerContext`, `SchemaProvider`, `MultiTenantConnectionProvider`); card's own `TenantProvisioningService` for self-provisioning tests |
+| `auth/*` | `PartnerJwtService` (HMAC partner JWT) + `ApiKeyResolver`; `InternalServiceAuthFilter` (inbound HMAC validate for `/internal/v1/**`) |
+| `partner/*` | Read-views over engine-owned `public.partner_organizations` + `public.partner_api_keys` (decoupling deferred DEF-1C-21) |
+| `config/*` | `SecurityConfig` (first-party partner JWT + API key chain; operator-JWT RBAC deferred DEF-1C-20); `FieldEncryptor` (ported AES-GCM-256) |
+| `common/*` | Ported `ApiResponse` envelope `{ data, meta, errors }`, `BaasException`, `GlobalExceptionHandler` |
+| `bin/*` | `CardBinRange` (`@Table(schema="public")`), `BinService` (8-char normalized range match), partner CRUD + internal `GET /internal/v1/bins/{bin}` lookup |
+| `product/*` | `CardProduct` (tenant), product CRUD; race-safe creation constraint |
+| `card/*` | `Card` (tenant; PAN AES-GCM encrypted, `pan_hash` HMAC-SHA256, masked responses), issuance + lifecycle state machine (`activate`/`block`/`unblock`/`cancel`) |
+| `limit/*` | `CardLimit` (tenant); per-card limit upsert + view (all-null = unlimited) |
+| `authorize/*` | Internal `POST /internal/v1/authorize` decision stub; ISO-8583 RC mapping; `PartnerContext` set-from-`schemaName` then cleared in `finally` |
+| `resources/db/migration/card-public/`, `card-tenant/` | Public BIN-range migration + tenant card-table migrations (`flyway_schema_history_card`) |
+| `resources/application.yml` | Port 8081; shared datasource; `spring.flyway.table: flyway_schema_history_card` |
+| 9 test classes | `PanHasherTest`, `CardLifecycleTest`, `CardLimitTest`, `BinRegistrationTest`, `BinLookupTest`, `CardProductTest`, `CardProductConstraintRaceTest`, `CardApplicationContextTest`, `AuthorizationDecisionTest` |
+| `Dockerfile`, `infrastructure/docker-compose.yml`, GHCR CI workflow | Container build + compose block + CI |
+| `docs/deferred-items.md` | DEF-1C-20..23 registry rows (Track-Card) |
+| `docs/api-reference.html` | New partner-facing card API reference (this session) |
+
+#### Key Decisions
+1. **Public-schema BIN table** — `CardBinRange` is `@Table(schema="public", name="card_bin_ranges")` because the FEP BIN lookup is cross-tenant: it runs *before* a tenant is known (null `PartnerContext` → public fallback reaches the table). All other card entities (`Card`, `CardLimit`, `CardProduct`) have **no** `@Table(schema=...)` so Hibernate routes them to the partner schema.
+2. **Card-specific Flyway history** — card-owned tables migrate under `flyway_schema_history_card` (config `spring.flyway.table`), so card and engine never collide on the default `flyway_schema_history`. Public migrations in `db/migration/card-public/`, tenant migrations in `db/migration/card-tenant/`.
+3. **First-party-only auth in 1C** — `/baas/v1/**` accepts partner JWT (HMAC) + API key only → full tenant authority (contract §1). Operator-JWT/Keycloak RBAC on card endpoints is DEFERRED (DEF-1C-20). Card reads engine-owned `public.partner_organizations` + `public.partner_api_keys` for auth; decoupling deferred (DEF-1C-21).
+4. **Stateless internal decision-stub context discipline** — the FEP is a tenant-less caller; `AuthorizationDecisionService.decide()` does `PartnerContext.set(...)` from the request's `schemaName` and ALWAYS clears it in `finally` — a leaked ThreadLocal would route the next pooled-thread request to the wrong tenant schema.
+5. **PAN safety** — PAN stored AES-GCM encrypted via ported `FieldEncryptor`; responses expose `maskedPan` only; the PAN is never logged anywhere (the decision stub logs only the decision + responseCode).
+6. **Card tests self-provision** — card's integration tests provision their own tenant schema via card's `TenantProvisioningService` (engine→card provisioning trigger deferred DEF-1C-22).
+
+#### Build Verification
+Tests run: 56, Failures: 0, Errors: 0 — BUILD SUCCESS
+
+#### Confirmed Platform Versions
+
+**BaaS Card (`baas-card/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.3 | `6fdd270` |
+| Java | 21 | `6fdd270` |
+| Spring Security | 6.x (oauth2-resource-server present; operator-JWT RBAC deferred DEF-1C-20) | `6fdd270` |
+| Nimbus JOSE+JWT | 9.x (HMAC partner JWT) | `6fdd270` |
+| Flyway | 10.x (history table `flyway_schema_history_card`) | `6fdd270` |
+| Testcontainers | PostgreSQL 16 in integration tests | `6fdd270` |
+| Last git commit | `6fdd270` | Session 9 — Phase 1C Track-Card; 56 tests passing (+ this docs commit) |
 
 ### Session 8 — 2026-05-30
 **Phase 1C Foundation track — operator identity (Keycloak multi-issuer) + Hybrid RBAC + 30-role catalogue (`1010ca9`).**

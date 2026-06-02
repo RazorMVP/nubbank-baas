@@ -338,6 +338,20 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **CBN vendor media type** | `application/vnd.cbn.openbanking.v1+json` | Required on all controllers; `consumes` method-level on POST/PUT only; `produces` class-level (Session 5) |
 | **Last git commit** | `f102ae0` | Session 6 — Phase 1F-E infrastructure hardening; 49 tests passing |
 
+### BaaS Card (`baas-card/`)
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| **Spring Boot** | 3.5.3 | Standalone microservice, port 8081; shares baas-engine PostgreSQL |
+| **Java** | 21 | LTS; records, sealed classes, pattern matching |
+| **Spring Security** | 6.x (managed) | First-party partner JWT (HMAC) + API key chain; `spring-boot-starter-oauth2-resource-server` present; operator-JWT RBAC on card endpoints deferred (DEF-1C-20) |
+| **Hibernate** | 6.x (managed) | SCHEMA multi-tenancy; tenant entities route to partner schema, `CardBinRange` pinned to `public` |
+| **Flyway** | 10.x (managed) | Card-owned tables use dedicated history table `flyway_schema_history_card`; public migrations in `db/migration/card-public/`, tenant in `card-tenant/` |
+| **Nimbus JOSE+JWT** | 9.x | HMAC-SHA256 partner JWT validation (ported) |
+| **FieldEncryptor** | AES-GCM-256 (ported) | PAN encrypted at rest; responses expose `maskedPan` only; PAN never logged |
+| **Testcontainers** | PostgreSQL 16 in integration tests | Card tests self-provision their own tenant schema |
+| **Last git commit** | `6fdd270` | Session 9 — Phase 1C Track-Card (card spine); 56 tests passing |
+
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
 | Component | Version | Notes |
@@ -556,6 +570,30 @@ All missing baas-engine modules are now implemented. 74 tests, BUILD SUCCESS, br
 
 ---
 
+## BaaS Card — Module Catalogue
+
+Standalone microservice `baas-card` (port 8081) on the shared baas-engine PostgreSQL. Hibernate SCHEMA multi-tenancy; card-owned tables migrate under the dedicated Flyway history table `flyway_schema_history_card`.
+
+### Built in Session 9 — Phase 1C Track-Card
+
+| Module | Package | Status |
+|--------|---------|--------|
+| Common (`ApiResponse` envelope, `BaasException`, `GlobalExceptionHandler`) | `common/` | ✅ Built (ported) |
+| Multi-tenancy (`PartnerContext`, `SchemaProvider`, `MultiTenantConnectionProvider`) + card `TenantProvisioningService` | `tenant/` | ✅ Built (ported; card provisioning) |
+| Partner read-views (over engine `public.partner_organizations` + `public.partner_api_keys`) | `partner/` | ✅ Built (decoupling deferred DEF-1C-21) |
+| `PartnerJwtService` (HMAC partner JWT) + `ApiKeyResolver` | `auth/` | ✅ Built |
+| `InternalServiceAuthFilter` (inbound HMAC validate for `/internal/v1/**`) | `auth/` | ✅ Built |
+| `FieldEncryptor` (AES-GCM-256) | `config/` | ✅ Built (ported) |
+| BIN ranges (`CardBinRange`, public schema) + internal lookup | `bin/` | ✅ Built |
+| Card products | `product/` | ✅ Built (tenant) |
+| Card issuance + lifecycle state machine (PAN encrypted, masked responses) | `card/` | ✅ Built (tenant) |
+| Per-card limits | `limit/` | ✅ Built (tenant) |
+| Internal authorization-decision stub (ISO-8583 RC mapping) | `authorize/` | ✅ Built |
+
+**Endpoint inventory.** Partner-facing (`/baas/v1/**`, partner JWT (HMAC) or API key): `POST/GET /baas/v1/card-products`; `POST/GET /baas/v1/cards`; `POST /baas/v1/cards/{id}?command={activate|block|unblock|cancel}`; `PUT/GET /baas/v1/cards/{id}/limits`; `POST/GET /baas/v1/bins`. Internal (service-to-service, body-signed HMAC): `GET /internal/v1/bins/{bin}` (consumed by Track-FEP, contract §2); `POST /internal/v1/authorize` (consumed by Track-FEP, contract §2a). See `docs/api-reference.html` for full request/response shapes.
+
+---
+
 ## API Design
 
 ### Base URL
@@ -667,6 +705,9 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | **`app.keycloak.admin-issuer` dormant until set** — unset in dev/prod-without-env → binds to "" → admin-rejection branch never matches | Still secure: admin tokens hit `UNKNOWN_ISSUER`→401. MUST be set before the Custodian admin chain ships. |
 | **`live-keycloak` profile requires a `KeycloakUserDirectory` bean** — the stub is `@Profile("!live-keycloak")` | Activating `live-keycloak` without a `@Profile("live-keycloak")` impl fails context startup (`OperatorGrantReconciliationJob` requires the bean). See DEF-1C-17. |
 | **`PARTNER_ADMIN` role grant is bounded to V1–V2 permissions** — tenant `V3` CROSS JOINs all permissions at seed time | Any later migration adding permission codes must also grant them to `PARTNER_ADMIN` in that migration (DEF-1C-16). |
+| **Public-schema BIN lookup must work with NULL `PartnerContext`** (baas-card) — `CardBinRange` is `@Table(schema="public")`; the internal lookup runs tenant-less (FEP doesn't know the tenant yet) | Hibernate's multi-tenant provider falls back to the public schema when no context is set, so the public-pinned table is reachable. A tenant-pinned entity would NOT be reachable from a null-context call. |
+| **Card uses its own Flyway history table** (baas-card) — set `spring.flyway.table: flyway_schema_history_card` | Without this, card and engine migrations interleave in the shared default `flyway_schema_history` and corrupt each other's checksums on the shared DB. |
+| **Internal decision stub must clear `PartnerContext` in `finally`** (baas-card) — `AuthorizationDecisionService.decide()` sets context from the request `schemaName` (FEP is tenant-less) | Clears unconditionally in `finally`; a leaked ThreadLocal routes the next pooled-thread request to the wrong schema. |
 
 ---
 
