@@ -1,6 +1,6 @@
 # NubBank BaaS — local / on-prem development stack.
 #
-# Spins up: PostgreSQL 16 + baas-engine + baas-ncube.
+# Spins up: PostgreSQL 16 + baas-engine + baas-card + baas-ncube.
 #
 # Usage:
 #   cd infrastructure
@@ -52,6 +52,35 @@ services:
       - "${BAAS_ENGINE_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  baas-card:
+    build:
+      context: ../baas-card
+      dockerfile: Dockerfile
+    image: baas-card:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Card shares the SAME postgres/db as engine — it reads engine's public
+      # partner_organizations/partner_api_keys and writes tenant schemas with its
+      # own flyway history table (flyway_schema_history_card).
+      DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-nubbank_baas}
+      DATASOURCE_USERNAME: ${POSTGRES_USER}
+      DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+    ports:
+      - "${BAAS_CARD_PORT:-8081}:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/actuator/health/readiness"]
       interval: 30s
       timeout: 5s
       retries: 3
