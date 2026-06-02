@@ -85,6 +85,9 @@ class AuthorizationHandlerTest {
         assertThat(resp.hasField(IsoField.AUTH_CODE)).isTrue();
         assertThat(resp.getString(IsoField.AUTH_CODE)).matches("\\d{6}");
 
+        // PAN must NEVER be present in the authorization response (no PAN echo, even on approval)
+        assertThat(resp.hasField(IsoField.PAN)).isFalse();
+
         // STAN and TRANSMISSION_DTS must be echoed from the request
         assertThat(resp.getString(IsoField.STAN)).isEqualTo("000001");
         assertThat(resp.getString(IsoField.TRANSMISSION_DTS)).isEqualTo("0101120000");
@@ -115,6 +118,9 @@ class AuthorizationHandlerTest {
 
         assertThat(resp.getMTI()).isEqualTo("0110");
         assertThat(resp.getString(IsoField.RESPONSE_CODE)).isEqualTo("61");
+
+        // PAN must NEVER be present in the authorization response (no PAN echo, even on decline)
+        assertThat(resp.hasField(IsoField.PAN)).isFalse();
 
         // Auth code must NOT be present on a decline
         assertThat(resp.hasField(IsoField.AUTH_CODE)).isFalse();
