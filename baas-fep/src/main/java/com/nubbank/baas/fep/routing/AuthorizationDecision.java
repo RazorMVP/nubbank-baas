@@ -35,5 +35,14 @@ public record AuthorizationDecision(String decision, String responseCode, String
         String pan,
         long   amountMinor,
         String currency
-    ) {}
+    ) {
+        @Override
+        public String toString() {
+            return "Request[partnerId=" + partnerId
+                + ", schemaName=" + schemaName
+                + ", pan=****" + (pan != null && pan.length() >= 4 ? pan.substring(pan.length() - 4) : "****")
+                + ", amountMinor=" + amountMinor
+                + ", currency=" + currency + "]";
+        }
+    }
 }

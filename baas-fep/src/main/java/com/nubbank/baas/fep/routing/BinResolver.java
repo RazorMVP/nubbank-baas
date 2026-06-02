@@ -68,6 +68,7 @@ public class BinResolver {
      * @return 8-character zero-padded BIN string.
      */
     public static String bin(String pan) {
+        if (pan == null) return "00000000";
         String digits = pan.replaceAll("\\D", "");
         // Take at most the first 8 digits; if fewer than 8, use what is there.
         String head = digits.length() >= 8 ? digits.substring(0, 8) : digits;

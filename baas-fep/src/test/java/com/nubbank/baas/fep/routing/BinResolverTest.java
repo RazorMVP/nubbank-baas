@@ -63,6 +63,16 @@ class BinResolverTest {
         assertThat(BinResolver.bin("5060 0012 3456 7890")).isEqualTo("50600012");
     }
 
+    @Test
+    void bin_nullInput_returns8Zeros() {
+        assertThat(BinResolver.bin(null)).isEqualTo("00000000");
+    }
+
+    @Test
+    void bin_emptyString_returns8Zeros() {
+        assertThat(BinResolver.bin("")).isEqualTo("00000000");
+    }
+
     // ─────────────────── resolve() behavior ──────────────────────────────────
 
     @Test
