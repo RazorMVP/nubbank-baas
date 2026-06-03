@@ -6,6 +6,7 @@ import com.nubbank.baas.card.authorize.dto.AuthorizationDecisionRequest;
 import com.nubbank.baas.card.authorize.dto.AuthorizationDecisionResponse;
 import com.nubbank.baas.card.card.CardRepository;
 import com.nubbank.baas.card.card.PanHasher;
+import com.nubbank.baas.card.common.CurrencyMinorUnits;
 import com.nubbank.baas.card.config.FieldEncryptor;
 import com.nubbank.baas.card.limit.CardLimit;
 import com.nubbank.baas.card.limit.CardLimitRepository;
@@ -30,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -72,6 +74,8 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
     @Autowired private PanHasher panHasher;
     @Autowired private FieldEncryptor fieldEncryptor;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private CurrencyMinorUnits currencyMinorUnits;
+    @Autowired private AuthorizationIdempotencyRepository idempotencyRepository;
 
     // ---------- happy path ----------
 
@@ -223,7 +227,8 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
         // finally-clear fires on the happy path, not just on exceptions.
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
         AuthorizationDecisionService svc =
-            new AuthorizationDecisionService(cardRepository, limitRepository, panHasher);
+            new AuthorizationDecisionService(cardRepository, limitRepository, panHasher,
+                currencyMinorUnits, idempotencyRepository);
         AuthorizationDecisionRequest req = new AuthorizationDecisionRequest(
             partner.orgId.toString(), partner.schemaName, "5060001234567890", 5000L, "566",
             "000001", "TERM0001", "0101120000");
@@ -242,16 +247,87 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
         Mockito.when(throwingRepo.findByPanHash(Mockito.anyString()))
             .thenThrow(new RuntimeException("boom"));
         AuthorizationDecisionService svc =
-            new AuthorizationDecisionService(throwingRepo, limitRepository, panHasher);
+            new AuthorizationDecisionService(throwingRepo, limitRepository, panHasher,
+                currencyMinorUnits, idempotencyRepository);
         AuthorizationDecisionRequest req = new AuthorizationDecisionRequest(
             UUID.randomUUID().toString(), "partner_x", "5060001234567890", 5000L, "566",
-            "000001", "TERM0001", "0101120000");
+            null, null, null);
 
         assertThat(PartnerContext.get()).isNull();
         assertThatThrownBy(() -> svc.decide(req)).isInstanceOf(RuntimeException.class);
         assertThat(PartnerContext.get())
             .as("ThreadLocal must be cleared by the finally even when the lookup throws")
             .isNull();
+    }
+
+    // ---------- currency scaling + idempotency ----------
+
+    @Test
+    void perTxnLimit_threeDecimalCurrency_scaledCorrectly() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-kwd");
+        // KWD (414) has 3 minor digits. amountMinor 5000 → 5.000 major. Limit 4 → decline 61.
+        setLimit(partner, ic.cardId, new BigDecimal("4"), "414");
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, ic.pan, 5000, "414"));
+        assertThat(data(resp).get("responseCode")).isEqualTo("61");
+    }
+
+    @Test
+    void unknownCurrency_declines12() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, "5060001234567890", 5000, "999"));
+        assertThat(data(resp).get("decision")).isEqualTo("DECLINE");
+        assertThat(data(resp).get("responseCode")).isEqualTo("12");
+    }
+
+    @Test
+    void perTxnLimit_currencyMismatch_declines57() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-ccymismatch");
+        setLimit(partner, ic.cardId, new BigDecimal("100000"), "566");
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, ic.pan, 5000, "840"));
+        assertThat(data(resp).get("responseCode")).isEqualTo("57");
+    }
+
+    @Test
+    void perTxnLimit_currencyMatch_enforced() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-ccymatch");
+        setLimit(partner, ic.cardId, new BigDecimal("10"), "566");
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, ic.pan, 5000, "566"));
+        assertThat(data(resp).get("responseCode")).isEqualTo("61");
+    }
+
+    @Test
+    void retransmit_sameKey_returnsCachedDecision() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-idem");
+        setLimit(partner, ic.cardId, new BigDecimal("25000"), "566");
+        Map<String, Object> body = authorizeBody(partner, ic.pan, 5000, "566");
+
+        ResponseEntity<Map> first = hmacPost(body);
+        assertThat(data(first).get("responseCode")).isEqualTo("00");
+
+        command(partner.jwt, ic.cardId, "block");
+        ResponseEntity<Map> replay = hmacPost(body);
+        assertThat(data(replay).get("responseCode"))
+            .as("retransmit returns cached decision, not a fresh re-decide")
+            .isEqualTo("00");
+    }
+
+    @Test
+    void differentKey_sameCard_decidesFreshly() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-idem2");
+        setLimit(partner, ic.cardId, new BigDecimal("25000"), "566");
+
+        Map<String, Object> first = authorizeBody(partner, ic.pan, 5000, "566");
+        assertThat(data(hmacPost(first)).get("responseCode")).isEqualTo("00");
+
+        command(partner.jwt, ic.cardId, "block");
+        Map<String, Object> second = authorizeBody(partner, ic.pan, 5000, "566");
+        second.put("stan", "000002");   // different STAN → different key → fresh decide → 62
+        assertThat(data(hmacPost(second)).get("responseCode")).isEqualTo("62");
     }
 
     // =================== helpers ===================
@@ -281,14 +357,20 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
         return fieldEncryptor.convertToEntityAttribute(encryptedPan);
     }
 
-    /** Set the per-txn limit on a card by writing the limit row within the partner's schema. */
+    /** Set the per-txn limit on a card by writing the limit row within the partner's schema.
+     *  Defaults currency to "566" (NGN) to match the existing callers' transaction currency. */
     private void setPerTxn(TestPartner partner, UUID cardId, BigDecimal perTxn) {
+        setLimit(partner, cardId, perTxn, "566");
+    }
+
+    private void setLimit(TestPartner partner, UUID cardId, BigDecimal perTxn, String currency) {
         try {
             PartnerContext.set(new PartnerContext(partner.orgId.toString(), partner.schemaName,
                 "SANDBOX", "SANDBOX", "JWT", "test-user"));
             CardLimit limit = limitRepository.findByCardId(cardId)
                 .orElseGet(() -> CardLimit.builder().cardId(cardId).build());
             limit.setPerTxn(perTxn);
+            limit.setCurrencyCode(currency);
             limitRepository.save(limit);
         } finally {
             PartnerContext.clear();
@@ -297,12 +379,15 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
 
     private Map<String, Object> authorizeBody(TestPartner partner, String pan, long amountMinor,
                                               String currency) {
-        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        Map<String, Object> body = new LinkedHashMap<>();
         body.put("partnerId", partner.orgId.toString());
         body.put("schemaName", partner.schemaName);
         body.put("pan", pan);
         body.put("amountMinor", amountMinor);
         body.put("currency", currency);
+        body.put("stan", "000001");
+        body.put("terminalId", "TERM0001");
+        body.put("transmissionDateTime", "0101120000");
         return body;
     }
 

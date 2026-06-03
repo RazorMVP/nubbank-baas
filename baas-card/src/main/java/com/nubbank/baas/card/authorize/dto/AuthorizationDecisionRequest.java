@@ -29,4 +29,16 @@ public record AuthorizationDecisionRequest(
     String stan,                 // ISO 8583 DE11
     String terminalId,           // ISO 8583 DE41
     String transmissionDateTime  // ISO 8583 DE7 (MMDDhhmmss)
-) {}
+) {
+    @Override
+    public String toString() {
+        return "AuthorizationDecisionRequest[partnerId=" + partnerId
+            + ", schemaName=" + schemaName
+            + ", pan=****" + (pan != null && pan.length() >= 4 ? pan.substring(pan.length() - 4) : "****")
+            + ", amountMinor=" + amountMinor
+            + ", currency=" + currency
+            + ", stan=" + stan
+            + ", terminalId=" + terminalId
+            + ", transmissionDateTime=" + transmissionDateTime + "]";
+    }
+}
