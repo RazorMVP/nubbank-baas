@@ -225,7 +225,8 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
         AuthorizationDecisionService svc =
             new AuthorizationDecisionService(cardRepository, limitRepository, panHasher);
         AuthorizationDecisionRequest req = new AuthorizationDecisionRequest(
-            partner.orgId.toString(), partner.schemaName, "5060001234567890", 5000L, "566");
+            partner.orgId.toString(), partner.schemaName, "5060001234567890", 5000L, "566",
+            "000001", "TERM0001", "0101120000");
 
         assertThat(PartnerContext.get()).isNull();
         AuthorizationDecisionResponse resp = svc.decide(req);
@@ -243,7 +244,8 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
         AuthorizationDecisionService svc =
             new AuthorizationDecisionService(throwingRepo, limitRepository, panHasher);
         AuthorizationDecisionRequest req = new AuthorizationDecisionRequest(
-            UUID.randomUUID().toString(), "partner_x", "5060001234567890", 5000L, "566");
+            UUID.randomUUID().toString(), "partner_x", "5060001234567890", 5000L, "566",
+            "000001", "TERM0001", "0101120000");
 
         assertThat(PartnerContext.get()).isNull();
         assertThatThrownBy(() -> svc.decide(req)).isInstanceOf(RuntimeException.class);
