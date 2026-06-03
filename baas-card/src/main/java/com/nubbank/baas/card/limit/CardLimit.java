@@ -42,6 +42,9 @@ public class CardLimit {
     @Column(name = "monthly", precision = 19, scale = 4)
     private BigDecimal monthly;
 
+    @Column(name = "currency_code", length = 3)
+    private String currencyCode;
+
     @Version
     private Long version;
 

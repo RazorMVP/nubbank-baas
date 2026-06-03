@@ -15,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -197,6 +198,27 @@ class CardLimitTest extends AbstractCardIntegrationTest {
             "/baas/v1/cards/" + UUID.randomUUID() + "/limits",
             HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), Map.class);
         assertThat(resp.getStatusCode().value()).isEqualTo(401);
+    }
+
+    @Test
+    void updateLimits_persistsAndReturnsCurrencyCode() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        String cardId = issueCard(partner);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("perTxn", 25000);
+        body.put("dailyPurchase", 100000);
+        body.put("currencyCode", "566");
+
+        ResponseEntity<Map> put = putLimits(partner.jwt, cardId, body);
+        assertThat(put.getStatusCode().value()).isEqualTo(200);
+
+        Map<String, Object> data = data(put);
+        assertThat(data.get("currencyCode")).isEqualTo("566");
+
+        // GET also reflects the persisted currencyCode.
+        Map<String, Object> got = data(getLimits(partner.jwt, cardId));
+        assertThat(got.get("currencyCode")).isEqualTo("566");
     }
 
     // ---- helpers ----

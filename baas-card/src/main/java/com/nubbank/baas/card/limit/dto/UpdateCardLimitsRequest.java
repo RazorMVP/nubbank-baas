@@ -21,5 +21,6 @@ public record UpdateCardLimitsRequest(
     BigDecimal dailyPurchase,
     BigDecimal dailyWithdrawal,
     BigDecimal perTxn,
-    BigDecimal monthly
+    BigDecimal monthly,
+    String currencyCode
 ) {}

@@ -53,6 +53,7 @@ public class CardLimitService {
         limit.setDailyWithdrawal(req.dailyWithdrawal());
         limit.setPerTxn(req.perTxn());
         limit.setMonthly(req.monthly());
+        limit.setCurrencyCode(req.currencyCode());
 
         return CardLimitResponse.from(limitRepository.save(limit));
     }

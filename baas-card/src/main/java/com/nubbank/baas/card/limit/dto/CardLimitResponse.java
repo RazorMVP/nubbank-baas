@@ -19,7 +19,8 @@ public record CardLimitResponse(
     BigDecimal dailyWithdrawal,
     BigDecimal perTxn,
     BigDecimal monthly,
-    Instant updatedAt
+    Instant updatedAt,
+    String currencyCode
 ) {
     public static CardLimitResponse from(CardLimit l) {
         return new CardLimitResponse(
@@ -28,11 +29,12 @@ public record CardLimitResponse(
             l.getDailyWithdrawal(),
             l.getPerTxn(),
             l.getMonthly(),
-            l.getUpdatedAt());
+            l.getUpdatedAt(),
+            l.getCurrencyCode());
     }
 
     /** All-null view for a card that has no limit row set yet (absent = unlimited). */
     public static CardLimitResponse forCard(UUID cardId) {
-        return new CardLimitResponse(cardId, null, null, null, null, null);
+        return new CardLimitResponse(cardId, null, null, null, null, null, null);
     }
 }
