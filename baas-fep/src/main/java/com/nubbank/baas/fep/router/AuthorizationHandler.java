@@ -61,7 +61,11 @@ public class AuthorizationHandler {
             return unrouteable(req);   // RC 91, DE2 deliberately absent
         }
 
-        long amount = Long.parseLong(field(req, IsoField.AMOUNT));
+        Long amount = parseAmount(field(req, IsoField.AMOUNT));
+        if (amount == null) {
+            return formatError(req);   // RC 30 — DE4 absent or non-numeric (no Card call)
+        }
+
         AuthorizationDecision decision = cardClient.authorize(new AuthorizationDecision.Request(
             route.get().partnerId().toString(),
             route.get().schemaName(),
@@ -104,6 +108,39 @@ public class AuthorizationHandler {
         echo(req, resp, IsoField.STAN, IsoField.TRANSMISSION_DTS);
         MessageRouter.set(resp, IsoField.RESPONSE_CODE, "91");
         return resp;
+    }
+
+    /**
+     * Build a format-error response (RC {@code "30"} — invalid/malformed message).
+     *
+     * <p>Used when a routed request is missing or has a non-numeric DE4 (amount). No Card call
+     * is made. Like every response path, DE2 (PAN) is never set; only correlation fields are echoed.
+     */
+    private ISOMsg formatError(ISOMsg req) {
+        ISOMsg resp = iso.create(MessageRouter.responseMti(MessageRouter.mti(req)));
+        echo(req, resp, IsoField.STAN, IsoField.TRANSMISSION_DTS);
+        MessageRouter.set(resp, IsoField.RESPONSE_CODE, "30");
+        return resp;
+    }
+
+    /**
+     * Parse a DE4 amount string into minor units, or {@code null} if absent / non-numeric.
+     *
+     * <p>Returning {@code null} (rather than throwing) lets the caller map the condition to a
+     * semantically correct ISO 8583 format error (RC 30) instead of a generic system error (RC 96).
+     *
+     * @param raw the DE4 field value (may be {@code null})
+     * @return parsed amount in minor units, or {@code null} if it cannot be parsed
+     */
+    private static Long parseAmount(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            return null;   // never propagate — caller returns RC 30
+        }
     }
 
     /**

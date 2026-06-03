@@ -126,6 +126,41 @@ class AuthorizationHandlerTest {
         assertThat(resp.hasField(IsoField.AUTH_CODE)).isFalse();
     }
 
+    // ─────────────────── FORMAT ERROR (routed but bad DE4) path ──────────────
+
+    @Test
+    void knownBin_missingAmount_returns0110_de39_30_noCardCall_noPAN() throws Exception {
+        ISOMsg req = buildRequest("0100", KNOWN_PAN, "000000005000");
+        req.unset(IsoField.AMOUNT);                 // DE4 absent on a routed request
+        ISOMsg resp = handler.handle(req);
+
+        assertThat(resp.getMTI()).isEqualTo("0110");
+        // RC 30 — format error (NOT RC 96 system error) for a malformed/absent amount
+        assertThat(resp.getString(IsoField.RESPONSE_CODE)).isEqualTo("30");
+
+        // PAN must never be echoed, and no auth code on a format error
+        assertThat(resp.hasField(IsoField.PAN)).isFalse();
+        assertThat(resp.hasField(IsoField.AUTH_CODE)).isFalse();
+
+        // Card must NOT be called when the request fails format validation
+        assertThat(stub.lastAuthorizeRequest()).isNull();
+
+        // Correlation fields still echoed
+        assertThat(resp.getString(IsoField.STAN)).isEqualTo("000001");
+        assertThat(resp.getString(IsoField.TRANSMISSION_DTS)).isEqualTo("0101120000");
+    }
+
+    @Test
+    void knownBin_nonNumericAmount_returns0110_de39_30_noCardCall() throws Exception {
+        ISOMsg req = buildRequest("0100", KNOWN_PAN, "000000005000");
+        req.set(IsoField.AMOUNT, "00ABCD00");       // non-numeric DE4 on a routed request
+        ISOMsg resp = handler.handle(req);
+
+        assertThat(resp.getMTI()).isEqualTo("0110");
+        assertThat(resp.getString(IsoField.RESPONSE_CODE)).isEqualTo("30");
+        assertThat(stub.lastAuthorizeRequest()).isNull();
+    }
+
     // ─────────────────── UNKNOWN BIN (unrouteable) path ──────────────────────
 
     @Test
