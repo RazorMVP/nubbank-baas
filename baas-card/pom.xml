@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <!-- 3.5.3 brings security patches across the Spring Boot BOM:
+             spring-core, spring-web, spring-security, spring-webmvc patch advisories.
+             Bump deliberately; review release notes before pushing further. -->
+        <version>3.5.3</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.nubbank</groupId>
+    <artifactId>baas-card</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>baas-card</name>
+    <description>NubBank BaaS — Multi-tenant card management</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <lombok.version>1.18.38</lombok.version>
+        <springdoc.version>2.8.6</springdoc.version>
+        <!-- nimbus-jose-jwt 9.48 is the last 9.x release (API-compatible with 9.37.3)
+             and brings cumulative security fixes. Major bump 9 → 10 deferred until we
+             validate PartnerJwtService against 10.x's API changes. -->
+        <nimbus-jose.version>9.48</nimbus-jose.version>
+        <!-- Override transitive postgresql JDBC + netty-codec to latest patched versions.
+             Spring Boot 3.5.3 BOM ships older versions still flagged by Trivy. -->
+        <postgresql.version>42.7.7</postgresql.version>
+        <netty.version>4.2.1.Final</netty.version>
+        <!-- Override embedded Tomcat from Spring Boot 3.5.3 BOM (10.1.42) to
+             10.1.54 — closes 8 HIGH/CRITICAL CVEs in tomcat-embed-core
+             (CVE-2026-34487, 34483, 24734, 29145; CVE-2025-55752, 53506,
+             52520, 48989). Stays on the 10.1.x branch shipped by Spring Boot. -->
+        <tomcat.version>10.1.54</tomcat.version>
+        <jasypt.version>3.0.5</jasypt.version>
+        <testcontainers.version>1.20.4</testcontainers.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Pin netty across all transitive paths (Spring's WebClient,
+                 PostgreSQL R2DBC, etc.) to a CVE-patched 4.2.x release. The Spring Boot
+                 3.5.3 BOM still references 4.1.x which is flagged by Trivy
+                 (CVE-2025-58057, CVE-2026-42583). -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+        <!-- NOTE: spring-boot-starter-data-redis intentionally REMOVED —
+             baas-card has no rate-limiter in Phase 1C (NO Redis). -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <!-- Override Spring Boot 3.5.3 BOM (42.7.5) to latest patch (42.7.7);
+                 closes CVE-2025-49146 and related postgresql JDBC advisories. -->
+            <version>${postgresql.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>${nimbus-jose.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ulisesbocchio</groupId>
+            <artifactId>jasypt-spring-boot-starter</artifactId>
+            <version>${jasypt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>app</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>21</release>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- forkCount=1 reuseForks=true ensures a single JVM fork so Spring
+                         context caching works across all @SpringBootTest classes and only
+                         one HikariCP pool is created per datasource URL. Without this,
+                         Surefire may fork multiple JVMs, each with their own pool, causing
+                         Testcontainer connection exhaustion on the shared postgres container. -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
+                    <systemPropertyVariables>
+                        <!-- The Testcontainers-shaded docker-java reads API version from
+                             the "api.version" property key (not the "API_VERSION" env var).
+                             Docker Desktop 4.x requires minimum API 1.40 on all endpoints. -->
+                        <api.version>1.41</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

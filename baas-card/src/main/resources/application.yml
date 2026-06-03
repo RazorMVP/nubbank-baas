@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: baas-card
+  datasource:
+    # Production deployments MUST set these env vars. No defaults — a misconfigured
+    # deploy that misses DATASOURCE_* should fail to start, NOT silently connect
+    # to localhost:5432 with weak default credentials.
+    url: ${DATASOURCE_URL}
+    username: ${DATASOURCE_USERNAME}
+    password: ${DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        multiTenancy: SCHEMA
+  flyway:
+    enabled: true
+    # Card owns ONLY the card-public public-schema migrations. The engine-owned
+    # public tables (partner_organizations, partner_api_keys) are migrated by
+    # baas-engine, NOT here.
+    locations: classpath:db/migration/card-public
+    schemas: public
+    default-schema: public
+    # Separate history table — card NEVER writes engine's flyway_schema_history.
+    table: flyway_schema_history_card
+    baseline-on-migrate: true
+
+server:
+  port: 8081
+
+app:
+  # Production deployments MUST set JWT_SECRET, ENCRYPTION_KEY, and
+  # INTERNAL_SERVICE_SECRET env vars. No defaults — startup fails fast if missing.
+  jwt:
+    secret: ${JWT_SECRET}
+    expiry-hours: 24
+  encryption:
+    key: ${ENCRYPTION_KEY}
+  internal-service:
+    shared-secret: ${INTERNAL_SERVICE_SECRET}   # MUST match the caller's value; ≥32 chars
+    # Engine base URL for outbound internal calls (BIN lookup, authorize) — wired in later tasks.
+    engine-base-url: ${ENGINE_BASE_URL:http://baas-engine:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true   # exposes /actuator/health/readiness and /liveness — required by Dockerfile + k8s probes
+
+logging:
+  level:
+    com.nubbank.baas: INFO
+    org.hibernate.SQL: OFF
