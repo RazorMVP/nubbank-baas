@@ -350,7 +350,21 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Nimbus JOSE+JWT** | 9.x | HMAC-SHA256 partner JWT validation (ported) |
 | **FieldEncryptor** | AES-GCM-256 (ported) | PAN encrypted at rest; responses expose `maskedPan` only; PAN never logged |
 | **Testcontainers** | PostgreSQL 16 in integration tests | Card tests self-provision their own tenant schema |
-| **Last git commit** | `6fdd270` | Session 9 — Phase 1C Track-Card (card spine); 56 tests passing |
+| **Last git commit** | `cb06896` | Session 10 — Phase 1C Track-Card (card spine); 56 tests passing |
+
+### BaaS FEP (`baas-fep/`)
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| **Spring Boot** | 3.5.3 | Hosts config, actuator health (HTTP 8082), HMAC Card client, Netty lifecycle |
+| **Java** | 21 | Records, sealed classes, pattern matching |
+| **jPOS** | 2.1.10 | `GenericPackager` + `ISOMsg` for ISO 8583-1987 pack/unpack; resolved from the `jpos` Maven repo (`https://jpos.org/maven`) — not on Central |
+| **Netty** | 4.1.115.Final | Raw TCP server on port 8583; `LengthFieldBasedFrameDecoder(65535,0,2,0,2)` + `LengthFieldPrepender(2)` (2-byte big-endian length framing) |
+| **Caffeine** | 3.1.8 | BIN→partner route cache, `expireAfterWrite` 5 min |
+| **Nimbus JOSE+JWT** | 9.37.3 | (transitive via ported HMAC `SigningInterceptor`) |
+| **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
+| **Architecture** | STATELESS | No DB / JPA / Flyway / Postgres / Redis / datasource — FEP routes and forwards only |
+| **Last git commit** | `29400fc` | Session 9 — Phase 1C Track-FEP (D7); 46 tests passing (Card client mocked) |
 
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
@@ -416,6 +430,7 @@ nubbank-baas/                           ← github.com/RazorMVP/nubbank-baas
 │   └── architecture/                   ← Architecture diagrams (future)
 ├── baas-engine/                        ← Spring Boot 3.5 / Java 21 (PORT 8080)
 ├── baas-card/                          ← Card service (PORT 8081) — NOT YET BUILT
+├── baas-fep/                           ← ISO 8583 front-end processor (HTTP 8082 / TCP 8583) — stateless ✅ Session 9
 ├── baas-ncube/                         ← CBN/Ncube adapter (PORT 8082) — NOT YET BUILT
 ├── baas-portal/                        ← React developer portal (PORT 3000) — NOT YET BUILT
 ├── baas-backoffice/                    ← React operations backoffice (PORT 3001) — NOT YET BUILT
@@ -556,6 +571,40 @@ All missing baas-engine modules are now implemented. 74 tests, BUILD SUCCESS, br
 | `AccessDeniedException` → 403 `ACCESS_DENIED` envelope | `common/` | ✅ Built |
 | `SecurityConfig` scoped `@Order(2)` + `securityMatcher` | `config/` | ✅ Built |
 
+### Completed in Session 9 — Phase 1C Track-FEP (`baas-fep`, D7)
+
+**ISO 8583 Front-End Processor (stateless spine)** — Netty TCP server (port 8583, 2-byte length framing),
+jPOS `GenericPackager`, MTI router, BIN→partner tenant routing via Card's `GET /internal/v1/bins/{bin}`
+(Caffeine 5-min cache), and an authorization flow that forwards to Card's `POST /internal/v1/authorize` and
+maps the decision to DE39. Built against a **mocked `CardClient`** — live Card wiring is Stage 5. ✅ 46 tests.
+
+| Module | Package | Status |
+|--------|---------|--------|
+| Netty TCP server + 2-byte length framing | `server/` | ✅ Built |
+| `FepMessageHandler` (`@ChannelHandler.Sharable`; decode→route→encode; RC 96 on error) | `server/` | ✅ Built |
+| jPOS `GenericPackager` + ISO 8583-1987 field model | `iso/` | ✅ Built |
+| MTI router (switch on MTI → handler; unknown MTI → RC 30) | `router/` | ✅ Built |
+| `BinResolver` (DE2 PAN → 8-char normalized BIN; Caffeine 5-min) | `routing/` | ✅ Built |
+| `HttpCardClient` over ported HMAC `SigningInterceptor` (reads `.data`; fail-closed) | `client/` | ✅ Built |
+| Authorization flow (`0100→0110`, `0200→0210`) → Card decision → DE39 | `router/` | ✅ Built |
+| Unrouteable BIN → RC `91`, **DE2 omitted** (no PAN echo) | `router/` | ✅ Built |
+| Network management (`0800→0810` sign-on / echo, DE70) | `router/` | ✅ Built |
+| Reversal (`0400→0410`) — stub approve | `router/` | ✅ Built (real logic DEF-1C-25) |
+
+**MTI inventory (Phase 1C):**
+
+| MTI | Direction | Handler | Notes |
+|-----|-----------|---------|-------|
+| `0100` → `0110` | Terminal → FEP | `AuthorizationHandler` | Purchase auth: BIN-route → Card authorize → DE39 |
+| `0200` → `0210` | Terminal → FEP | `FinancialHandler` | Withdrawal (proc code `01xxxx`); same flow as 0100 |
+| `0400` → `0410` | Terminal → FEP | `ReversalHandler` | Stub: echo STAN/DE90, approve `00` (DEF-1C-25) |
+| `0800` → `0810` | Terminal ↔ FEP | `NetworkHandler` | Sign-on / echo; DE70 network code, DE39 `00` |
+| routed, bad DE4 | — | `AuthorizationHandler` | Missing/non-numeric amount on a routed 0100/0200 → DE39 `30` (no Card call) |
+| unknown MTI | — | `MessageRouter` | Format error → DE39 `30` |
+| processing exception | — | `MessageRouter.systemError()` | `0810` DE39 `96` (never logs PAN) |
+
+> EMV/HSM/scheme-packagers/settlement/tokenization are correctly **absent** — deferred (DEF-1C-01..07).
+
 ### Pending (Later sub-plans)
 
 | Module | Sub-plan | Status |
@@ -574,7 +623,7 @@ All missing baas-engine modules are now implemented. 74 tests, BUILD SUCCESS, br
 
 Standalone microservice `baas-card` (port 8081) on the shared baas-engine PostgreSQL. Hibernate SCHEMA multi-tenancy; card-owned tables migrate under the dedicated Flyway history table `flyway_schema_history_card`.
 
-### Built in Session 9 — Phase 1C Track-Card
+### Built in Session 10 — Phase 1C Track-Card
 
 | Module | Package | Status |
 |--------|---------|--------|
@@ -708,6 +757,12 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | **Public-schema BIN lookup must work with NULL `PartnerContext`** (baas-card) — `CardBinRange` is `@Table(schema="public")`; the internal lookup runs tenant-less (FEP doesn't know the tenant yet) | Hibernate's multi-tenant provider falls back to the public schema when no context is set, so the public-pinned table is reachable. A tenant-pinned entity would NOT be reachable from a null-context call. |
 | **Card uses its own Flyway history table** (baas-card) — set `spring.flyway.table: flyway_schema_history_card` | Without this, card and engine migrations interleave in the shared default `flyway_schema_history` and corrupt each other's checksums on the shared DB. |
 | **Internal decision stub must clear `PartnerContext` in `finally`** (baas-card) — `AuthorizationDecisionService.decide()` sets context from the request `schemaName` (FEP is tenant-less) | Clears unconditionally in `finally`; a leaked ThreadLocal routes the next pooled-thread request to the wrong schema. |
+| **(FEP) BIN normalization MUST match Card byte-for-byte** — `BinResolver.bin(...)` vs Card `BinService.normalize(...)` | Both take ≤8 leading PAN digits, left-align, zero-pad to 8 (`String.format("%-8s", head).replace(' ', '0')`). If either side diverges, every range-match misses and all transactions route to RC 91. Frozen shared invariant (contract §2). |
+| **(FEP) `FepMessageHandler` must be `@ChannelHandler.Sharable`** | Netty enforces this at runtime when one handler instance is added to multiple pipelines (the bean is a singleton). Missing annotation → `IllegalStateException` on the second connection. |
+| **(FEP) Never log or echo the PAN** | PAN is masked to `****<last4>` in `Request.toString` and logged only at DEBUG by partnerId/amount/currency. The unrouteable (`91`) response MUST omit DE2 — assert `!response.hasField(2)`. |
+| **(FEP) is STATELESS — never set `PartnerContext`** | FEP holds no tenant ThreadLocal and no DB. It passes `schemaName` to Card in the authorize request body; Card sets its own tenant context. Adding any JPA/Flyway/Postgres/Redis dep breaks the architecture. |
+| **(FEP) jPOS 2.1.10 is not on Maven Central** | Add the `jpos` repo (`https://jpos.org/maven`) in `pom.xml` `<repositories>`, or `dependency:resolve` fails. Verified resolving in this worktree. |
+| **(FEP) Card calls must fail-closed, never throw into the Netty thread** | `HttpCardClient.lookupBin` → `Optional.empty()` on 404/`RestClientException` (treated as unrouteable RC 91); `authorize` → `DECLINE`/`96` on any transport error. The handler catches everything → RC 96 system error as a last resort. |
 
 ---
 

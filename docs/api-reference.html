@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NubBank BaaS — Card API Reference</title>
+<title>NubBank BaaS — API Reference</title>
 <style>
   :root {
     --ink: #11161c;
@@ -46,6 +46,8 @@
   .note strong { color: #8a5d00; }
   .callout { background: #eef4fb; border: 1px solid #c7ddf2; border-radius: 6px; padding: .75rem 1rem; margin: 1rem 0; font-size: .9rem; }
   ul { margin: .5rem 0; padding-left: 1.3rem; }
+  .pill { display: inline-block; background: #e7f0ff; color: var(--put); border-radius: 999px; padding: .1rem .55rem; font-size: .72rem; font-weight: 700; vertical-align: middle; }
+  .muted { color: var(--muted); }
   footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
 </style>
 </head>
@@ -53,12 +55,12 @@
 <div class="wrap">
 
 <header class="page">
-  <h1>NubBank BaaS — Card API Reference</h1>
-  <div class="sub">Service <code>baas-card</code> · Phase 1C Track-Card · Card spine: products, issuance &amp; lifecycle, per-card limits, BIN ranges</div>
+  <h1>NubBank BaaS — API Reference</h1>
+  <div class="sub">Phase 1C · partner card APIs (<code>baas-card</code>, REST) and the ISO 8583 front-end processor (<code>baas-fep</code>, TCP)</div>
 </header>
 
 <section id="intro">
-  <h2>Overview</h2>
+  <h2>baas-card — Card API</h2>
   <p>The Card API lets partners issue and manage card products and cards. All partner-facing endpoints are served under the base path <code>/baas/v1</code>.</p>
 
   <h3>Authentication</h3>
@@ -282,8 +284,68 @@
   <div class="note"><strong>PAN safety:</strong> the authorization decision stub logs only the resulting decision and response code — never the PAN, card id, or any cardholder data.</div>
 </section>
 
+<section id="baas-fep">
+    <h2>baas-fep — ISO 8583 Front-End Processor <span class="pill">TCP service</span></h2>
+    <p>
+      <code>baas-fep</code> is <strong>not a REST API</strong>. It is a stateless ISO 8583-1987 front-end
+      processor: a raw <strong>TCP socket server</strong> that terminals (ATM / POS / scheme simulators) connect
+      to. It holds no database and no tenant state — it parses each message, resolves the owning partner from the
+      card BIN, forwards the authorization decision request to <code>baas-card</code>, and maps the result back
+      onto the ISO 8583 response. The only HTTP surface is the actuator health endpoint used by orchestration
+      probes.
+    </p>
+
+    <h3>Listeners</h3>
+    <table>
+      <thead><tr><th>Port</th><th>Protocol</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>8583</code></td><td>Raw TCP (ISO 8583-1987)</td><td>Terminal transaction socket. Messages are framed with a <strong>2-byte big-endian length prefix</strong> (the prefix excludes itself): <code>[len:2][ISO 8583 bytes]</code>.</td></tr>
+        <tr><td><code>8082</code></td><td>HTTP</td><td>Actuator only. <code>GET /actuator/health</code>, <code>/actuator/health/readiness</code>, <code>/actuator/health/liveness</code>. No partner-facing endpoints; all other paths are denied.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Message types (MTI) — Phase 1C</h3>
+    <table>
+      <thead><tr><th>Request MTI</th><th>Response MTI</th><th>Purpose</th><th>Behaviour</th></tr></thead>
+      <tbody>
+        <tr><td><code>0100</code></td><td><code>0110</code></td><td>Authorization (purchase)</td><td>Extract DE2 PAN → BIN route → <code>baas-card</code> authorize → DE39.</td></tr>
+        <tr><td><code>0200</code></td><td><code>0210</code></td><td>Financial (withdrawal)</td><td>Processing code <code>01xxxx</code>; same routing + authorize flow as <code>0100</code>.</td></tr>
+        <tr><td><code>0400</code></td><td><code>0410</code></td><td>Reversal</td><td>Phase 1C stub: echoes STAN / DE90 and approves (<code>00</code>). Real match-and-reverse is deferred (DEF-1C-25).</td></tr>
+        <tr><td><code>0800</code></td><td><code>0810</code></td><td>Network management</td><td>Sign-on / echo via DE70; DE39 <code>00</code>; echoes STAN/transmission DTS.</td></tr>
+        <tr><td colspan="2"><em>routed, malformed DE4</em></td><td>Format error</td><td>Missing / non-numeric amount on a routed <code>0100</code>/<code>0200</code> → DE39 <code>30</code>; no Card call is made.</td></tr>
+        <tr><td colspan="2"><em>unknown MTI</em></td><td>Format error</td><td>DE39 <code>30</code>.</td></tr>
+        <tr><td colspan="2"><em>processing exception</em></td><td>System error</td><td><code>0810</code> DE39 <code>96</code> (PAN is never logged).</td></tr>
+      </tbody>
+    </table>
+
+    <h3>BIN-based tenant routing</h3>
+    <p>
+      On <code>0100</code>/<code>0200</code>, the FEP extracts the DE2 PAN and normalizes its leading digits to an
+      <strong>8-character BIN</strong> (take the first 8 digits, or fewer if the PAN is shorter; left-align and
+      zero-pad to 8). It resolves the owning partner via <code>baas-card</code>
+      <code>GET /internal/v1/bins/{bin}</code> → <code>{ partnerId, schemaName }</code>, caching results in
+      Caffeine for 5 minutes. The authorization request is then sent to <code>baas-card</code>
+      <code>POST /internal/v1/authorize</code> with <code>{ partnerId, schemaName, pan, amountMinor, currency }</code>;
+      the response <code>{ decision, responseCode, message }</code> maps <code>responseCode</code> onto DE39.
+      Both internal calls are signed with an inter-service HMAC and are consumed by contract (see
+      <code>docs/contracts/phase1c-interfaces.md</code> §2 &amp; §2a).
+    </p>
+
+    <div class="note">
+      <strong>Unrouteable BIN → RC 91, no PAN echo.</strong> If the BIN resolves to no partner (or the lookup
+      fails), the FEP returns DE39 <code>91</code> and <strong>deliberately omits DE2</strong> from the response —
+      the PAN is never echoed on the unrouteable path. The PAN is never written to logs anywhere in the service.
+    </div>
+
+    <p class="muted">
+      EMV cryptogram validation, HSM, scheme-specific packagers/private DEs, settlement/advice MTIs, and
+      tokenization are intentionally out of Phase 1C scope (deferred — see <code>docs/deferred-items.md</code>
+      DEF-1C-01..07, plus FEP-specific DEF-1C-24..26).
+    </p>
+  </section>
+
 <footer>
-  NubBank BaaS · Card API Reference · generated Session 9 (2026-06-02). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2 and §2a).
+  NubBank BaaS · API Reference · Phase 1C — <code>baas-card</code> (Session 10) + <code>baas-fep</code> (Session 9). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2 and §2a).
 </footer>
 
 </div>

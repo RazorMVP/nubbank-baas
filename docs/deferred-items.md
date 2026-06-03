@@ -27,6 +27,9 @@ Structure: `ID | Item | Why deferred | Earliest phase | Source`. Append new defe
 | DEF-1C-21 | Decouple card from engine's public partner tables (own partner mirror) | Shared DB acceptable in 1C | Phase 2 | Track-Card |
 | DEF-1C-22 | Cross-service tenant provisioning trigger (engine→card schema objects) | Card tests self-provision in 1C | Phase 1C (Stage 5) | Track-Card |
 | DEF-1C-23 | Card authorization balance check (real, via baas-engine) | Stub always-sufficient in 1C | Phase 2 | Track-Card |
+| DEF-1C-24 | FEP authorization-log persistence (auth audit trail) | FEP is a stateless spine in 1C (no DB) | Phase 2 | Track-FEP |
+| DEF-1C-25 | Reversal (0400) real processing — match original + reverse | Stub approves (`00`) in 1C | Phase 2 | Track-FEP |
+| DEF-1C-26 | Card-BIN-change cache invalidation push (vs 5-min Caffeine TTL only) | 5-min TTL acceptable in 1C | Phase 2 | Track-FEP |
 
 ## Hard prerequisites (not optional deferrals — must accompany the named work)
 

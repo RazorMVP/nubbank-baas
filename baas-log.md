@@ -11,7 +11,8 @@
 |------------|--------|-------------|
 | `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**) | Session 8 (`1010ca9`) |
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
-| `baas-card` — Phase 1C Track-Card | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize stub; 56 tests) | Session 9 (`6fdd270`) |
+| `baas-card` — Phase 1C Track-Card (D6) | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize stub; **56 tests**) | Session 10 (`cb06896`) |
+| `baas-fep` — Phase 1C Track-FEP (D7) | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow; **46 tests**, Card client mocked; live Card wiring is Stage 5) | Session 9 (`29400fc`) |
 | `baas-backoffice` — React | 🟡 In progress — Phase 1C Foundation (backend enablers) done Session 8; React app + remaining tracks pending | — |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
@@ -198,10 +199,10 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 
 ## Change History
 
-### Session 9 — 2026-06-02
-**Phase 1C Track-Card — `baas-card` card spine (products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize stub) — 56 tests (`6fdd270`).**
+### Session 10 — 2026-06-03
+**Phase 1C Track-Card — `baas-card` card spine (products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize stub) — 56 tests (`cb06896`).**
 
-New standalone microservice `baas-card` (port 8081), built on the same shared PostgreSQL as `baas-engine` with Hibernate SCHEMA multi-tenancy. Card-owned tables migrate under a dedicated Flyway history table (`flyway_schema_history_card`) so card and engine never collide on the shared DB. Tasks 1–7 (the entire service) implemented and committed across 78 files / 5171 insertions from base `b40da63`; this session is the documentation/gate close-out.
+New standalone microservice `baas-card` (port 8081), built on the same shared PostgreSQL as `baas-engine` with Hibernate SCHEMA multi-tenancy. Card-owned tables migrate under a dedicated Flyway history table (`flyway_schema_history_card`) so card and engine never collide on the shared DB. Built in parallel with Track-FEP (Session 9, merged into `main` first); Tasks 1–7 (the entire service) implemented and committed across 78 files / 5171 insertions from base `b40da63`; this session is the documentation/gate close-out. Merged onto `main` after Track-FEP, resolving the shared-doc registries (deferred-items, build log, API reference, docker-compose) as a union of both tracks.
 
 #### New/Updated Files
 | File | Change |
@@ -240,13 +241,67 @@ Tests run: 56, Failures: 0, Errors: 0 — BUILD SUCCESS
 **BaaS Card (`baas-card/`):**
 | Component | Version | Git ref |
 |-----------|---------|---------|
-| Spring Boot | 3.5.3 | `6fdd270` |
-| Java | 21 | `6fdd270` |
-| Spring Security | 6.x (oauth2-resource-server present; operator-JWT RBAC deferred DEF-1C-20) | `6fdd270` |
-| Nimbus JOSE+JWT | 9.x (HMAC partner JWT) | `6fdd270` |
-| Flyway | 10.x (history table `flyway_schema_history_card`) | `6fdd270` |
-| Testcontainers | PostgreSQL 16 in integration tests | `6fdd270` |
-| Last git commit | `6fdd270` | Session 9 — Phase 1C Track-Card; 56 tests passing (+ this docs commit) |
+| Spring Boot | 3.5.3 | `cb06896` |
+| Java | 21 | `cb06896` |
+| Spring Security | 6.x (oauth2-resource-server present; operator-JWT RBAC deferred DEF-1C-20) | `cb06896` |
+| Nimbus JOSE+JWT | 9.x (HMAC partner JWT) | `cb06896` |
+| Flyway | 10.x (history table `flyway_schema_history_card`) | `cb06896` |
+| Testcontainers | PostgreSQL 16 in integration tests | `cb06896` |
+| Last git commit | `cb06896` | Session 10 — Phase 1C Track-Card; 56 tests passing |
+
+### Session 9 — 2026-06-02
+**Phase 1C Track-FEP (D7) — `baas-fep`, a stateless ISO 8583-1987 front-end processor (`29400fc`).**
+
+Built in parallel with Track-Card against a **mocked `CardClient`** (no `baas-card` source read or imported; live wiring is Stage 5). Executed via subagent-driven development: 8 tasks, fresh implementer + spec-compliance review + code-quality review per task, every reviewer finding (incl. Minor) resolved in-task. A Netty TCP server (port 8583, 2-byte length framing) frames ISO 8583 messages; a jPOS `GenericPackager` packs/unpacks; an MTI router dispatches `0100/0200/0400/0800`; BIN→partner tenant routing resolves the owning partner via Card's `GET /internal/v1/bins/{bin}` (Caffeine 5-min cache); the authorization flow forwards to Card's `POST /internal/v1/authorize` and maps the decision to DE39 in the response.
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-fep/pom.xml`, `mvnw`, `.mvn/` | New module — Spring Boot 3.5.3 parent; deps: web, security, validation, actuator, netty-all 4.1.115, jpos 2.1.10 (via `jpos` repo), caffeine 3.1.8, nimbus, lombok. NO data-jpa/flyway/postgres/redis/jasypt/testcontainers |
+| `baas-fep/Dockerfile` | Multi-stage; EXPOSE 8082 + 8583; health on 8082; pinned base-image digests; non-root |
+| `fep/FepApplication.java` | `@SpringBootApplication` |
+| `fep/common/{ApiResponse,BaasException}.java` | PORTED verbatim from `baas-engine`, repackaged `engine`→`fep` |
+| `fep/config/{FepProperties,SecurityConfig,CardClientConfig}.java` | `@ConfigurationProperties(prefix=fep)`; actuator-only chain (deny rest); `RestTemplate` + ported HMAC `SigningInterceptor` |
+| `fep/iso/{IsoField,IsoMessageFactory}.java` + `iso8583-1987-fields.xml` | DE constants; jPOS `GenericPackager` pack/unpack helpers |
+| `fep/server/{FepTcpServer,FepServerInitializer,FepMessageHandler}.java` | Netty lifecycle (`@PostConstruct`/`@PreDestroy`); `LengthFieldBasedFrameDecoder(65535,0,2,0,2)`+`LengthFieldPrepender(2)`; `@ChannelHandler.Sharable` decode→route→encode, RC 96 on error |
+| `fep/router/{MessageRouter,AuthorizationHandler,FinancialHandler,ReversalHandler,NetworkHandler}.java` | MTI switch; `0100→0110`/`0200→0210` auth flow; `0400→0410` stub-approve; `0800→0810` network; unknown MTI → RC 30 |
+| `fep/routing/{BinResolver,PartnerRoute,CardClient,AuthorizationDecision}.java` | DE2→8-char BIN normalization + Caffeine cache; `CardClient` interface; decision DTOs |
+| `fep/client/HttpCardClient.java` | `CardClient` impl over HMAC `RestTemplate`; reads `.data`; fail-closed (`Optional.empty()` / `DECLINE`/`96`) |
+| `application.yml` + `application-test.yml` | server 8082; `fep.tcp-port` 8583 (`0` in tests); `fep.card.base-url`; `fep.hmac-secret` |
+| 11 test files (`FepContextTest`, `IsoMessageFactoryTest`, `FepTcpServerLoopbackTest`, `AuthorizationHandlerTest`, `NetworkHandlerTest`, `BinResolverTest`, `AuthorizationDecisionTest`, `client/HttpCardClientTest` (MockRestServiceServer — HTTP layer + Instant deser + HMAC + fail-closed), `support/{Iso8583TestClient,StubCardClient}`) | 46 tests; Card client mocked throughout; assert `!response.hasField(2)` on RC 91 |
+| `infrastructure/docker-compose.yml` | `baas-fep` block (host 8083→8082 HTTP, 8583 TCP; readiness healthcheck; `depends_on: baas-card` commented until Stage 5; `FEP_TCP_PORT` in lockstep with host port) |
+| `infrastructure/.env.example` | BaaS fep section (`BAAS_FEP_HTTP_PORT`/`TCP_PORT`, `CARD_BASE_URL`); `INTERNAL_SERVICE_SECRET` note extended to fep→card |
+| `.github/workflows/baas-fep-ci.yml` | CI: test → GHCR build/push → Trivy/SBOM; pinned SHAs; lowercased GHCR owner |
+| `docs/deferred-items.md` | + DEF-1C-24..26 (FEP auth-log persistence; real 0400 reversal; BIN-change cache invalidation) |
+| `docs/contracts/phase1c-interfaces.md` | §2a — non-normative Track-FEP consumption-confirmation note (frozen shapes unchanged) |
+| `CLAUDE.md` | + `baas-fep` Confirmed Platform Versions block, Module/MTI catalogue, 6 FEP gotchas, repo-structure line |
+
+#### Key Decisions
+- **Stateless FEP, no DB.** FEP holds no tenant data and sets **no `PartnerContext`** — it routes and forwards, passing `schemaName` to Card in the authorize request body so Card sets its own tenant context. No JPA/Flyway/Postgres/Redis dep exists; adding one breaks the architecture.
+- **2-byte big-endian length framing** (jPOS standard) via Netty `LengthFieldBasedFrameDecoder`/`LengthFieldPrepender`.
+- **BIN normalization parity is a frozen cross-track invariant** (contract §2): `BinResolver.bin(...)` = take ≤8 leading PAN digits, left-align, zero-pad to 8 — must equal Card's `BinService.normalize(...)` or every lookup misses.
+- **Unrouteable BIN → RC `91` with DE2 omitted** (no PAN echo); asserted via `!response.hasField(2)` in tests.
+- **PAN is never logged** — masked to `****<last4>` in `Request.toString`; diagnostics log partnerId/amount/currency only.
+- **Fail-closed Card calls** never throw into the Netty thread: BIN lookup 404/error → unrouteable; authorize transport error → `DECLINE`/`96`; handler catch-all → RC 96.
+- **jPOS 2.1.10 from the `jpos` Maven repo** (`https://jpos.org/maven`) — not on Central; verified resolving.
+- **EMV/HSM/scheme-packagers/settlement/tokenization deferred** (DEF-1C-01..07) — correctly absent in 1C.
+
+#### Build Verification
+`cd baas-fep && ./mvnw -B test` → Tests run: 46, Failures: 0, Errors: 0 — BUILD SUCCESS (Card client mocked throughout).
+
+#### Confirmed Platform Versions
+
+**BaaS FEP (`baas-fep/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.3 | `29400fc` |
+| Java | 21 | `29400fc` |
+| jPOS | 2.1.10 (from `jpos` repo) | `29400fc` |
+| Netty | 4.1.115.Final | `29400fc` |
+| Caffeine | 3.1.8 | `29400fc` |
+| Lombok | 1.18.38 | `29400fc` |
+| Architecture | STATELESS (no DB/JPA/Flyway/Postgres/Redis) | `29400fc` |
+| Last git commit | `29400fc` | Session 9 — Phase 1C Track-FEP (D7); 46 tests passing |
 
 ### Session 8 — 2026-05-30
 **Phase 1C Foundation track — operator identity (Keycloak multi-issuer) + Hybrid RBAC + 30-role catalogue (`1010ca9`).**
