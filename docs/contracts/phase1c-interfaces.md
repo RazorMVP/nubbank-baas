@@ -41,6 +41,18 @@ Foundation publishes these so parallel tracks build against stable shapes.
   `{ "data": {...}, "meta": {...}, "errors": null }`. The shapes above are the `data` payload — FEP's
   `HttpCardClient` reads `.data`. (Stage-5 integration verifies this live; FEP unit tests mock `CardClient`.)
 
+> **Track-FEP consumption confirmed (Session 9, `baas-fep`).** Track-FEP consumes §2 and §2a as built, with no
+> change to the frozen shapes:
+> - §2 BIN normalization is implemented in `BinResolver.bin(...)` exactly as specified — take ≤8 leading PAN
+>   digits, left-align, zero-pad to 8 (`String.format("%-8s", head).replace(' ', '0')`); null PAN → `"00000000"`.
+>   This must stay identical to Card's `BinService.normalize(...)` (shared invariant — divergence misses every lookup).
+> - §2a request/response are mirrored field-for-field by `AuthorizationDecision.Request(partnerId, schemaName,
+>   pan, amountMinor, currency)` and `AuthorizationDecision(decision, responseCode, message)`.
+> - Envelope: `HttpCardClient` reads `.data` on both endpoints; 404 / transport error → unrouteable (`Optional.empty()`
+>   for BIN lookup) or fail-safe `DECLINE`/`96` for authorize, so the Netty thread never sees a checked exception.
+> - PAN safety: PAN is never logged (masked to `****<last4>` in `Request.toString`) and DE2 is omitted from any
+>   unrouteable (`91`) response. These are FROZEN — neither side changes them unilaterally (per the contract-change rule).
+
 ## 3. Admin namespace reservation (Custodian, Platform-Admin)
 - `/baas-admin/v1/**` is reserved for the NubBank admin chain.
 - Foundation scoped the partner chain to `@Order(2)` + `securityMatcher("/baas/v1/**", "/actuator/**",
