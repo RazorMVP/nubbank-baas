@@ -59,6 +59,7 @@
         <tr><td><code>0200</code></td><td><code>0210</code></td><td>Financial (withdrawal)</td><td>Processing code <code>01xxxx</code>; same routing + authorize flow as <code>0100</code>.</td></tr>
         <tr><td><code>0400</code></td><td><code>0410</code></td><td>Reversal</td><td>Phase 1C stub: echoes STAN / DE90 and approves (<code>00</code>). Real match-and-reverse is deferred (DEF-1C-25).</td></tr>
         <tr><td><code>0800</code></td><td><code>0810</code></td><td>Network management</td><td>Sign-on / echo via DE70; DE39 <code>00</code>; echoes STAN/transmission DTS.</td></tr>
+        <tr><td colspan="2"><em>routed, malformed DE4</em></td><td>Format error</td><td>Missing / non-numeric amount on a routed <code>0100</code>/<code>0200</code> → DE39 <code>30</code>; no Card call is made.</td></tr>
         <tr><td colspan="2"><em>unknown MTI</em></td><td>Format error</td><td>DE39 <code>30</code>.</td></tr>
         <tr><td colspan="2"><em>processing exception</em></td><td>System error</td><td><code>0810</code> DE39 <code>96</code> (PAN is never logged).</td></tr>
       </tbody>
