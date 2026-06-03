@@ -11,7 +11,7 @@
 |------------|--------|-------------|
 | `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**) | Session 8 (`1010ca9`) |
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
-| `baas-fep` — Phase 1C Track-FEP (D7) | ✅ Complete on branch `feature/phase1c-fep` (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow; **39 tests**, Card client mocked; live Card wiring is Stage 5) | Session 9 (`70b8932`) |
+| `baas-fep` — Phase 1C Track-FEP (D7) | ✅ Complete on branch `feature/phase1c-fep` (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow; **46 tests**, Card client mocked; live Card wiring is Stage 5) | Session 9 (`29400fc`) |
 | `baas-backoffice` — React | 🟡 In progress — Phase 1C Foundation (backend enablers) done Session 8; React app + remaining tracks pending | — |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
@@ -199,7 +199,7 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ## Change History
 
 ### Session 9 — 2026-06-02
-**Phase 1C Track-FEP (D7) — `baas-fep`, a stateless ISO 8583-1987 front-end processor (`70b8932`).**
+**Phase 1C Track-FEP (D7) — `baas-fep`, a stateless ISO 8583-1987 front-end processor (`29400fc`).**
 
 Built in parallel with Track-Card against a **mocked `CardClient`** (no `baas-card` source read or imported; live wiring is Stage 5). Executed via subagent-driven development: 8 tasks, fresh implementer + spec-compliance review + code-quality review per task, every reviewer finding (incl. Minor) resolved in-task. A Netty TCP server (port 8583, 2-byte length framing) frames ISO 8583 messages; a jPOS `GenericPackager` packs/unpacks; an MTI router dispatches `0100/0200/0400/0800`; BIN→partner tenant routing resolves the owning partner via Card's `GET /internal/v1/bins/{bin}` (Caffeine 5-min cache); the authorization flow forwards to Card's `POST /internal/v1/authorize` and maps the decision to DE39 in the response.
 
@@ -217,7 +217,7 @@ Built in parallel with Track-Card against a **mocked `CardClient`** (no `baas-ca
 | `fep/routing/{BinResolver,PartnerRoute,CardClient,AuthorizationDecision}.java` | DE2→8-char BIN normalization + Caffeine cache; `CardClient` interface; decision DTOs |
 | `fep/client/HttpCardClient.java` | `CardClient` impl over HMAC `RestTemplate`; reads `.data`; fail-closed (`Optional.empty()` / `DECLINE`/`96`) |
 | `application.yml` + `application-test.yml` | server 8082; `fep.tcp-port` 8583 (`0` in tests); `fep.card.base-url`; `fep.hmac-secret` |
-| 10 test files (`FepContextTest`, `IsoMessageFactoryTest`, `FepTcpServerLoopbackTest`, `AuthorizationHandlerTest`, `NetworkHandlerTest`, `BinResolverTest`, `AuthorizationDecisionTest`, `support/{Iso8583TestClient,StubCardClient}`) | 39 tests; Card client mocked throughout; assert `!response.hasField(2)` on RC 91 |
+| 11 test files (`FepContextTest`, `IsoMessageFactoryTest`, `FepTcpServerLoopbackTest`, `AuthorizationHandlerTest`, `NetworkHandlerTest`, `BinResolverTest`, `AuthorizationDecisionTest`, `client/HttpCardClientTest` (MockRestServiceServer — HTTP layer + Instant deser + HMAC + fail-closed), `support/{Iso8583TestClient,StubCardClient}`) | 46 tests; Card client mocked throughout; assert `!response.hasField(2)` on RC 91 |
 | `infrastructure/docker-compose.yml` | `baas-fep` block (host 8083→8082 HTTP, 8583 TCP; readiness healthcheck; `depends_on: baas-card` commented until Stage 5; `FEP_TCP_PORT` in lockstep with host port) |
 | `infrastructure/.env.example` | BaaS fep section (`BAAS_FEP_HTTP_PORT`/`TCP_PORT`, `CARD_BASE_URL`); `INTERNAL_SERVICE_SECRET` note extended to fep→card |
 | `.github/workflows/baas-fep-ci.yml` | CI: test → GHCR build/push → Trivy/SBOM; pinned SHAs; lowercased GHCR owner |
@@ -236,21 +236,21 @@ Built in parallel with Track-Card against a **mocked `CardClient`** (no `baas-ca
 - **EMV/HSM/scheme-packagers/settlement/tokenization deferred** (DEF-1C-01..07) — correctly absent in 1C.
 
 #### Build Verification
-`cd baas-fep && ./mvnw -B test` → Tests run: 39, Failures: 0, Errors: 0 — BUILD SUCCESS (Card client mocked throughout).
+`cd baas-fep && ./mvnw -B test` → Tests run: 46, Failures: 0, Errors: 0 — BUILD SUCCESS (Card client mocked throughout).
 
 #### Confirmed Platform Versions
 
 **BaaS FEP (`baas-fep/`):**
 | Component | Version | Git ref |
 |-----------|---------|---------|
-| Spring Boot | 3.5.3 | `70b8932` |
-| Java | 21 | `70b8932` |
-| jPOS | 2.1.10 (from `jpos` repo) | `70b8932` |
-| Netty | 4.1.115.Final | `70b8932` |
-| Caffeine | 3.1.8 | `70b8932` |
-| Lombok | 1.18.38 | `70b8932` |
-| Architecture | STATELESS (no DB/JPA/Flyway/Postgres/Redis) | `70b8932` |
-| Last git commit | `70b8932` | Session 9 — Phase 1C Track-FEP (D7); 39 tests passing |
+| Spring Boot | 3.5.3 | `29400fc` |
+| Java | 21 | `29400fc` |
+| jPOS | 2.1.10 (from `jpos` repo) | `29400fc` |
+| Netty | 4.1.115.Final | `29400fc` |
+| Caffeine | 3.1.8 | `29400fc` |
+| Lombok | 1.18.38 | `29400fc` |
+| Architecture | STATELESS (no DB/JPA/Flyway/Postgres/Redis) | `29400fc` |
+| Last git commit | `29400fc` | Session 9 — Phase 1C Track-FEP (D7); 46 tests passing |
 
 ### Session 8 — 2026-05-30
 **Phase 1C Foundation track — operator identity (Keycloak multi-issuer) + Hybrid RBAC + 30-role catalogue (`1010ca9`).**

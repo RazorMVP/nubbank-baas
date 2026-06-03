@@ -350,7 +350,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Nimbus JOSE+JWT** | 9.37.3 | (transitive via ported HMAC `SigningInterceptor`) |
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
 | **Architecture** | STATELESS | No DB / JPA / Flyway / Postgres / Redis / datasource — FEP routes and forwards only |
-| **Last git commit** | `70b8932` | Session 9 — Phase 1C Track-FEP (D7); 39 tests passing (Card client mocked) |
+| **Last git commit** | `29400fc` | Session 9 — Phase 1C Track-FEP (D7); 46 tests passing (Card client mocked) |
 
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
@@ -562,7 +562,7 @@ All missing baas-engine modules are now implemented. 74 tests, BUILD SUCCESS, br
 **ISO 8583 Front-End Processor (stateless spine)** — Netty TCP server (port 8583, 2-byte length framing),
 jPOS `GenericPackager`, MTI router, BIN→partner tenant routing via Card's `GET /internal/v1/bins/{bin}`
 (Caffeine 5-min cache), and an authorization flow that forwards to Card's `POST /internal/v1/authorize` and
-maps the decision to DE39. Built against a **mocked `CardClient`** — live Card wiring is Stage 5. ✅ 39 tests.
+maps the decision to DE39. Built against a **mocked `CardClient`** — live Card wiring is Stage 5. ✅ 46 tests.
 
 | Module | Package | Status |
 |--------|---------|--------|
