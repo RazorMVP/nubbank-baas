@@ -106,6 +106,9 @@ class AuthorizationHandlerTest {
         assertThat(captured.pan()).isEqualTo(KNOWN_PAN);
         assertThat(captured.amountMinor()).isEqualTo(5000L);
         assertThat(captured.currency()).isEqualTo("566");
+        assertThat(captured.stan()).isEqualTo("000001");
+        assertThat(captured.terminalId()).isEqualTo("TERM0001");
+        assertThat(captured.transmissionDateTime()).isEqualTo("0101120000");
     }
 
     // ─────────────────────── DECLINE path ────────────────────────────────────

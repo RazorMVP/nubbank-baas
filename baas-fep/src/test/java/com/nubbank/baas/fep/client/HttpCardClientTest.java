@@ -148,7 +148,7 @@ class HttpCardClientTest {
               .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
 
         AuthorizationDecision decision = client.authorize(new AuthorizationDecision.Request(
-            PARTNER_ID.toString(), SCHEMA, KNOWN_PAN, 5000L, "566"));
+            PARTNER_ID.toString(), SCHEMA, KNOWN_PAN, 5000L, "566", "000001", "TERM0001", "0101120000"));
 
         assertThat(decision.decision()).isEqualTo("APPROVE");
         assertThat(decision.responseCode()).isEqualTo("00");
@@ -161,7 +161,7 @@ class HttpCardClientTest {
               .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
 
         AuthorizationDecision decision = client.authorize(new AuthorizationDecision.Request(
-            PARTNER_ID.toString(), SCHEMA, KNOWN_PAN, 5000L, "566"));
+            PARTNER_ID.toString(), SCHEMA, KNOWN_PAN, 5000L, "566", "000001", "TERM0001", "0101120000"));
 
         // Fail-safe: transport error → DECLINE / RC 96 (issuer unavailable), never an exception.
         assertThat(decision.decision()).isEqualTo("DECLINE");
@@ -177,7 +177,7 @@ class HttpCardClientTest {
               .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
 
         AuthorizationDecision decision = client.authorize(new AuthorizationDecision.Request(
-            PARTNER_ID.toString(), SCHEMA, KNOWN_PAN, 5000L, "566"));
+            PARTNER_ID.toString(), SCHEMA, KNOWN_PAN, 5000L, "566", "000001", "TERM0001", "0101120000"));
 
         assertThat(decision.responseCode()).isEqualTo("96");
         server.verify();

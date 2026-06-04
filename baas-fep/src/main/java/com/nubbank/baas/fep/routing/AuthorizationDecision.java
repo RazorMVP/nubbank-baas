@@ -23,18 +23,24 @@ public record AuthorizationDecision(String decision, String responseCode, String
      * <p><strong>Never log {@code pan}.</strong> Log only {@code partnerId} / {@code amountMinor}
      * / {@code currency} for diagnostics.
      *
-     * @param partnerId   UUID string identifying the partner tenant.
-     * @param schemaName  PostgreSQL schema name for this partner.
-     * @param pan         Full PAN — NEVER logged.
-     * @param amountMinor Transaction amount in minor currency units (e.g. cents).
-     * @param currency    ISO 4217 numeric currency code (e.g. {@code "840"} for USD).
+     * @param partnerId           UUID string identifying the partner tenant.
+     * @param schemaName          PostgreSQL schema name for this partner.
+     * @param pan                 Full PAN — NEVER logged.
+     * @param amountMinor         Transaction amount in minor currency units (e.g. cents).
+     * @param currency            ISO 4217 numeric currency code (e.g. {@code "840"} for USD).
+     * @param stan                DE11 — Systems Trace Audit Number.
+     * @param terminalId          DE41 — Terminal ID.
+     * @param transmissionDateTime DE7 — Transmission date and time (MMDDhhmmss).
      */
     public record Request(
         String partnerId,
         String schemaName,
         String pan,
         long   amountMinor,
-        String currency
+        String currency,
+        String stan,                 // DE11
+        String terminalId,           // DE41
+        String transmissionDateTime  // DE7 (MMDDhhmmss)
     ) {
         @Override
         public String toString() {
@@ -42,7 +48,10 @@ public record AuthorizationDecision(String decision, String responseCode, String
                 + ", schemaName=" + schemaName
                 + ", pan=****" + (pan != null && pan.length() >= 4 ? pan.substring(pan.length() - 4) : "****")
                 + ", amountMinor=" + amountMinor
-                + ", currency=" + currency + "]";
+                + ", currency=" + currency
+                + ", stan=" + stan
+                + ", terminalId=" + terminalId
+                + ", transmissionDateTime=" + transmissionDateTime + "]";
         }
     }
 }

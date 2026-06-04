@@ -71,7 +71,10 @@ public class AuthorizationHandler {
             route.get().schemaName(),
             pan,                          // forwarded to Card — NEVER logged here
             amount,
-            field(req, IsoField.CURRENCY)
+            field(req, IsoField.CURRENCY),
+            field(req, IsoField.STAN),
+            field(req, IsoField.TERMINAL_ID),
+            field(req, IsoField.TRANSMISSION_DTS)
         ));
 
         ISOMsg resp = iso.create(MessageRouter.responseMti(MessageRouter.mti(req)));

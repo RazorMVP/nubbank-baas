@@ -13,7 +13,7 @@ class AuthorizationDecisionTest {
     @Test
     void toString_doesNotContainFullPan() {
         AuthorizationDecision.Request req =
-            new AuthorizationDecision.Request("p", "s", "4111111111111111", 100L, "566");
+            new AuthorizationDecision.Request("p", "s", "4111111111111111", 100L, "566", "000001", "TERM0001", "0101120000");
 
         assertThat(req.toString()).doesNotContain("4111111111111111");
     }
@@ -21,7 +21,7 @@ class AuthorizationDecisionTest {
     @Test
     void toString_containsMaskedLast4() {
         AuthorizationDecision.Request req =
-            new AuthorizationDecision.Request("p", "s", "4111111111111111", 100L, "566");
+            new AuthorizationDecision.Request("p", "s", "4111111111111111", 100L, "566", "000001", "TERM0001", "0101120000");
 
         assertThat(req.toString()).contains("****1111");
     }
