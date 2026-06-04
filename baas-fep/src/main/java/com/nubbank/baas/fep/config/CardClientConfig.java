@@ -39,10 +39,10 @@ public class CardClientConfig {
             .build();
     }
 
-    static class SigningInterceptor implements ClientHttpRequestInterceptor {
+    public static class SigningInterceptor implements ClientHttpRequestInterceptor {
         private final SecretKeySpec keySpec;
 
-        SigningInterceptor(String secret) {
+        public SigningInterceptor(String secret) {
             this.keySpec = new SecretKeySpec(
                 secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             try {
@@ -59,7 +59,7 @@ public class CardClientConfig {
             String bodyHash = HexFormat.of().formatHex(
                 sha256().digest(body == null ? new byte[0] : body));
             String signedString = request.getMethod().name() + "|"
-                + request.getURI().getPath() + "|"
+                + request.getURI().getRawPath() + "|"
                 + ts + "|"
                 + bodyHash;
             String sig = HexFormat.of().formatHex(hmac(signedString));
