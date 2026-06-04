@@ -30,6 +30,7 @@ Structure: `ID | Item | Why deferred | Earliest phase | Source`. Append new defe
 | DEF-1C-24 | FEP authorization-log persistence (auth audit trail) | FEP is a stateless spine in 1C (no DB) | Phase 2 | Track-FEP |
 | DEF-1C-25 | Reversal (0400) fund reversal — credit cardholder account | **Partially closed in Session 11:** Phase 1C now LOCATES the original authorization via the per-tenant idempotency table (matched by DE90 original STAN + terminal ID + original transmission date-time) and marks it `reversed = true`, returning RC `00` (located) / RC `25` (not located). The actual **fund reversal** (crediting the cardholder account) remains deferred to Phase 2 — it rides with the real balance-check wiring (DEF-1C-23). | Phase 2 | Track-FEP / Session 11 |
 | DEF-1C-26 | Card-BIN-change cache invalidation push (vs 5-min Caffeine TTL only) | 5-min TTL acceptable in 1C | Phase 2 | Track-FEP |
+| DEF-1C-27 | Automatic GL double-entry posting for account money movements (platform-wide) | Engine's `account/` package uses a single-`Transaction` debit/credit path and does not post balanced `JournalEntry` lines against `GlAccount`; the GL's only entry point today is `postManualJournalEntry`. Auto-posting every money movement (deposit, withdrawal, transfer, card) to the GL is a uniform cross-cutting concern, not a card-seam one — doing it for the Stage 5 card path alone would book card money differently from every other debit. | Phase 2+ (platform-wide) | Stage 5 design (2026-06-04) |
 
 ## Hard prerequisites (not optional deferrals — must accompany the named work)
 
