@@ -46,6 +46,11 @@ public class IdempotencyPurgeJob {
         int totalDeleted = 0;
         for (PartnerOrganization org : orgs) {
             String prodSchema = org.getSchemaName();
+            if (prodSchema == null || !prodSchema.startsWith("partner_")) {
+                log.warn("Idempotency purge skipped org {} — unexpected schema name {}",
+                    org.getId(), prodSchema);
+                continue;
+            }
             String sandboxSchema = "sandbox_" + prodSchema.substring("partner_".length());
             totalDeleted += purgeSchema(org, prodSchema, cutoff);
             totalDeleted += purgeSchema(org, sandboxSchema, cutoff);
@@ -58,8 +63,9 @@ public class IdempotencyPurgeJob {
 
     private int purgeSchema(PartnerOrganization org, String schema, Instant cutoff) {
         try {
+            String env = schema.startsWith("sandbox_") ? "SANDBOX" : "PRODUCTION";
             PartnerContext.set(new PartnerContext(
-                org.getId().toString(), schema, "INTERNAL", "PRODUCTION", "INTERNAL", null));
+                org.getId().toString(), schema, "INTERNAL", env, "INTERNAL", null));
             return idemRepo.deleteOlderThan(cutoff);
         } catch (RuntimeException ex) {
             log.warn("Idempotency purge skipped schema {}: {}", schema, ex.getMessage());

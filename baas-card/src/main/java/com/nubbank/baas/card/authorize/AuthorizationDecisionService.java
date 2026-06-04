@@ -62,6 +62,10 @@ public class AuthorizationDecisionService {
         try {
             String idemKey = idemKey(req);
 
+            if (idemKey == null) {
+                log.debug("Idempotency skipped — missing ISO trace field (stan/terminalId/transmissionDateTime)");
+            }
+
             if (idemKey != null) {
                 Optional<AuthorizationIdempotency> cached = idempotencyRepo.findByIdemKey(idemKey);
                 if (cached.isPresent()) {
