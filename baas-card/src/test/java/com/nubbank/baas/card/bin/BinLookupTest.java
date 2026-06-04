@@ -1,6 +1,10 @@
 package com.nubbank.baas.card.bin;
 
 import com.nubbank.baas.card.AbstractCardIntegrationTest;
+import com.nubbank.baas.card.auth.PartnerJwtService;
+import com.nubbank.baas.card.partner.PartnerOrganizationRepository;
+import com.nubbank.baas.card.support.TestPartner;
+import com.nubbank.baas.card.tenant.TenantProvisioningService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -42,8 +46,10 @@ class BinLookupTest extends AbstractCardIntegrationTest {
     // Mirrors app.internal-service.shared-secret in application-test.yml.
     private static final String INTERNAL_SECRET = "test-shared-secret-min-32-chars-long-okay";
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private PartnerOrganizationRepository orgRepo;
+    @Autowired private TenantProvisioningService provisioningService;
+    @Autowired private PartnerJwtService jwtService;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
     void internalLookup_matchesSeededPublicRow_withNoPartnerContext() {
@@ -82,6 +88,25 @@ class BinLookupTest extends AbstractCardIntegrationTest {
         assertThat(resp.getStatusCode().value()).isEqualTo(401);
     }
 
+    @Test
+    void sixDigitBin_registeredStartEqualsEnd_coversFullSubRange() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+
+        // Register a 6-digit BIN where start == end.  With the fix, the stored
+        // range end is normalizeRangeEnd("507000") = "50700099", so the range
+        // [50700000, 50700099] covers any PAN whose first 8 digits are 507000xx.
+        // (507000xx chosen to avoid overlap with the 506000xx range in other tests.)
+        postBin(partner.jwt, "507000", "507000", "VERVE");
+
+        // PAN "5070001234567890": first-8 = "50700012"  ->  50700000 <= 50700012 <= 50700099
+        ResponseEntity<Map> ok = hmacGet("/internal/v1/bins/50700012");
+        assertThat(ok.getStatusCode().value()).isEqualTo(200);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) ok.getBody().get("data");
+        assertThat(data).isNotNull();
+        assertThat(data.get("schemaName")).isEqualTo(partner.schemaName);
+    }
+
     // ---- HMAC test signer (mirrors InternalServiceClient.SigningInterceptor) ----
 
     private ResponseEntity<Map> hmacGet(String path) {
@@ -113,5 +138,13 @@ class BinLookupTest extends AbstractCardIntegrationTest {
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+    private void postBin(String jwt, String binStart, String binEnd, String scheme) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(jwt);
+        restTemplate.exchange("/baas/v1/bins", HttpMethod.POST,
+            new HttpEntity<>(Map.of("binStart", binStart, "binEnd", binEnd, "scheme", scheme), headers),
+            Map.class);
     }
 }

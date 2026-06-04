@@ -48,12 +48,14 @@ public class BinService {
         if (ctx == null) {
             throw BaasException.unauthorized("MISSING_AUTH", "Authorization required");
         }
-        if (normalize(binStart).compareTo(normalize(binEnd)) > 0) {
+        String start = normalize(binStart);
+        String end = normalizeRangeEnd(binEnd);
+        if (start.compareTo(end) > 0) {
             throw BaasException.badRequest("INVALID_BIN_RANGE", "bin_start must be <= bin_end");
         }
         return repo.save(CardBinRange.builder()
-            .binStart(normalize(binStart))
-            .binEnd(normalize(binEnd))
+            .binStart(start)
+            .binEnd(end)
             .partnerId(UUID.fromString(ctx.partnerId()))
             .schemaName(ctx.schemaName())
             .scheme(scheme)
@@ -86,5 +88,18 @@ public class BinService {
         String digits = bin == null ? "" : bin.replaceAll("\\D", "");
         String head = digits.length() >= 8 ? digits.substring(0, 8) : digits;
         return String.format("%-8s", head).replace(' ', '0');
+    }
+
+    /**
+     * FROZEN lookup {@link #normalize} pads the digit head with {@code '0'}; a range
+     * END must instead pad with {@code '9'} so a short BIN covers its FULL sub-range.
+     * e.g. normalizeRangeEnd("506000") = "50600099" — so a single 6-digit BIN
+     * registered as start==end covers every PAN beginning 506000 (first-8 in
+     * [50600000, 50600099]).
+     */
+    static String normalizeRangeEnd(String bin) {
+        String digits = bin == null ? "" : bin.replaceAll("\\D", "");
+        String head = digits.length() >= 8 ? digits.substring(0, 8) : digits;
+        return String.format("%-8s", head).replace(' ', '9');
     }
 }

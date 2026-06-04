@@ -50,7 +50,7 @@ class BinRegistrationTest extends AbstractCardIntegrationTest {
         assertThat(data).isNotNull();
         // Stored in normalized 8-char form.
         assertThat(data.get("binStart")).isEqualTo("41234500");
-        assertThat(data.get("binEnd")).isEqualTo("41239900");
+        assertThat(data.get("binEnd")).isEqualTo("41239999");
         assertThat(data.get("scheme")).isEqualTo("VISA");
         assertThat(data.get("active")).isEqualTo(Boolean.TRUE);
 
