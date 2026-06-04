@@ -3,6 +3,7 @@ package com.nubbank.baas.fep.support;
 import com.nubbank.baas.fep.routing.AuthorizationDecision;
 import com.nubbank.baas.fep.routing.CardClient;
 import com.nubbank.baas.fep.routing.PartnerRoute;
+import com.nubbank.baas.fep.routing.ReversalDecision;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -35,6 +36,12 @@ public class StubCardClient implements CardClient {
     /** The last request received by {@link #authorize} (null until first call). */
     private AuthorizationDecision.Request lastAuthorizeRequest;
 
+    /** The reversal decision returned by {@link #reverse}. */
+    private ReversalDecision reversalResponse = new ReversalDecision(true);
+
+    /** The last request received by {@link #reverse} (null until first call). */
+    private ReversalDecision.Request lastReversalRequest;
+
     // ──────────────────────────── CardClient ───────────────────────────────
 
     @Override
@@ -49,6 +56,12 @@ public class StubCardClient implements CardClient {
         // NEVER log req.pan() — PAN must never appear in logs.
         this.lastAuthorizeRequest = req;
         return authorizeResponse;
+    }
+
+    @Override
+    public ReversalDecision reverse(ReversalDecision.Request req) {
+        this.lastReversalRequest = req;
+        return reversalResponse;
     }
 
     // ──────────────────────────── Setup helpers ─────────────────────────────
@@ -75,6 +88,14 @@ public class StubCardClient implements CardClient {
         return this;
     }
 
+    /**
+     * Overrides the default {@code located=true} response returned by {@link #reverse}.
+     */
+    public StubCardClient withReversalResponse(ReversalDecision decision) {
+        this.reversalResponse = decision;
+        return this;
+    }
+
     // ──────────────────────────── Inspection ────────────────────────────────
 
     /** Returns the number of times {@link #lookupBin} was called. */
@@ -88,5 +109,13 @@ public class StubCardClient implements CardClient {
      */
     public AuthorizationDecision.Request lastAuthorizeRequest() {
         return lastAuthorizeRequest;
+    }
+
+    /**
+     * Returns the most recent request passed to {@link #reverse}, or {@code null}
+     * if {@link #reverse} has not been called yet.
+     */
+    public ReversalDecision.Request lastReversalRequest() {
+        return lastReversalRequest;
     }
 }

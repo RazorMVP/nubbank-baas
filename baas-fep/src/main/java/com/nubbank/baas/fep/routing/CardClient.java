@@ -30,4 +30,11 @@ public interface CardClient {
      * @return decision from Card, or a fail-safe RC-96 DECLINE on transport failure.
      */
     AuthorizationDecision authorize(AuthorizationDecision.Request req);
+
+    /**
+     * Asks Card to locate and reverse the original authorization (F6). Fail-closed:
+     * implementations return {@code located=false} on any transport error so the Netty
+     * thread is never interrupted.
+     */
+    ReversalDecision reverse(ReversalDecision.Request req);
 }

@@ -38,7 +38,7 @@ class NetworkHandlerTest {
         BinResolver          binResolver      = new BinResolver(stub);
         AuthorizationHandler authHandler      = new AuthorizationHandler(binResolver, stub, factory);
         FinancialHandler     financialHandler  = new FinancialHandler(authHandler);
-        ReversalHandler      reversalHandler   = new ReversalHandler(factory);
+        ReversalHandler      reversalHandler   = new ReversalHandler(binResolver, stub, factory);
         router = new MessageRouter(authHandler, financialHandler, reversalHandler, networkHandler, factory);
     }
 
@@ -194,8 +194,8 @@ class NetworkHandlerTest {
     }
 
     @Test
-    void router_0400_routes_to_reversalHandler_returns_RC00() throws Exception {
-        // ReversalHandler is a Phase-1C stub that approves all reversals.
+    void router_0400_routes_to_reversalHandler_unknownBin_returns_RC91() throws Exception {
+        // No PAN registered → unknown BIN → ReversalHandler returns RC 91 (unrouteable).
         ISOMsg req = factory.create("0400");
         req.set(IsoField.STAN, "000003");
 
@@ -205,8 +205,8 @@ class NetworkHandlerTest {
                 .as("0400 request must yield 0410 response MTI")
                 .isEqualTo("0410");
         assertThat(resp.getString(IsoField.RESPONSE_CODE))
-                .as("reversal stub always approves with RC 00")
-                .isEqualTo("00");
+                .as("no registered BIN → RC 91 (unrouteable)")
+                .isEqualTo("91");
     }
 
     @Test

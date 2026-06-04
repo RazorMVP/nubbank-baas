@@ -19,4 +19,5 @@
   <isofield id="42" length="15" name="MERCHANT ID"             class="org.jpos.iso.IF_CHAR"/>
   <isofield id="49" length="3"  name="CURRENCY"                class="org.jpos.iso.IFA_NUMERIC"/>
   <isofield id="70" length="3"  name="NETWORK MGMT CODE"       class="org.jpos.iso.IFA_NUMERIC"/>
+  <isofield id="90" length="42" name="ORIGINAL DATA ELEMENTS"  class="org.jpos.iso.IFA_NUMERIC"/>
 </isopackager>

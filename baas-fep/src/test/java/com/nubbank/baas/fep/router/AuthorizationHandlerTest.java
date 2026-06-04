@@ -25,8 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>Unknown BIN → 0110 with DE39=91, DE2 (PAN) ABSENT — security invariant.</li>
  * </ol>
  *
- * <p>Additionally exercises {@link FinancialHandler} delegation (0200 → 0210) and
- * {@link ReversalHandler} stub approval (0400 → 0410 with DE39=00).
+ * <p>Additionally exercises {@link FinancialHandler} delegation (0200 → 0210).
  */
 class AuthorizationHandlerTest {
 
@@ -210,18 +209,4 @@ class AuthorizationHandlerTest {
         assertThat(resp.hasField(IsoField.AUTH_CODE)).isTrue();
     }
 
-    // ─────────────────── ReversalHandler stub (0400 → 0410) ──────────────────
-
-    @Test
-    void reversalHandler_stub_approves_echoesStanAndDts() throws Exception {
-        ReversalHandler reversal = new ReversalHandler(iso);
-
-        ISOMsg req  = buildRequest("0400", KNOWN_PAN, "000000005000");
-        ISOMsg resp = reversal.handle(req);
-
-        assertThat(resp.getMTI()).isEqualTo("0410");
-        assertThat(resp.getString(IsoField.RESPONSE_CODE)).isEqualTo("00");
-        assertThat(resp.getString(IsoField.STAN)).isEqualTo("000001");
-        assertThat(resp.getString(IsoField.TRANSMISSION_DTS)).isEqualTo("0101120000");
-    }
 }

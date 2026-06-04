@@ -5,6 +5,7 @@ import com.nubbank.baas.fep.config.FepProperties;
 import com.nubbank.baas.fep.routing.AuthorizationDecision;
 import com.nubbank.baas.fep.routing.CardClient;
 import com.nubbank.baas.fep.routing.PartnerRoute;
+import com.nubbank.baas.fep.routing.ReversalDecision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,6 +46,8 @@ public class HttpCardClient implements CardClient {
     /** Fail-safe response returned when the Card service is unreachable or returns an error. */
     private static final AuthorizationDecision SYSTEM_ERROR_DECLINE =
         new AuthorizationDecision("DECLINE", "96", "card service unavailable");
+
+    private static final ReversalDecision REVERSAL_NOT_LOCATED = new ReversalDecision(false);
 
     private final RestTemplate restTemplate;
     private final String       baseUrl;
@@ -127,6 +130,28 @@ public class HttpCardClient implements CardClient {
             log.warn("Authorize failed for partnerId={} — Card service error: {}",
                 req.partnerId(), e.getMessage());
             return SYSTEM_ERROR_DECLINE;
+        }
+    }
+
+    @Override
+    public ReversalDecision reverse(ReversalDecision.Request req) {
+        log.debug("Reversing partnerId={} originalStan={} terminal={}",
+            req.partnerId(), req.originalStan(), req.terminalId());
+        String url = baseUrl + "/internal/v1/reversal";
+        try {
+            ResponseEntity<ApiResponse<ReversalDecision>> response = restTemplate.exchange(
+                url, HttpMethod.POST, new HttpEntity<>(req),
+                new ParameterizedTypeReference<ApiResponse<ReversalDecision>>() {});
+            ApiResponse<ReversalDecision> body = response.getBody();
+            if (body != null && body.data() != null) {
+                return body.data();
+            }
+            log.warn("Card reversal returned 2xx but empty data for partnerId={}", req.partnerId());
+            return REVERSAL_NOT_LOCATED;
+        } catch (RestClientException e) {
+            log.warn("Reversal failed for partnerId={} — Card service error: {}",
+                req.partnerId(), e.getMessage());
+            return REVERSAL_NOT_LOCATED;
         }
     }
 }

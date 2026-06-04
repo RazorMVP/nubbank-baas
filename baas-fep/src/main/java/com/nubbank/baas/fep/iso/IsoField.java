@@ -27,4 +27,5 @@ public final class IsoField {
     public static final int MERCHANT_ID        = 42;
     public static final int CURRENCY           = 49;
     public static final int NETWORK_MGMT_CODE  = 70;
+    public static final int ORIGINAL_DATA      = 90;
 }
