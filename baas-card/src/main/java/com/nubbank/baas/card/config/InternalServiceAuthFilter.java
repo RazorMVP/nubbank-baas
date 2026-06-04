@@ -51,7 +51,7 @@ import java.util.HexFormat;
 @Component
 public class InternalServiceAuthFilter extends OncePerRequestFilter {
 
-    private static final long MAX_SKEW_SECONDS = 300; // 5 minutes
+    private static final long MAX_SKEW_SECONDS = 60; // 1 minute — matches engine signer
     private static final String AUTH_PREFIX = "Internal ";
 
     private final SecretKeySpec keySpec;
