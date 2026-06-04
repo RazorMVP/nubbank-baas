@@ -19,6 +19,26 @@ public class SecurityConfig {
     private final PartnerContextFilter partnerContextFilter;
     private final RateLimitFilter rateLimitFilter;
     private final AuthEnforcementFilter authEnforcementFilter;
+    private final InternalServiceAuthFilter internalServiceAuthFilter;
+
+    /**
+     * Internal service-to-service chain. Matched FIRST (@Order(0)) so the partner chain
+     * never intercepts {@code /internal/v1/**}. HMAC validation is performed by
+     * {@link InternalServiceAuthFilter}; the chain itself permits all requests (the filter
+     * is the gate). The partner filters are intentionally NOT added on this path — internal
+     * callers set {@code PartnerContext} from the request body, not from a JWT/API key.
+     */
+    @Bean
+    @Order(0)
+    public SecurityFilterChain internalFilterChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher("/internal/v1/**")
+            .csrf(AbstractHttpConfigurer::disable)
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .addFilterBefore(internalServiceAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
 
     @Bean
     @Order(2)
