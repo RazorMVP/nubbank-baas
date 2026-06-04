@@ -11,8 +11,8 @@
 |------------|--------|-------------|
 | `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**) | Session 8 (`1010ca9`) |
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
-| `baas-card` — Phase 1C Track-Card (D6) | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize stub; **56 tests**) | Session 10 (`cb06896`) |
-| `baas-fep` — Phase 1C Track-FEP (D7) | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow; **46 tests**, Card client mocked; live Card wiring is Stage 5) | Session 9 (`29400fc`) |
+| `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
+| `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
 | `baas-backoffice` — React | 🟡 In progress — Phase 1C Foundation (backend enablers) done Session 8; React app + remaining tracks pending | — |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
@@ -198,6 +198,107 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 11 — 2026-06-04
+**Phase 1C seam hardening (F1–F8) — card↔FEP authorization seam correctness fixes across `baas-card` (`c8c5f28`) and `baas-fep` (`5a463cf`); 76 + 51 tests passing. Documentation/gate close-out commit is this entry.**
+
+Eight findings (F1–F8) discovered during a systematic review of the card↔FEP authorization seam were ratified and implemented across both services. No CBN Open Banking / consent / KYC / OBR surface changed this session — CBN compliance gap analysis unchanged.
+
+#### New/Updated Files
+
+**`baas-card` (code commit `c8c5f28`):**
+
+| File | Change |
+|------|--------|
+| `common/CurrencyMinorUnits.java` | JDK `Currency.getDefaultFractionDigits` scaling; RC 12 on unknown currency code (F1) |
+| `resources/db/migration/card-tenant/V2__authorization_idempotency.sql` | New `authorization_idempotency` table; `reversed` flag on authorize log (F3, F7) |
+| `limit/CardLimit.java` + `CardLimitService.java` | Currency-aware per-card limit enforcement; RC 57 (currency mismatch), RC 58 (limit exceeded in transaction currency) (F2) |
+| `authorize/AuthorizationIdempotencyRepository.java` | Repository for idempotency table; nightly purge query (F3) |
+| `authorize/AuthorizationIdempotencyPurgeJob.java` | `@Scheduled` nightly purge — enumerates all partner + sandbox schemas, sets `PartnerContext` per schema (F3, plan-correction: per-tenant scheduled job pattern) |
+| `authorize/AuthorizationDecisionService.java` | Full rewrite — currency scaling, currency-aware limits, idempotency check + insert, schema-prefix env derivation (F4); NO outer `@Transactional` (plan-correction: context-setting service discipline) |
+| `authorize/AuthorizationDecisionRequest.java` | + `stan`, `terminalId`, `transmissionDateTime` fields (F3, F6) |
+| `authorize/ReversalService.java` | Locate original auth by DE90 fields; mark `reversed = true`; return `{ located }` (F5) |
+| `authorize/ReversalController.java` | `POST /internal/v1/reversal` (HMAC); delegates to `ReversalService` (F5) |
+| `authorize/ReversalDecisionRequest.java` + `ReversalDecisionResponse.java` | Request/response DTOs (F5) |
+| `bin/BinService.java` | + `normalizeRangeEnd` method (pads short BIN end with `9`; `normalize` frozen for cross-track parity) (F6) |
+| `auth/InternalServiceAuthFilter.java` | Replay window tightened to 60 seconds (F8) |
+| `authorize/AuthorizationContractShapeTest.java` | Reflection shape test — asserts `AuthorizationDecisionRequest` has all required fields; per-module (F7) |
+
+**`baas-fep` (code commit `5a463cf`):**
+
+| File | Change |
+|------|--------|
+| `routing/AuthorizationDecision.java` | `Request` record extended with `stan`, `terminalId`, `transmissionDateTime` (F3, F6) |
+| `router/AuthorizationHandler.java` | Populates DE11 (STAN), DE41 (terminalId), DE7 (transmissionDateTime) into the Card authorize request (F3) |
+| `routing/ReversalDecision.java` | New `Request` + response records for the reversal contract §2b (F5) |
+| `routing/CardClient.java` | + `reverse(ReversalDecision.Request)` → `Optional<ReversalDecision>` method (F5) |
+| `client/HttpCardClient.java` | Implements `reverse()` over HMAC `RestTemplate`; fail-closed (`located: false` on any error) (F5) |
+| `router/ReversalHandler.java` | Rewired — extracts DE90 original STAN + transmission date-time + DE41; calls `cardClient.reverse()`; maps `located` → RC 00/25 (F5) |
+| `iso/IsoField.java` | + `DE90` constant (Original Data Elements) (F5) |
+| `iso8583-1987-fields.xml` | DE90 LLVAR field definition (F5) |
+| `config/CardClientConfig.java` | HMAC signer uses `request.getURI().getRawPath()` (raw, not decoded) to match card validator (F8) |
+| `router/AuthorizationContractShapeTest.java` | Reflection shape test — asserts `AuthorizationDecision.Request` has all required fields; per-module (F7) |
+
+**Documentation (this commit):**
+
+| File | Change |
+|------|--------|
+| `docs/contracts/phase1c-interfaces.md` | §2a updated (3 new authorize fields, idempotency note, RC table extended, shape-test note); §2b added (reversal contract) |
+| `docs/api-reference.html` | Authorize request shape updated (+3 fields); RC table extended; `POST /internal/v1/reversal` section added; MTI 0400 row updated; footer updated |
+| `docs/deferred-items.md` | DEF-1C-25 status note updated — partial closure (locate + mark); fund reversal still Phase 2 |
+| `CLAUDE.md` | Confirmed Platform Versions SHAs updated (c8c5f28 / 5a463cf); BaaS Card + FEP module catalogues updated with seam-hardening additions; 6 new Known Gotchas |
+| `baas-log.md` | This entry |
+
+#### Key Decisions
+
+**F1 — Currency-correct minor-unit scaling:** JDK `Currency.getDefaultFractionDigits(currencyCode)` maps ISO 4217 numeric codes to exponents (NGN/KES/USD = 2; JPY = 0; KWD = 3). RC `12` (invalid transaction) returned for unknown/unparseable currency codes. Never hardcode exponent 2.
+
+**F2 — Currency-aware card limits:** Per-card limits are denominated in the card product's currency. A transaction in a different currency returns RC `57` (transaction not permitted). A transaction exceeding the limit in the transaction currency returns RC `58`. Both checked only if the card has a limit row (null = unlimited).
+
+**F3 — Authorization idempotency:** Idempotency key = `stan + "|" + terminalId + "|" + transmissionDateTime` (ISO DE11/DE41/DE7 — these fields never contain `|`). Persisted in a per-tenant `authorization_idempotency` table. Duplicate requests return the cached decision without re-evaluating. Daily purge job processes all partner + sandbox schemas. The UNIQUE constraint and the lookup both target `idem_key` alone — they always agree.
+
+**F4 — Schema-derived environment:** Card services derive the partner environment (PRODUCTION/SANDBOX) from the schema name prefix (`sandbox_` → SANDBOX; `partner_` → PRODUCTION), not from a DB column. No extra DB lookup needed.
+
+**F5 — DE90 reversal matching:** The `0400` reversal handler extracts DE90 (Original Data Elements) to get the original STAN and original transmission date-time, plus DE41 for terminal ID. These three fields identify the original authorization row in the per-tenant idempotency table. Card marks it `reversed = true` and returns `{ located: true/false }`. FEP maps `located: true` → RC `00`, `located: false` → RC `25`. Fund reversal (crediting the cardholder account) is deferred to Phase 2, riding with the real balance-check wiring (DEF-1C-23).
+
+**F6 — BIN range-end coverage:** `BinService.normalizeRangeEnd` pads a short BIN end with `9` (e.g. `506775` → `50677599`) so that a BIN registered with a short `end` value covers the full sub-range below it. The frozen `normalize` (cross-track with FEP) is untouched — it still pads with `0`.
+
+**F7 — HMAC raw-path parity:** `CardClientConfig`'s `SigningInterceptor` now signs `request.getURI().getRawPath()` (raw, undecoded). The card validator uses `httpRequest.getRequestURI()` which returns the raw path — both sides sign identical bytes. `getPath()` decodes percent-encoded segments and diverges.
+
+**F8 — 60-second replay window:** `InternalServiceAuthFilter` accepts timestamps within ±60 seconds of server clock. This accommodates clock skew between container hosts without weakening replay protection meaningfully (prior window was unlimited).
+
+**Plan-correction — no `@Transactional` on context-setting internal services:** A Spring AOP proxy opens the Hibernate session (invoking the tenant resolver) before the method body executes. If the method also calls `PartnerContext.set(...)`, the session opens against `public` schema (no context yet). Fix: remove outer `@Transactional`; set context first; do DB work in `try`; clear in `finally`. Applied to `AuthorizationDecisionService` and `ReversalService`.
+
+**Plan-correction — per-tenant `@Scheduled` purge:** A scheduled job has no `PartnerContext` — it runs against `public`. Fix: enumerate all partner organizations, iterate `partner_<hex>` and `sandbox_<hex>` schemas, set `PartnerContext` per iteration, clear in `finally`. Applied to `AuthorizationIdempotencyPurgeJob`.
+
+#### Build Verification
+`baas-card`: Tests run: 76, Failures: 0, Errors: 0 — BUILD SUCCESS
+`baas-fep`: Tests run: 51, Failures: 0, Errors: 0 — BUILD SUCCESS
+
+#### Confirmed Platform Versions
+
+**BaaS Card (`baas-card/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.3 | `c8c5f28` |
+| Java | 21 | `c8c5f28` |
+| Spring Security | 6.x (oauth2-resource-server present; operator-JWT RBAC deferred DEF-1C-20) | `c8c5f28` |
+| Nimbus JOSE+JWT | 9.x (HMAC partner JWT) | `c8c5f28` |
+| Flyway | 10.x (history table `flyway_schema_history_card`; V2 migration adds idempotency table) | `c8c5f28` |
+| Testcontainers | PostgreSQL 16 in integration tests | `c8c5f28` |
+| Last git commit | `c8c5f28` | Session 11 — seam hardening (F1–F8); 76 tests passing |
+
+**BaaS FEP (`baas-fep/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.3 | `5a463cf` |
+| Java | 21 | `5a463cf` |
+| jPOS | 2.1.10 (from `jpos` repo) | `5a463cf` |
+| Netty | 4.1.115.Final | `5a463cf` |
+| Caffeine | 3.1.8 | `5a463cf` |
+| Lombok | 1.18.38 | `5a463cf` |
+| Architecture | STATELESS (no DB/JPA/Flyway/Postgres/Redis) | `5a463cf` |
+| Last git commit | `5a463cf` | Session 11 — seam hardening (F1–F8); 51 tests passing |
 
 ### Session 10 — 2026-06-03
 **Phase 1C Track-Card — `baas-card` card spine (products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize stub) — 56 tests (`cb06896`).**

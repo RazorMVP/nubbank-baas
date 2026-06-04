@@ -305,7 +305,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 8 — 2026-05-30)
+## Confirmed Platform Versions (Session 11 — 2026-06-04)
 
 ### BaaS Engine (`baas-engine/`)
 
@@ -350,7 +350,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Nimbus JOSE+JWT** | 9.x | HMAC-SHA256 partner JWT validation (ported) |
 | **FieldEncryptor** | AES-GCM-256 (ported) | PAN encrypted at rest; responses expose `maskedPan` only; PAN never logged |
 | **Testcontainers** | PostgreSQL 16 in integration tests | Card tests self-provision their own tenant schema |
-| **Last git commit** | `cb06896` | Session 10 — Phase 1C Track-Card (card spine); 56 tests passing |
+| **Last git commit** | `c8c5f28` | Session 11 — seam hardening (F1–F8: currency scaling, currency-aware limits, authorization idempotency, schema-derived env, DE90 reversal matching, BIN range-end coverage, HMAC raw-path parity, 60s replay window); 76 tests passing |
 
 ### BaaS FEP (`baas-fep/`)
 
@@ -364,7 +364,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Nimbus JOSE+JWT** | 9.37.3 | (transitive via ported HMAC `SigningInterceptor`) |
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
 | **Architecture** | STATELESS | No DB / JPA / Flyway / Postgres / Redis / datasource — FEP routes and forwards only |
-| **Last git commit** | `29400fc` | Session 9 — Phase 1C Track-FEP (D7); 46 tests passing (Card client mocked) |
+| **Last git commit** | `5a463cf` | Session 11 — seam hardening (F1–F8: authorize DTO stan/terminalId/transmissionDateTime, ReversalHandler DE90 matching, AuthorizationDecision.Request updated, CardClient reverse method, HMAC raw-path signing); 51 tests passing |
 
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
@@ -589,15 +589,17 @@ maps the decision to DE39. Built against a **mocked `CardClient`** — live Card
 | Authorization flow (`0100→0110`, `0200→0210`) → Card decision → DE39 | `router/` | ✅ Built |
 | Unrouteable BIN → RC `91`, **DE2 omitted** (no PAN echo) | `router/` | ✅ Built |
 | Network management (`0800→0810` sign-on / echo, DE70) | `router/` | ✅ Built |
-| Reversal (`0400→0410`) — stub approve | `router/` | ✅ Built (real logic DEF-1C-25) |
+| Reversal (`0400→0410`) — DE90 match → Card `/internal/v1/reversal` | `router/` | ✅ Built Session 11 (DEF-1C-25 partial closure; fund reversal Phase 2) |
+
+**Seam-hardening additions (Session 11 — F1–F8):** `AuthorizationDecision.Request` extended with `stan`, `terminalId`, `transmissionDateTime` fields; `AuthorizationHandler` populates DE11/DE41/DE7 into the request; `ReversalHandler` rewired — extracts DE90 original STAN + transmission date-time + DE41 terminal ID, calls `HttpCardClient.reverse(...)`, maps `located` → RC 00/25; `ReversalDecision.Request` + `ReversalDecision` DTOs; `CardClient` interface + `HttpCardClient` `reverse()` method; `CardClientConfig` signs HMAC on `getURI().getRawPath()` (raw, not decoded) to match card validator's `getRequestURI()`; `IsoField` constants for DE90 (Original Data Elements); jPOS packager XML updated for DE90 (LLVAR); `AuthorizationContractShapeTest` reflection test (per-module, not shared with baas-card). ✅ 51 tests.
 
 **MTI inventory (Phase 1C):**
 
 | MTI | Direction | Handler | Notes |
 |-----|-----------|---------|-------|
-| `0100` → `0110` | Terminal → FEP | `AuthorizationHandler` | Purchase auth: BIN-route → Card authorize → DE39 |
+| `0100` → `0110` | Terminal → FEP | `AuthorizationHandler` | Purchase auth: BIN-route → Card authorize (with DE11/DE41/DE7) → DE39 |
 | `0200` → `0210` | Terminal → FEP | `FinancialHandler` | Withdrawal (proc code `01xxxx`); same flow as 0100 |
-| `0400` → `0410` | Terminal → FEP | `ReversalHandler` | Stub: echo STAN/DE90, approve `00` (DEF-1C-25) |
+| `0400` → `0410` | Terminal → FEP | `ReversalHandler` | Extract DE90 → Card `/internal/v1/reversal` → RC 00 (located) / 25 (not located); fund reversal Phase 2 |
 | `0800` → `0810` | Terminal ↔ FEP | `NetworkHandler` | Sign-on / echo; DE70 network code, DE39 `00` |
 | routed, bad DE4 | — | `AuthorizationHandler` | Missing/non-numeric amount on a routed 0100/0200 → DE39 `30` (no Card call) |
 | unknown MTI | — | `MessageRouter` | Format error → DE39 `30` |
@@ -637,9 +639,12 @@ Standalone microservice `baas-card` (port 8081) on the shared baas-engine Postgr
 | Card products | `product/` | ✅ Built (tenant) |
 | Card issuance + lifecycle state machine (PAN encrypted, masked responses) | `card/` | ✅ Built (tenant) |
 | Per-card limits | `limit/` | ✅ Built (tenant) |
-| Internal authorization-decision stub (ISO-8583 RC mapping) | `authorize/` | ✅ Built |
+| Internal authorization-decision stub (ISO-8583 RC mapping) | `authorize/` | ✅ Built (Session 10); seam-hardened Session 11 — currency-correct minor-unit scaling (JDK `Currency.getDefaultFractionDigits`), currency-aware per-card limit check (RC 57/12/58), authorization idempotency table (`stan|terminalId|transmissionDateTime` key, 24h purge job), schema-prefix environment derivation, `stan`/`terminalId`/`transmissionDateTime` fields added to request DTO |
+| Internal reversal-decision endpoint (DE90 match + mark-reversed) | `authorize/` | ✅ Built Session 11 — `POST /internal/v1/reversal`; locates original auth row by DE90 fields; marks `reversed = true`; returns `{ located }` → RC 00/25; fund reversal deferred Phase 2 (DEF-1C-23) |
 
-**Endpoint inventory.** Partner-facing (`/baas/v1/**`, partner JWT (HMAC) or API key): `POST/GET /baas/v1/card-products`; `POST/GET /baas/v1/cards`; `POST /baas/v1/cards/{id}?command={activate|block|unblock|cancel}`; `PUT/GET /baas/v1/cards/{id}/limits`; `POST/GET /baas/v1/bins`. Internal (service-to-service, body-signed HMAC): `GET /internal/v1/bins/{bin}` (consumed by Track-FEP, contract §2); `POST /internal/v1/authorize` (consumed by Track-FEP, contract §2a). See `docs/api-reference.html` for full request/response shapes.
+**Seam-hardening additions (Session 11 — F1–F8):** `CurrencyMinorUnits` utility (JDK `Currency.getDefaultFractionDigits`, RC 12 on unknown); V2 schema migration (idempotency table `authorization_idempotency` + `reversed` flag on authorize log); `CardLimit` currency-aware enforcement (RC 57 mismatch, RC 58 exceeded); `AuthorizationIdempotencyRepository` + nightly purge `@Scheduled`; `AuthorizationDecisionService` rewrite (context discipline — no outer `@Transactional`, set context first, DB work in `try`, clear in `finally`); `ReversalService` + `ReversalController` + request/response DTOs; `BinService.normalizeRangeEnd` (pads short BIN end with `9`); `InternalServiceAuthFilter` 60-second replay window (clock-skew tolerance); `AuthorizationContractShapeTest` (reflection — per-module, not shared).
+
+**Endpoint inventory.** Partner-facing (`/baas/v1/**`, partner JWT (HMAC) or API key): `POST/GET /baas/v1/card-products`; `POST/GET /baas/v1/cards`; `POST /baas/v1/cards/{id}?command={activate|block|unblock|cancel}`; `PUT/GET /baas/v1/cards/{id}/limits`; `POST/GET /baas/v1/bins`. Internal (service-to-service, body-signed HMAC): `GET /internal/v1/bins/{bin}` (consumed by Track-FEP, contract §2); `POST /internal/v1/authorize` (consumed by Track-FEP, contract §2a); `POST /internal/v1/reversal` (consumed by Track-FEP, contract §2b). See `docs/api-reference.html` for full request/response shapes.
 
 ---
 
@@ -763,6 +768,12 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | **(FEP) is STATELESS — never set `PartnerContext`** | FEP holds no tenant ThreadLocal and no DB. It passes `schemaName` to Card in the authorize request body; Card sets its own tenant context. Adding any JPA/Flyway/Postgres/Redis dep breaks the architecture. |
 | **(FEP) jPOS 2.1.10 is not on Maven Central** | Add the `jpos` repo (`https://jpos.org/maven`) in `pom.xml` `<repositories>`, or `dependency:resolve` fails. Verified resolving in this worktree. |
 | **(FEP) Card calls must fail-closed, never throw into the Netty thread** | `HttpCardClient.lookupBin` → `Optional.empty()` on 404/`RestClientException` (treated as unrouteable RC 91); `authorize` → `DECLINE`/`96` on any transport error. The handler catches everything → RC 96 system error as a last resort. |
+| **`@Transactional` on an internal service that sets `PartnerContext` itself routes to `public`** — the Spring proxy opens the Hibernate session (invoking the tenant resolver) BEFORE the method body sets context, so the table isn't found. Pattern: NO outer `@Transactional`; set `PartnerContext` first, do DB work in the `try`, clear in `finally` (see `AuthorizationDecisionService`, `ReversalService`). | Remove `@Transactional` from the service method that also calls `PartnerContext.set(...)`. Let the inner repository methods carry their own transactions. The context must be set before any Hibernate session opens. |
+| **Per-tenant `@Scheduled` job (e.g. idempotency purge) has no `PartnerContext`** → routes to `public`. Enumerate schemas via `PartnerOrganizationRepository`, set `PartnerContext` per schema (`partner_<hex>` AND `sandbox_<hex>`), clear in `finally`. | Loop: `for (schema : ["partner_"+id, "sandbox_"+id]) { PartnerContext.set(...); try { doWork(); } finally { PartnerContext.clear(); } }` — one iteration per environment per partner. |
+| **Authorization idempotency key = `stan\|terminalId\|transmissionDateTime`** (ISO DE11/DE41/DE7, which never contain `\|`); lookup by `idem_key` alone (retention via a daily purge), so lookup and the UNIQUE constraint never disagree. | Concatenate with `\|` as separator. Never use a composite DB unique index across three columns — the `idem_key` single-column approach ensures the lookup and the constraint are always the same expression. |
+| **BIN range END pads with `9` (`BinService.normalizeRangeEnd`), START pads `0` (frozen `normalize`)** — a short BIN registered start==end covers its full sub-range. The frozen lookup `normalize` (cross-track with FEP) must stay `0`-padded. | `normalizeRangeEnd` is a SEPARATE method from `normalize` — do not change `normalize` (frozen contract §2 invariant). Only `normalizeRangeEnd` pads with `9`. A 6-digit end `506775` → `50677599`; a 6-digit start `506775` → `50677500`. |
+| **Cross-service authorize DTO parity is guarded by a per-module reflection shape test** (`AuthorizationContractShapeTest` in `baas-card` AND `baas-fep`) — separate Maven modules can't share a reflection test. | Each module has its own `AuthorizationContractShapeTest` that reflects on its own local DTO class and asserts the required field names. When adding a field to the contract, update BOTH tests. |
+| **FEP HMAC signer must sign `getURI().getRawPath()` (raw) to match the card validator's `getRequestURI()` (raw)** — `getPath()` decodes percent-encoded segments and diverges from `getRequestURI()` on any path that contains encoded characters (e.g. `%2F`). | In `CardClientConfig`'s `SigningInterceptor`, use `request.getURI().getRawPath()` (not `.getPath()`) as the path component of the HMAC content string. The card validator uses `httpRequest.getRequestURI()` which returns the raw (undecoded) path — both sides must sign/verify the same bytes. |
 
 ---
 

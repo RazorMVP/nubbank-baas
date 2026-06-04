@@ -28,7 +28,7 @@ Structure: `ID | Item | Why deferred | Earliest phase | Source`. Append new defe
 | DEF-1C-22 | Cross-service tenant provisioning trigger (engine→card schema objects) | Card tests self-provision in 1C | Phase 1C (Stage 5) | Track-Card |
 | DEF-1C-23 | Card authorization balance check (real, via baas-engine) | Stub always-sufficient in 1C | Phase 2 | Track-Card |
 | DEF-1C-24 | FEP authorization-log persistence (auth audit trail) | FEP is a stateless spine in 1C (no DB) | Phase 2 | Track-FEP |
-| DEF-1C-25 | Reversal (0400) real processing — match original + reverse | Stub approves (`00`) in 1C | Phase 2 | Track-FEP |
+| DEF-1C-25 | Reversal (0400) fund reversal — credit cardholder account | **Partially closed in Session 11:** Phase 1C now LOCATES the original authorization via the per-tenant idempotency table (matched by DE90 original STAN + terminal ID + original transmission date-time) and marks it `reversed = true`, returning RC `00` (located) / RC `25` (not located). The actual **fund reversal** (crediting the cardholder account) remains deferred to Phase 2 — it rides with the real balance-check wiring (DEF-1C-23). | Phase 2 | Track-FEP / Session 11 |
 | DEF-1C-26 | Card-BIN-change cache invalidation push (vs 5-min Caffeine TTL only) | 5-min TTL acceptable in 1C | Phase 2 | Track-FEP |
 
 ## Hard prerequisites (not optional deferrals — must accompany the named work)

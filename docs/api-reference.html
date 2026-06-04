@@ -256,7 +256,10 @@
   "schemaName": "partner_&lt;uuid&gt;",
   "pan": "&lt;full PAN from DE2&gt;",
   "amountMinor": 50000,        // long, minor units
-  "currency": "566"            // ISO 4217 numeric
+  "currency": "566",           // ISO 4217 numeric (DE49)
+  "stan": "000042",            // DE11 — 6-digit Systems Trace Audit Number
+  "terminalId": "TERM0001",    // DE41 — 8-char terminal identifier
+  "transmissionDateTime": "0604143022" // DE7 — MMDDhhmmss
 }</pre>
           <strong>Response</strong> <code>ApiResponse&lt;AuthorizationDecisionResponse&gt;</code>, <code>data</code>:
           <pre>{
@@ -269,7 +272,7 @@
     </tbody>
   </table>
 
-  <h3>Response-code mapping (Phase 1C stub)</h3>
+  <h3>Response-code mapping (Phase 1C)</h3>
   <table>
     <thead><tr><th>RC (DE39)</th><th>Meaning</th></tr></thead>
     <tbody>
@@ -277,11 +280,40 @@
       <tr><td><code>56</code></td><td>No such card</td></tr>
       <tr><td><code>62</code></td><td>Card blocked / cancelled</td></tr>
       <tr><td><code>54</code></td><td>Card not usable (ISSUED / EXPIRED)</td></tr>
-      <tr><td><code>61</code></td><td>Exceeds per-transaction limit</td></tr>
+      <tr><td><code>61</code></td><td>Exceeds per-transaction limit (evaluated in the transaction currency, scaled by its ISO 4217 minor-unit exponent)</td></tr>
+      <tr><td><code>57</code></td><td>Currency not permitted (limit currency mismatch)</td></tr>
+      <tr><td><code>12</code></td><td>Unknown / unparseable currency code in request</td></tr>
     </tbody>
   </table>
-  <div class="callout">The balance check is a Phase 1C stub — always sufficient (deferred: real balance check via baas-engine, DEF-1C-23).</div>
-  <div class="note"><strong>PAN safety:</strong> the authorization decision stub logs only the resulting decision and response code — never the PAN, card id, or any cardholder data.</div>
+  <div class="callout">The balance check is a Phase 1C stub — always sufficient (deferred: real balance check via baas-engine, DEF-1C-23). Authorization idempotency is active: duplicate requests (same <code>stan + terminalId + transmissionDateTime</code>) return the cached decision.</div>
+  <div class="note"><strong>PAN safety:</strong> the authorization decision logs only the resulting decision and response code — never the PAN, card id, or any cardholder data.</div>
+
+  <h3>Reversal decision (contract §2b)</h3>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/internal/v1/reversal</span></td>
+        <td>Locate and mark the original authorization for reversal. Returns <code>200</code>. Internal HMAC-signed; not partner-facing. FEP maps <code>located: true</code> → DE39 <code>00</code>; <code>located: false</code> → DE39 <code>25</code> (unable to locate). Actual fund reversal is deferred to Phase 2 (DEF-1C-23).</td>
+        <td>
+          <strong>Request</strong> <code>ReversalDecisionRequest</code>:
+          <pre>{
+  "partnerId": "&lt;uuid&gt;",
+  "schemaName": "partner_&lt;uuid&gt;",
+  "originalStan": "000042",           // DE90 original STAN
+  "terminalId": "TERM0001",           // DE41 — 8-char terminal id
+  "originalTransmissionDateTime": "0604143022" // DE90 original MMDDhhmmss
+}</pre>
+          <strong>Response</strong> <code>ApiResponse&lt;ReversalDecisionResponse&gt;</code>, <code>data</code>:
+          <pre>{
+  "located": true   // true = original found and marked reversed
+                    // false = no matching idempotency row (RC 25)
+}</pre>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout">The FEP extracts <code>originalStan</code> and <code>originalTransmissionDateTime</code> from <strong>ISO 8583 DE90 (Original Data Elements)</strong> of the <code>0400</code> reversal message. Card matches against the per-tenant idempotency table keyed by <code>stan|terminalId|transmissionDateTime</code>. Fund reversal rides with the balance-check wiring in Phase 2 (DEF-1C-23).</div>
 </section>
 
 <section id="baas-fep">
@@ -310,7 +342,7 @@
       <tbody>
         <tr><td><code>0100</code></td><td><code>0110</code></td><td>Authorization (purchase)</td><td>Extract DE2 PAN → BIN route → <code>baas-card</code> authorize → DE39.</td></tr>
         <tr><td><code>0200</code></td><td><code>0210</code></td><td>Financial (withdrawal)</td><td>Processing code <code>01xxxx</code>; same routing + authorize flow as <code>0100</code>.</td></tr>
-        <tr><td><code>0400</code></td><td><code>0410</code></td><td>Reversal</td><td>Phase 1C stub: echoes STAN / DE90 and approves (<code>00</code>). Real match-and-reverse is deferred (DEF-1C-25).</td></tr>
+        <tr><td><code>0400</code></td><td><code>0410</code></td><td>Reversal</td><td>FEP extracts DE90 original STAN + transmission date-time, calls <code>baas-card POST /internal/v1/reversal</code>. <code>located: true</code> → RC <code>00</code>; <code>located: false</code> → RC <code>25</code>. Fund reversal deferred Phase 2 (DEF-1C-23).</td></tr>
         <tr><td><code>0800</code></td><td><code>0810</code></td><td>Network management</td><td>Sign-on / echo via DE70; DE39 <code>00</code>; echoes STAN/transmission DTS.</td></tr>
         <tr><td colspan="2"><em>routed, malformed DE4</em></td><td>Format error</td><td>Missing / non-numeric amount on a routed <code>0100</code>/<code>0200</code> → DE39 <code>30</code>; no Card call is made.</td></tr>
         <tr><td colspan="2"><em>unknown MTI</em></td><td>Format error</td><td>DE39 <code>30</code>.</td></tr>
@@ -325,7 +357,7 @@
       zero-pad to 8). It resolves the owning partner via <code>baas-card</code>
       <code>GET /internal/v1/bins/{bin}</code> → <code>{ partnerId, schemaName }</code>, caching results in
       Caffeine for 5 minutes. The authorization request is then sent to <code>baas-card</code>
-      <code>POST /internal/v1/authorize</code> with <code>{ partnerId, schemaName, pan, amountMinor, currency }</code>;
+      <code>POST /internal/v1/authorize</code> with <code>{ partnerId, schemaName, pan, amountMinor, currency, stan, terminalId, transmissionDateTime }</code>;
       the response <code>{ decision, responseCode, message }</code> maps <code>responseCode</code> onto DE39.
       Both internal calls are signed with an inter-service HMAC and are consumed by contract (see
       <code>docs/contracts/phase1c-interfaces.md</code> §2 &amp; §2a).
@@ -340,12 +372,12 @@
     <p class="muted">
       EMV cryptogram validation, HSM, scheme-specific packagers/private DEs, settlement/advice MTIs, and
       tokenization are intentionally out of Phase 1C scope (deferred — see <code>docs/deferred-items.md</code>
-      DEF-1C-01..07, plus FEP-specific DEF-1C-24..26).
+      DEF-1C-01..07, plus FEP-specific DEF-1C-24..26). Fund reversal is also deferred to Phase 2 (DEF-1C-23).
     </p>
   </section>
 
 <footer>
-  NubBank BaaS · API Reference · Phase 1C — <code>baas-card</code> (Session 10) + <code>baas-fep</code> (Session 9). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2 and §2a).
+  NubBank BaaS · API Reference · Phase 1C — <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
 </footer>
 
 </div>
