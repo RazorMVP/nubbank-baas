@@ -186,6 +186,18 @@ public class AccountService {
         return new CardCreditResult(true);
     }
 
+    /**
+     * Internal account-existence lookup (Stage 5) — used by card issuance to validate
+     * {@code linkedAccountId} before binding a card to it.
+     */
+    @Transactional(readOnly = true)
+    public AccountLookupResult lookupAccount(UUID accountId) {
+        requireContext();
+        return accountRepo.findById(accountId)
+            .map(a -> new AccountLookupResult(true, a.getStatus() == AccountStatus.ACTIVE, a.getCurrencyCode()))
+            .orElse(new AccountLookupResult(false, false, null));
+    }
+
     @Transactional(readOnly = true)
     public Page<TransactionResponse> getTransactions(UUID accountId, int page, int size) {
         requireContext();
