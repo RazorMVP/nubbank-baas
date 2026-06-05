@@ -30,5 +30,7 @@ app:
     key: test-encryption-key-exactly-32c!
   internal-service:
     shared-secret: test-shared-secret-min-32-chars-long-okay
+    # baas-card is not running in engine tests; the dedicated Task 12 test uses a mock.
+    card-provisioning-enabled: false
   keycloak:
     admin-issuer: https://auth.nubbank.test/realms/baas-nubbank-admin

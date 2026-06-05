@@ -43,7 +43,8 @@ app:
   encryption:
     key: ${ENCRYPTION_KEY}
   internal-service:
-    shared-secret: ${INTERNAL_SERVICE_SECRET}   # MUST match baas-ncube's value; ≥32 chars
+    shared-secret: ${INTERNAL_SERVICE_SECRET}   # MUST match baas-ncube/baas-card's value; ≥32 chars
+    card-base-url: ${CARD_BASE_URL:http://baas-card:8081}   # engine→card provisioning trigger (DEF-1C-22)
   ncube:
     base-url: ${NCUBE_BASE_URL:http://baas-ncube:8082}
   rate-limit:

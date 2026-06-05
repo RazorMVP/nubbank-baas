@@ -20,6 +20,7 @@ public class TenantProvisioningService {
 
     private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
+    private final CardProvisioningClient cardProvisioningClient;
 
     /**
      * Provision a new partner schema synchronously.
@@ -43,6 +44,10 @@ public class TenantProvisioningService {
             createSchema(sandboxSchema);
             runTenantMigrations(schemaName);
             runTenantMigrations(sandboxSchema);
+
+            // DEF-1C-22: provision card schema objects into the SAME partner schema. A failure
+            // here propagates to the catch below, so a partner is never left half-provisioned.
+            cardProvisioningClient.provision(partnerId, schemaName);
 
             jdbcTemplate.update(
                 "INSERT INTO public.schema_provision_log " +
