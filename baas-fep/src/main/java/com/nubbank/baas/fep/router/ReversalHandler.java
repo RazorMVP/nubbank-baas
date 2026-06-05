@@ -1,5 +1,7 @@
 package com.nubbank.baas.fep.router;
 
+import com.nubbank.baas.fep.audit.AuthorizationAuditService;
+import com.nubbank.baas.fep.audit.FepAuthorizationLog;
 import com.nubbank.baas.fep.iso.IsoField;
 import com.nubbank.baas.fep.iso.IsoMessageFactory;
 import com.nubbank.baas.fep.routing.BinResolver;
@@ -10,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.jpos.iso.ISOMsg;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -34,16 +38,20 @@ public class ReversalHandler {
     private final BinResolver       binResolver;
     private final CardClient        cardClient;
     private final IsoMessageFactory iso;
+    private final AuthorizationAuditService auditService;
 
     public ISOMsg handle(ISOMsg req) {
+        Instant start = Instant.now();
         String pan = field(req, IsoField.PAN);
         Optional<PartnerRoute> route = binResolver.resolve(pan);
         if (route.isEmpty()) {
+            audit(req, pan, null, "91", start);   // best-effort; never blocks the response
             return respond(req, "91");   // unrouteable — DE2 omitted
         }
 
         String de90 = field(req, IsoField.ORIGINAL_DATA);
         if (de90 == null || de90.length() < 20) {
+            audit(req, pan, route.get(), "30", start);
             return respond(req, "30");   // format error — cannot identify the original
         }
         String originalStan = de90.substring(4, 10);
@@ -57,7 +65,26 @@ public class ReversalHandler {
             terminalId,
             originalDts));
 
-        return respond(req, decision.located() ? "00" : "25");
+        String rc = decision.located() ? "00" : "25";
+        audit(req, pan, route.get(), rc, start);
+        return respond(req, rc);
+    }
+
+    /**
+     * Records the reversal outcome to the FEP audit log (DEF-1C-24) — best-effort, never throws.
+     * {@code reversal=true}; only {@code bin} + last4 are stored, never the full PAN.
+     */
+    private void audit(ISOMsg req, String pan, PartnerRoute route, String rc, Instant start) {
+        String bin = pan == null ? null : pan.substring(0, Math.min(8, pan.length()));
+        String last4 = (pan == null || pan.length() < 4) ? null : pan.substring(pan.length() - 4);
+        auditService.record(new FepAuthorizationLog(
+            start, MessageRouter.mti(req), field(req, IsoField.STAN), field(req, IsoField.TERMINAL_ID),
+            bin, last4,
+            route == null ? null : route.partnerId().toString(),
+            route == null ? null : route.schemaName(),
+            null, field(req, IsoField.CURRENCY),
+            null, rc, true,
+            (int) Duration.between(start, Instant.now()).toMillis()));
     }
 
     private ISOMsg respond(ISOMsg req, String rc) {

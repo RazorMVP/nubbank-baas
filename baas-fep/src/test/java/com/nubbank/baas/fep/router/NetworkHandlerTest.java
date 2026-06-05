@@ -36,9 +36,11 @@ class NetworkHandlerTest {
         // auth/financial requests without a known PAN yield RC 91 (unrouteable).
         StubCardClient       stub             = new StubCardClient();
         BinResolver          binResolver      = new BinResolver(stub);
-        AuthorizationHandler authHandler      = new AuthorizationHandler(binResolver, stub, factory);
+        var                  audit            = org.mockito.Mockito.mock(
+            com.nubbank.baas.fep.audit.AuthorizationAuditService.class);
+        AuthorizationHandler authHandler      = new AuthorizationHandler(binResolver, stub, factory, audit);
         FinancialHandler     financialHandler  = new FinancialHandler(authHandler);
-        ReversalHandler      reversalHandler   = new ReversalHandler(binResolver, stub, factory);
+        ReversalHandler      reversalHandler   = new ReversalHandler(binResolver, stub, factory, audit);
         router = new MessageRouter(authHandler, financialHandler, reversalHandler, networkHandler, factory);
     }
 

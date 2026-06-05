@@ -1,5 +1,7 @@
 package com.nubbank.baas.fep.router;
 
+import com.nubbank.baas.fep.audit.AuthorizationAuditService;
+import com.nubbank.baas.fep.audit.FepAuthorizationLog;
 import com.nubbank.baas.fep.iso.IsoField;
 import com.nubbank.baas.fep.iso.IsoMessageFactory;
 import com.nubbank.baas.fep.routing.AuthorizationDecision;
@@ -9,6 +11,8 @@ import com.nubbank.baas.fep.support.StubCardClient;
 import org.jpos.iso.ISOMsg;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 
 import java.util.UUID;
 
@@ -41,6 +45,7 @@ class AuthorizationHandlerTest {
     private IsoMessageFactory iso;
     private StubCardClient    stub;
     private BinResolver       binResolver;
+    private AuthorizationAuditService auditService;
     private AuthorizationHandler handler;
 
     @BeforeEach
@@ -49,7 +54,26 @@ class AuthorizationHandlerTest {
         stub       = new StubCardClient();
         stub.register(KNOWN_BIN, new PartnerRoute(PARTNER_ID, SCHEMA_NAME));
         binResolver = new BinResolver(stub);
-        handler     = new AuthorizationHandler(binResolver, stub, iso);
+        auditService = Mockito.mock(AuthorizationAuditService.class);
+        handler     = new AuthorizationHandler(binResolver, stub, iso, auditService);
+    }
+
+    // ─────────────────────── audit (DEF-1C-24) ───────────────────────────────
+
+    @Test
+    void audit_recordsDecision_withBinAndLast4_neverFullPan() {
+        stub.withAuthorizeResponse(new AuthorizationDecision("APPROVE", "00", "approved"));
+        handler.handle(buildRequest("0100", KNOWN_PAN, "000000005000"));
+
+        ArgumentCaptor<FepAuthorizationLog> captor = ArgumentCaptor.forClass(FepAuthorizationLog.class);
+        Mockito.verify(auditService).record(captor.capture());
+        FepAuthorizationLog logged = captor.getValue();
+        assertThat(logged.bin()).isEqualTo(KNOWN_BIN);
+        assertThat(logged.panLast4()).isEqualTo("7890");
+        assertThat(logged.responseCode()).isEqualTo("00");
+        assertThat(logged.reversal()).isFalse();
+        // PAN safety: no field carries the full PAN.
+        assertThat(logged.bin() + logged.panLast4()).doesNotContain(KNOWN_PAN);
     }
 
     // ─────────────────── helper: build a standard 0100 request ───────────────

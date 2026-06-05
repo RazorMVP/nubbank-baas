@@ -1,15 +1,20 @@
 package com.nubbank.baas.fep.router;
 
+import com.nubbank.baas.fep.audit.AuthorizationAuditService;
+import com.nubbank.baas.fep.audit.FepAuthorizationLog;
 import com.nubbank.baas.fep.iso.IsoField;
 import com.nubbank.baas.fep.iso.IsoMessageFactory;
 import com.nubbank.baas.fep.routing.AuthorizationDecision;
 import com.nubbank.baas.fep.routing.BinResolver;
 import com.nubbank.baas.fep.routing.CardClient;
+import com.nubbank.baas.fep.routing.PartnerRoute;
 import lombok.RequiredArgsConstructor;
 import org.jpos.iso.ISOMsg;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.Instant;
 
 /**
  * Handles ISO 8583 Authorization Requests (MTI {@code 0100}).
@@ -42,6 +47,7 @@ public class AuthorizationHandler {
     private final BinResolver  binResolver;
     private final CardClient   cardClient;
     private final IsoMessageFactory iso;
+    private final AuthorizationAuditService auditService;
 
     /**
      * Handle an incoming ISO 8583 authorization or financial request.
@@ -54,15 +60,18 @@ public class AuthorizationHandler {
      * @return the outbound response, ready to pack
      */
     public ISOMsg handle(ISOMsg req) {
+        Instant start = Instant.now();
         String pan   = field(req, IsoField.PAN);
         var    route = binResolver.resolve(pan);
 
         if (route.isEmpty()) {
+            audit(req, pan, null, null, "91", start);   // best-effort; never blocks the response
             return unrouteable(req);   // RC 91, DE2 deliberately absent
         }
 
         Long amount = parseAmount(field(req, IsoField.AMOUNT));
         if (amount == null) {
+            audit(req, pan, route.get(), null, "30", start);
             return formatError(req);   // RC 30 — DE4 absent or non-numeric (no Card call)
         }
 
@@ -93,10 +102,32 @@ public class AuthorizationHandler {
             MessageRouter.set(resp, IsoField.AUTH_CODE, authCode());
         }
 
+        audit(req, pan, route.get(), decision, decision.responseCode(), start);
         return resp;
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Records the decision to the FEP audit log (DEF-1C-24) — best-effort, never throws.
+     * Derives {@code bin} (first 8) + {@code panLast4} locally; the full PAN is NEVER logged
+     * or persisted. {@code route}/{@code decision} may be null on the unrouteable / format-error
+     * paths.
+     */
+    private void audit(ISOMsg req, String pan, PartnerRoute route,
+                       AuthorizationDecision decision, String rc, Instant start) {
+        String bin = pan == null ? null : pan.substring(0, Math.min(8, pan.length()));
+        String last4 = (pan == null || pan.length() < 4) ? null : pan.substring(pan.length() - 4);
+        auditService.record(new FepAuthorizationLog(
+            start, MessageRouter.mti(req), field(req, IsoField.STAN), field(req, IsoField.TERMINAL_ID),
+            bin, last4,
+            route == null ? null : route.partnerId().toString(),
+            route == null ? null : route.schemaName(),
+            parseAmount(field(req, IsoField.AMOUNT)),
+            field(req, IsoField.CURRENCY),
+            decision == null ? null : decision.decision(), rc, false,
+            (int) Duration.between(start, Instant.now()).toMillis()));
+    }
 
     /**
      * Build an unrouteable response (RC {@code "91"} — issuer/BIN unavailable).

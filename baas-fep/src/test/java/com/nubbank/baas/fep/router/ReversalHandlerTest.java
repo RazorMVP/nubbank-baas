@@ -31,7 +31,8 @@ class ReversalHandlerTest {
         iso     = new IsoMessageFactory();
         stub    = new StubCardClient();
         stub.register(KNOWN_BIN, new PartnerRoute(PARTNER_ID, SCHEMA));
-        handler = new ReversalHandler(new BinResolver(stub), stub, iso);
+        handler = new ReversalHandler(new BinResolver(stub), stub, iso,
+            org.mockito.Mockito.mock(com.nubbank.baas.fep.audit.AuthorizationAuditService.class));
     }
 
     private ISOMsg build0400(String pan, String de90) {

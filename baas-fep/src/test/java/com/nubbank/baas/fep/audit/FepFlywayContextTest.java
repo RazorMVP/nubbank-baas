@@ -18,10 +18,12 @@ class FepFlywayContextTest extends AbstractFepIntegrationTest {
 
     @Test
     void authorizationLogTableExists() {
+        // Existence check only — the in-memory H2 is shared across the FEP suite, so other
+        // tests may have inserted rows. A successful count proves Flyway created the table.
         assertThatCode(() -> {
             Long rows = jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM fep.authorization_log", Long.class);
-            assertThat(rows).isEqualTo(0L);
+            assertThat(rows).isNotNull().isGreaterThanOrEqualTo(0L);
         }).doesNotThrowAnyException();
     }
 }
