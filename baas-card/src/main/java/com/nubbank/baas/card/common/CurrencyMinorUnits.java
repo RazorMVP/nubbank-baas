@@ -25,17 +25,22 @@ import java.util.Optional;
 public class CurrencyMinorUnits {
 
     private final Map<String, Integer> exponentByNumeric;
+    private final Map<String, String> alphaByNumeric;
 
     public CurrencyMinorUnits() {
         Map<String, Integer> map = new HashMap<>();
+        Map<String, String> alpha = new HashMap<>();
         for (Currency c : Currency.getAvailableCurrencies()) {
             int numeric = c.getNumericCode();
             int digits = c.getDefaultFractionDigits();
             if (numeric > 0 && digits >= 0) {
-                map.put(String.format("%03d", numeric), digits);
+                String key = String.format("%03d", numeric);
+                map.put(key, digits);
+                alpha.put(key, c.getCurrencyCode());   // ISO 4217 alphabetic, e.g. "NGN"
             }
         }
         this.exponentByNumeric = Map.copyOf(map);
+        this.alphaByNumeric = Map.copyOf(alpha);
     }
 
     /**
@@ -47,5 +52,20 @@ public class CurrencyMinorUnits {
             return Optional.empty();
         }
         return Optional.ofNullable(exponentByNumeric.get(numericCode));
+    }
+
+    /**
+     * Translates a DE49 numeric code to its ISO 4217 alphabetic code — the card is the single
+     * owner of currency translation, so the engine receives an alphabetic code matching its
+     * {@code accounts.currency_code} convention.
+     *
+     * @param numericCode ISO 4217 numeric code (e.g. {@code "566"}).
+     * @return the ISO 4217 alphabetic code (e.g. {@code "NGN"}), or empty if null/blank/unknown.
+     */
+    public Optional<String> alphaFor(String numericCode) {
+        if (numericCode == null || numericCode.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(alphaByNumeric.get(numericCode));
     }
 }

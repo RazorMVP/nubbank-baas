@@ -38,4 +38,19 @@ class CurrencyMinorUnitsTest {
         assertThat(units.exponentFor(null)).isEmpty();
         assertThat(units.exponentFor("")).isEmpty();
     }
+
+    @Test
+    void alphaFor_knownNumeric_returnsIsoAlpha() {
+        assertThat(units.alphaFor("566")).contains("NGN");
+        assertThat(units.alphaFor("840")).contains("USD");
+        assertThat(units.alphaFor("392")).contains("JPY");
+    }
+
+    @Test
+    void alphaFor_unknownOrBlank_isEmpty() {
+        assertThat(units.alphaFor("999")).isEmpty();   // XXX excluded
+        assertThat(units.alphaFor("000")).isEmpty();
+        assertThat(units.alphaFor(null)).isEmpty();
+        assertThat(units.alphaFor("")).isEmpty();
+    }
 }
