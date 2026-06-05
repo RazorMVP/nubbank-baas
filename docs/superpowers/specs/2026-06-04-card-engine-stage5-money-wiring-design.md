@@ -323,3 +323,15 @@ reflection shape test on both sides plus a signer-scheme parity test. No single 
 | Unit double-scaling (₦ shift) | Card is sole scaler; engine works major-units only |
 | Audit DB hiccup blocks money | Audit write is best-effort; never alters the ISO response |
 | GL not reflecting card activity | Acknowledged gap, tracked as DEF-1C-27 (platform-wide, not Stage 5) |
+
+## 11. Follow-up items (post-implementation)
+
+- **FEP deployment — datastore env required (NEW in Stage 5).** The FEP gained a datastore for the
+  authorization audit log (DEF-1C-24), so it now requires `DATASOURCE_URL` / `DATASOURCE_USERNAME` /
+  `DATASOURCE_PASSWORD` env vars and the non-tenant `fep` schema in the shared Postgres at runtime
+  (previously the FEP was a stateless spine with no datasource). `infrastructure/docker-compose.yml` and the
+  k8s manifests for `baas-fep` must add these datasource env vars (and ensure the `fep` schema / Flyway runs)
+  **before the next deploy**, or the FEP will fail to start in prod. (Tests are unaffected — they use H2.)
+- **Figma boards.** The Service Architecture + data-flow boards now understate reality (the engine↔card
+  money seam over `/internal/v1/{card-debit,card-credit,account-lookup}`, the engine→card provisioning
+  trigger, and the FEP datastore) — regenerate when convenient.
