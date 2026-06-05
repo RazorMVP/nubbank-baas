@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baas-card
+  namespace: nubbank-baas
+  labels:
+    app: baas-card
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: baas-card
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: baas-card
+    spec:
+      # No imagePullSecrets / nodeSelector / tolerations specified — vanilla
+      # k8s only. Provider-specific config (NodeAffinity, PriorityClass, etc.)
+      # belongs in a kustomization or Helm values overlay, not in the base.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100          # `app` user in baas-card Dockerfile (Alpine `adduser -S` system UID)
+        runAsGroup: 101         # `app` group GID — note 101, not 100: GID 100 is Alpine's built-in `users` group, so addgroup -S allocates the next free GID (101)
+        fsGroup: 101            # so the /tmp emptyDir is writable by the app user
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: baas-card
+          # Sentinel tag — does NOT exist in GHCR. Direct `kubectl apply -f base/`
+          # fails fast with ImagePullBackOff intentionally. Real deploys go through
+          # an overlay: `kubectl apply -k overlays/<env>/` with CI substituting the
+          # real SHA via `kustomize edit set image`.
+          # The real image is published by .github/workflows/baas-card-ci.yml as
+          # ghcr.io/<owner>/baas-card:<sha> on push to main (paths: baas-card/**).
+          image: ghcr.io/razormvp/baas-card:base-do-not-deploy
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          envFrom:
+            - configMapRef: { name: baas-card-config }
+            - secretRef:    { name: baas-card-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          # startupProbe gates liveness + readiness until Spring/Flyway finish booting.
+          # 30 × 5s = 150s ceiling covers cold first-boot Flyway (card-public migrations).
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 3
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: baas-card
+  namespace: nubbank-baas
+spec:
+  type: ClusterIP
+  selector:
+    app: baas-card
+  ports:
+    - port: 80
+      targetPort: 8081
+      name: http
+---
+# Horizontal autoscaling — vanilla k8s metrics-server. card is a stateless HTTP
+# service (no long-lived sockets), so naive CPU HPA is appropriate — unlike fep.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: baas-card
+  namespace: nubbank-baas
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: baas-card
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60  # JVM saturates GC/heap before CPU hits 70%

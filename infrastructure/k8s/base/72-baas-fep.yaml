@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baas-fep
+  namespace: nubbank-baas
+  labels:
+    app: baas-fep
+    app.kubernetes.io/component: switch
+spec:
+  # Fixed replicas, NO HorizontalPodAutoscaler. The FEP is an ISO 8583 TCP socket
+  # server: terminals/acquirers hold long-lived persistent connections, and
+  # request↔response correlation (STAN/DE11) is per-socket. A naive CPU HPA would
+  # scale pods that existing connections never migrate to, and scale-down would
+  # sever live financial sessions mid-flight. Connection-aware autoscaling (L4 LB
+  # rebalancing + graceful connection draining) is a Phase-2 / overlay concern.
+  # Correctness under 2 replicas is safe: Stage 5 debit idempotency is enforced at
+  # the engine (card_auth_debit.auth_key UNIQUE), so two FEP pods cannot double-debit.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: baas-fep
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: baas-fep
+    spec:
+      # No imagePullSecrets / nodeSelector / tolerations specified — vanilla
+      # k8s only. Provider-specific config (NodeAffinity, PriorityClass, etc.)
+      # belongs in a kustomization or Helm values overlay, not in the base.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100          # `app` user in baas-fep Dockerfile (Alpine `adduser -S` system UID)
+        runAsGroup: 101         # `app` group GID — note 101, not 100: GID 100 is Alpine's built-in `users` group, so addgroup -S allocates the next free GID (101)
+        fsGroup: 101            # so the /tmp emptyDir is writable by the app user
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: baas-fep
+          # Sentinel tag — does NOT exist in GHCR. Direct `kubectl apply -f base/`
+          # fails fast with ImagePullBackOff intentionally. Real deploys go through
+          # an overlay: `kubectl apply -k overlays/<env>/` with CI substituting the
+          # real SHA via `kustomize edit set image`.
+          # The real image is published by .github/workflows/baas-fep-ci.yml as
+          # ghcr.io/<owner>/baas-fep:<sha> on push to main (paths: baas-fep/**).
+          image: ghcr.io/razormvp/baas-fep:base-do-not-deploy
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+              name: http            # actuator only — no partner-facing endpoints
+            - containerPort: 8583
+              name: iso8583          # ISO 8583 TCP socket server
+          envFrom:
+            - configMapRef: { name: baas-fep-config }
+            - secretRef:    { name: baas-fep-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          # Probes target the HTTP actuator port (8082), NOT the ISO 8583 port.
+          # 30 × 5s = 150s ceiling covers cold first-boot Flyway (fep audit schema).
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 3
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+# Internal HTTP Service — actuator/health only, reached by kubelet probes and
+# in-cluster ops tooling. NOT routed by the Ingress (FEP has no HTTP partner API).
+apiVersion: v1
+kind: Service
+metadata:
+  name: baas-fep
+  namespace: nubbank-baas
+spec:
+  type: ClusterIP
+  selector:
+    app: baas-fep
+  ports:
+    - port: 80
+      targetPort: 8082
+      name: http
+---
+# External ISO 8583 TCP Service. Raw TCP (not HTTP) cannot traverse the nginx/L7
+# Ingress, so terminals/acquirers reach the switch through an L4 LoadBalancer.
+#
+# DEPLOYMENT NOTES:
+#   - Vanilla k8s with no cloud LB controller leaves this Pending; on-prem needs
+#     MetalLB (or swap to type: NodePort in an overlay).
+#   - externalTrafficPolicy: Local preserves the client source IP, which is
+#     required to allow-list acquirer/terminal CIDRs at the NetworkPolicy and to
+#     log the real origin in the authorization audit trail. (Cluster — the default —
+#     SNATs the source IP to a node address, erasing the origin.)
+#   - Restrict source ranges to acquirer CIDRs via loadBalancerSourceRanges in an
+#     overlay; never expose 8583 to 0.0.0.0/0 in production.
+apiVersion: v1
+kind: Service
+metadata:
+  name: baas-fep-tcp
+  namespace: nubbank-baas
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: baas-fep
+  ports:
+    - port: 8583
+      targetPort: 8583
+      protocol: TCP
+      name: iso8583

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baas-fep-config
+  namespace: nubbank-baas
+data:
+  # Non-secret runtime config. Secrets live in the Secret of the same name suffix.
+  #
+  # Stage 5: the FEP gained a datastore for its authorization audit log
+  # (DEF-1C-24) in the non-tenant `fep` schema of the SHARED postgres/db.
+  # Flyway runs at boot with create-schemas:true + default-schema:fep, so the
+  # `fep` schema is created automatically — no DB init script required.
+  DATASOURCE_URL: "jdbc:postgresql://postgres.nubbank-baas.svc.cluster.local:5432/nubbank_baas"
+  SPRING_PROFILES_ACTIVE: "production"
+  # Stage 5 money seam (fep → card: BIN lookup + authorize).
+  # NOTE the port: the baas-card Service exposes port 80 (→ targetPort 8081), so
+  # the app default of http://baas-card:8081 is WRONG in k8s and must be overridden
+  # here. Hitting :8081 would connection-refuse against the ClusterIP Service.
+  CARD_BASE_URL: "http://baas-card:80"
+  # ISO 8583 TCP socket server port (terminals connect here). Kept equal to the
+  # Service/containerPort below.
+  FEP_TCP_PORT: "8583"
