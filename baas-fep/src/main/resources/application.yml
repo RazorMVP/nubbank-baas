@@ -4,6 +4,19 @@ server:
 spring:
   application:
     name: baas-fep
+  # FEP authorization audit log (DEF-1C-24). Non-tenant `fep` schema in the shared Postgres.
+  datasource:
+    url: ${DATASOURCE_URL}
+    username: ${DATASOURCE_USERNAME}
+    password: ${DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/fep
+    schemas: fep
+    default-schema: fep
+    create-schemas: true
+    baseline-on-migrate: true
 
 fep:
   tcp-port: ${FEP_TCP_PORT:8583}

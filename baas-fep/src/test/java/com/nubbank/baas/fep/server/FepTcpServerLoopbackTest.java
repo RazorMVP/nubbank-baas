@@ -1,13 +1,12 @@
 package com.nubbank.baas.fep.server;
 
+import com.nubbank.baas.fep.AbstractFepIntegrationTest;
 import com.nubbank.baas.fep.iso.IsoField;
 import com.nubbank.baas.fep.iso.IsoMessageFactory;
 import com.nubbank.baas.fep.support.Iso8583TestClient;
 import org.jpos.iso.ISOMsg;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,9 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *                            ◄──TCP── Iso8583TestClient
  * </pre>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ActiveProfiles("test")
-class FepTcpServerLoopbackTest {
+class FepTcpServerLoopbackTest extends AbstractFepIntegrationTest {
 
     @Autowired
     FepTcpServer fepTcpServer;

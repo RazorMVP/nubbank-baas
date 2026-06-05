@@ -1,15 +1,14 @@
 package com.nubbank.baas.fep.client;
 
+import com.nubbank.baas.fep.AbstractFepIntegrationTest;
 import com.nubbank.baas.fep.routing.AuthorizationDecision;
 import com.nubbank.baas.fep.routing.PartnerRoute;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
@@ -44,9 +43,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
  *   <li><strong>PAN is forwarded in the authorize body</strong> (Card resolves the card by PAN hash).</li>
  * </ul>
  */
-@SpringBootTest
-@ActiveProfiles("test")
-class HttpCardClientTest {
+class HttpCardClientTest extends AbstractFepIntegrationTest {
 
     // application-test.yml: fep.card.base-url
     private static final String BASE = "http://localhost:0";

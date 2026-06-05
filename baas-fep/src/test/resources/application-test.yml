@@ -1,3 +1,11 @@
+spring:
+  # In-memory H2 (PostgreSQL mode) for the authorization-audit tests — no Docker dependency.
+  datasource:
+    url: jdbc:h2:mem:fep;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
 fep:
   hmac-secret: test-shared-secret-min-32-chars-long-okay
   card:
