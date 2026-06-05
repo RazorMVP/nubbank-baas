@@ -285,7 +285,7 @@
       <tr><td><code>12</code></td><td>Unknown / unparseable currency code in request</td></tr>
     </tbody>
   </table>
-  <div class="callout">The balance check is a Phase 1C stub — always sufficient (deferred: real balance check via baas-engine, DEF-1C-23). Authorization idempotency is active: duplicate requests (same <code>stan + terminalId + transmissionDateTime</code>) return the cached decision.</div>
+  <div class="callout">Stage 5: the balance check is now real — an approved authorization debits the cardholder's engine account via <code>POST /internal/v1/card-debit</code> (DEF-1C-23 closed). Authorization idempotency is active: duplicate requests (same <code>stan + terminalId + transmissionDateTime</code>) return the cached decision, and the engine de-dupes the debit on the same key.</div>
   <div class="note"><strong>PAN safety:</strong> the authorization decision logs only the resulting decision and response code — never the PAN, card id, or any cardholder data.</div>
 
   <h3>Reversal decision (contract §2b)</h3>
@@ -294,7 +294,7 @@
     <tbody>
       <tr>
         <td><span class="m post">POST</span><br><span class="path">/internal/v1/reversal</span></td>
-        <td>Locate and mark the original authorization for reversal. Returns <code>200</code>. Internal HMAC-signed; not partner-facing. FEP maps <code>located: true</code> → DE39 <code>00</code>; <code>located: false</code> → DE39 <code>25</code> (unable to locate). Actual fund reversal is deferred to Phase 2 (DEF-1C-23).</td>
+        <td>Locate the original authorization and credit the cardholder account back via the engine (Stage 5). Returns <code>200</code>. Internal HMAC-signed; not partner-facing. FEP maps <code>located: true</code> → DE39 <code>00</code>; <code>located: false</code> → DE39 <code>25</code> (unable to locate / engine unreachable — terminal retries, credit is idempotent).</td>
         <td>
           <strong>Request</strong> <code>ReversalDecisionRequest</code>:
           <pre>{
@@ -313,7 +313,38 @@
       </tr>
     </tbody>
   </table>
-  <div class="callout">The FEP extracts <code>originalStan</code> and <code>originalTransmissionDateTime</code> from <strong>ISO 8583 DE90 (Original Data Elements)</strong> of the <code>0400</code> reversal message. Card matches against the per-tenant idempotency table keyed by <code>stan|terminalId|transmissionDateTime</code>. Fund reversal rides with the balance-check wiring in Phase 2 (DEF-1C-23).</div>
+  <div class="callout">The FEP extracts <code>originalStan</code> and <code>originalTransmissionDateTime</code> from <strong>ISO 8583 DE90 (Original Data Elements)</strong> of the <code>0400</code> reversal message. Card matches against the per-tenant idempotency table keyed by <code>stan|terminalId|transmissionDateTime</code>, then credits the cardholder account via the engine (Stage 5 — DEF-1C-25 fund half closed).</div>
+
+  <h3>Card→engine money (contract §2c — Stage 5)</h3>
+  <p>Hosted on <strong>baas-engine</strong> behind the <code>@Order(0)</code> internal chain (<code>InternalServiceAuthFilter</code>). The card calls these to move real money. <code>amount</code> is major-unit; <code>currency</code> is ISO 4217 <strong>alphabetic</strong> (the card translates the DE49 numeric code). <code>authKey = stan|terminalId|transmissionDateTime</code>. The engine is the money-dedupe authority — debit+dedupe is one atomic transaction keyed by <code>card_auth_debit.auth_key</code> (UNIQUE).</p>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/internal/v1/card-debit</span></td>
+        <td>Single-message immediate debit. Body <code>{ partnerId, schemaName, accountId, authKey, amount, currency }</code> → <code>data: { outcome }</code> where outcome ∈ <code>DEBITED|INSUFFICIENT|ACCOUNT_INVALID|CURRENCY_MISMATCH</code>. Card RC map: <code>DEBITED→00 · INSUFFICIENT→51 · ACCOUNT_INVALID→78 · CURRENCY_MISMATCH→57</code>; unreachable engine → <code>91</code> (fail closed). Idempotent on <code>authKey</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/internal/v1/card-credit</span></td>
+        <td>Reversal credit. Body <code>{ partnerId, schemaName, authKey }</code> → <code>data: { located }</code>. Credits the account back exactly once (idempotent); FEP maps <code>located:true→00 / false→25</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/internal/v1/account-lookup</span></td>
+        <td>Issuance validation. Body <code>{ partnerId, schemaName, accountId }</code> → <code>data: { exists, active, currencyCode }</code>. Card rejects issuance with <code>LINKED_ACCOUNT_NOT_FOUND</code> when <code>exists=false</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Engine→card provisioning (contract §2d — Stage 5)</h3>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/internal/v1/provision</span></td>
+        <td>Hosted on <strong>baas-card</strong>. Body <code>{ partnerId, schemaName }</code>. The engine calls this after its own tenant migrations so card schema objects exist in the partner schema (idempotent). A card failure fails the whole provisioning — no half-provisioned partner (DEF-1C-22).</td>
+      </tr>
+    </tbody>
+  </table>
 </section>
 
 <section id="baas-fep">
@@ -342,7 +373,7 @@
       <tbody>
         <tr><td><code>0100</code></td><td><code>0110</code></td><td>Authorization (purchase)</td><td>Extract DE2 PAN → BIN route → <code>baas-card</code> authorize → DE39.</td></tr>
         <tr><td><code>0200</code></td><td><code>0210</code></td><td>Financial (withdrawal)</td><td>Processing code <code>01xxxx</code>; same routing + authorize flow as <code>0100</code>.</td></tr>
-        <tr><td><code>0400</code></td><td><code>0410</code></td><td>Reversal</td><td>FEP extracts DE90 original STAN + transmission date-time, calls <code>baas-card POST /internal/v1/reversal</code>. <code>located: true</code> → RC <code>00</code>; <code>located: false</code> → RC <code>25</code>. Fund reversal deferred Phase 2 (DEF-1C-23).</td></tr>
+        <tr><td><code>0400</code></td><td><code>0410</code></td><td>Reversal</td><td>FEP extracts DE90 original STAN + transmission date-time, calls <code>baas-card POST /internal/v1/reversal</code>. <code>located: true</code> → RC <code>00</code>; <code>located: false</code> → RC <code>25</code>. Card credits the cardholder account via the engine (Stage 5 — DEF-1C-25 fund half closed).</td></tr>
         <tr><td><code>0800</code></td><td><code>0810</code></td><td>Network management</td><td>Sign-on / echo via DE70; DE39 <code>00</code>; echoes STAN/transmission DTS.</td></tr>
         <tr><td colspan="2"><em>routed, malformed DE4</em></td><td>Format error</td><td>Missing / non-numeric amount on a routed <code>0100</code>/<code>0200</code> → DE39 <code>30</code>; no Card call is made.</td></tr>
         <tr><td colspan="2"><em>unknown MTI</em></td><td>Format error</td><td>DE39 <code>30</code>.</td></tr>
@@ -372,7 +403,9 @@
     <p class="muted">
       EMV cryptogram validation, HSM, scheme-specific packagers/private DEs, settlement/advice MTIs, and
       tokenization are intentionally out of Phase 1C scope (deferred — see <code>docs/deferred-items.md</code>
-      DEF-1C-01..07, plus FEP-specific DEF-1C-24..26). Fund reversal is also deferred to Phase 2 (DEF-1C-23).
+      DEF-1C-01..07, plus FEP-specific DEF-1C-26). Stage 5 closed the money path: real balance-check debit
+      (DEF-1C-23), reversal fund credit (DEF-1C-25), cross-service provisioning (DEF-1C-22), and the FEP
+      authorization audit log (DEF-1C-24). Automatic GL double-entry posting remains out of scope (DEF-1C-27).
     </p>
   </section>
 

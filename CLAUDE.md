@@ -305,14 +305,14 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 11 — 2026-06-04)
+## Confirmed Platform Versions (Session 12 — 2026-06-05)
 
 ### BaaS Engine (`baas-engine/`)
 
 | Component | Version | Notes |
 |-----------|---------|-------|
 | **Spring Boot** | 3.5.0 | Parent BOM |
-| **Spring Security** | 6.5.0 (managed) | Multi-chain `SecurityFilterChain`; `InternalServiceClient` provides outbound HMAC signing for engine→ncube calls |
+| **Spring Security** | 6.5.0 (managed) | Multi-chain `SecurityFilterChain`; `InternalServiceClient` provides outbound HMAC signing (engine→ncube AND engine→card provisioning); `InternalServiceAuthFilter` + `@Order(0)` internal chain validate inbound `/internal/v1/**` (Stage 5) |
 | **Spring AOP** | 3.5.0 (managed) | Added Session 4 — used by `AuditAspect` for cross-cutting audit interception |
 | **Logback** | 1.5.x (managed) | `logback-spring.xml` with `PiiMaskingConverter` (`%piimsg`) — masks BVN/NIN/NUBAN/PAN in log message bodies (Session 5) |
 | **Java** | 21 | LTS; records, sealed classes, pattern matching |
@@ -324,7 +324,8 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
-| **Last git commit** | `1010ca9` | Session 8 — Phase 1C Foundation (operator identity + Hybrid RBAC); 111 tests passing |
+| **Internal money seam** | Stage 5 | `/internal/v1/{card-debit,card-credit,account-lookup}` (HMAC); atomic idempotent debit/credit keyed by `card_auth_debit.auth_key`; engine→card provisioning trigger in `TenantProvisioningService` |
+| **Last git commit** | `1ca0d3b` | Session 12 — Stage 5 card↔engine money wiring (DEF-1C-22/23/24/25); 138 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -350,7 +351,9 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Nimbus JOSE+JWT** | 9.x | HMAC-SHA256 partner JWT validation (ported) |
 | **FieldEncryptor** | AES-GCM-256 (ported) | PAN encrypted at rest; responses expose `maskedPan` only; PAN never logged |
 | **Testcontainers** | PostgreSQL 16 in integration tests | Card tests self-provision their own tenant schema |
-| **Last git commit** | `c8c5f28` | Session 11 — seam hardening (F1–F8: currency scaling, currency-aware limits, authorization idempotency, schema-derived env, DE90 reversal matching, BIN range-end coverage, HMAC raw-path parity, 60s replay window); 76 tests passing |
+| **EngineClient** | Stage 5 | Outbound HMAC client → engine `/internal/v1/{card-debit,card-credit,account-lookup}`; fail-closed (unreachable → RC 91 on debit, `located:false` on credit). Card owns minor→major scaling AND DE49 numeric→ISO-alpha translation |
+| **linkedAccountId** | Stage 5 | `cards.linked_account_id`; `IssueCardRequest.linkedAccountId @NotNull`, validated against the engine at issuance |
+| **Last git commit** | `1ca0d3b` | Session 12 — Stage 5 card↔engine money wiring (authorize→debit, reversal→credit, linkedAccountId, provisioning endpoint); 102 tests passing |
 
 ### BaaS FEP (`baas-fep/`)
 
@@ -363,8 +366,9 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Caffeine** | 3.1.8 | BIN→partner route cache, `expireAfterWrite` 5 min |
 | **Nimbus JOSE+JWT** | 9.37.3 | (transitive via ported HMAC `SigningInterceptor`) |
 | **Lombok** | 1.18.38 | Annotation processor explicitly declared in `maven-compiler-plugin` |
-| **Architecture** | STATELESS | No DB / JPA / Flyway / Postgres / Redis / datasource — FEP routes and forwards only |
-| **Last git commit** | `5a463cf` | Session 11 — seam hardening (F1–F8: authorize DTO stan/terminalId/transmissionDateTime, ReversalHandler DE90 matching, AuthorizationDecision.Request updated, CardClient reverse method, HMAC raw-path signing); 51 tests passing |
+| **Architecture** | Spine + audit store | Routes/forwards over HMAC; PLUS a best-effort authorization audit log (DEF-1C-24) — non-tenant `fep` schema, Postgres in prod, H2 (PostgreSQL mode) in tests (no Docker dependency) |
+| **Persistence** | spring-boot-starter-jdbc + Flyway | `db/migration/fep/V1__authorization_log.sql`; `AuthorizationAuditService` (JdbcTemplate, best-effort — a write failure never alters the ISO 8583 response); stores BIN + last4 only |
+| **Last git commit** | `a9e4cfd` | Session 12 — Stage 5 FEP audit log (DEF-1C-24): datastore + migration + handler wiring; 55 tests passing |
 
 ### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
 
@@ -774,6 +778,11 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | **BIN range END pads with `9` (`BinService.normalizeRangeEnd`), START pads `0` (frozen `normalize`)** — a short BIN registered start==end covers its full sub-range. The frozen lookup `normalize` (cross-track with FEP) must stay `0`-padded. | `normalizeRangeEnd` is a SEPARATE method from `normalize` — do not change `normalize` (frozen contract §2 invariant). Only `normalizeRangeEnd` pads with `9`. A 6-digit end `506775` → `50677599`; a 6-digit start `506775` → `50677500`. |
 | **Cross-service authorize DTO parity is guarded by a per-module reflection shape test** (`AuthorizationContractShapeTest` in `baas-card` AND `baas-fep`) — separate Maven modules can't share a reflection test. | Each module has its own `AuthorizationContractShapeTest` that reflects on its own local DTO class and asserts the required field names. When adding a field to the contract, update BOTH tests. |
 | **FEP HMAC signer must sign `getURI().getRawPath()` (raw) to match the card validator's `getRequestURI()` (raw)** — `getPath()` decodes percent-encoded segments and diverges from `getRequestURI()` on any path that contains encoded characters (e.g. `%2F`). | In `CardClientConfig`'s `SigningInterceptor`, use `request.getURI().getRawPath()` (not `.getPath()`) as the path component of the HMAC content string. The card validator uses `httpRequest.getRequestURI()` which returns the raw (undecoded) path — both sides must sign/verify the same bytes. |
+| **(Stage 5) Currency crosses the card→engine seam as ISO 4217 ALPHABETIC, not numeric** — FEP→card is numeric (DE49 `"566"`, frozen §2a); engine `accounts.currency_code` is alphabetic (`"NGN"`). The card is the SINGLE owner of currency translation. | In `AuthorizationDecisionService`, translate via `CurrencyMinorUnits.alphaFor(numeric)` AND scale via `exponentFor(numeric)` before calling the engine. The engine compares `account.currencyCode.equals(req.currency())` alpha-to-alpha and never scales/translates — a unit/representation bug can only originate in one file. |
+| **(Stage 5) The engine is the money-dedupe authority** — debit+dedupe is ONE atomic engine-schema transaction keyed by `card_auth_debit.auth_key` (UNIQUE). The card calls the engine first, then records its own decision row. | A retransmit re-calls the engine with the same `authKey`; the engine returns the stored outcome and moves no money. No distributed transaction — crash recovery is a plain idempotent retry. Card-credit (reversal) is idempotent on the same key. |
+| **(Stage 5) Engine→card provisioning call breaks ALL engine provisioning tests unless gated** — `CardProvisioningClient` is invoked inside `TenantProvisioningService.provision()`; with baas-card not running in tests it throws and fails provisioning everywhere. | Gate with `@Value("${app.internal-service.card-provisioning-enabled:true}")` (default ON for prod — a card failure must fail provisioning); set `false` in the engine `application-test.yml`. The dedicated `TenantProvisioningCardCallTest` uses `@MockitoBean CardProvisioningClient` to verify the call + the FAILED-on-card-failure path. |
+| **(Stage 5) `@NotNull linkedAccountId` + the issuance engine-lookup break existing card issuance tests** — every test that POSTs `/baas/v1/cards` now needs the field AND a reachable engine (`accountLookup`). | Add `@MockitoBean EngineClient` + a `@BeforeEach` stub `accountLookup → exists=true` and pass `linkedAccountId` in every issuance body (`CardLifecycleTest`, `CardLimitTest`, `AuthorizationDecisionTest`). `@MockitoBean` (Spring Boot 3.4+/Framework 6.2) replaces `@MockBean`. |
+| **(Stage 5) FEP Testcontainers fails with docker-java "Status 400" under the FEP classpath** — engine/card Testcontainers work with identical docker-java 3.4.0, but the FEP module's classpath triggers a docker-java ping `400` even with Docker healthy. | FEP tests use **H2 in PostgreSQL mode** (`jdbc:h2:mem:...;MODE=PostgreSQL`) — no Docker dependency; production stays Postgres. The `fep` migration is cross-compatible: app-generated `UUID` id (no `gen_random_uuid()` default) + `TIMESTAMP WITH TIME ZONE` + `DEFAULT CURRENT_TIMESTAMP`. engine/card still verify the real-Postgres Flyway path under Testcontainers. |
 
 ---
 

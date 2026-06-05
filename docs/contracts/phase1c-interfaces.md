@@ -88,6 +88,50 @@ Foundation publishes these so parallel tracks build against stable shapes.
   **The actual fund reversal (crediting the cardholder account) is deferred to Phase 2** — it rides with
   the real balance-check wiring (DEF-1C-23). Phase 1C only locates and marks the idempotency row.
 
+## 2c. Card→engine money contract (Stage 5 — closes DEF-1C-23 + DEF-1C-25 fund half)
+
+- `baas-engine` exposes (HMAC inter-service auth, `@Order(0)` internal chain):
+  - `POST /internal/v1/card-debit` — single-message immediate debit. Body
+    `{ partnerId, schemaName, accountId, authKey, amount, currency }` →
+    `data: { outcome: "DEBITED|INSUFFICIENT|ACCOUNT_INVALID|CURRENCY_MISMATCH" }`.
+  - `POST /internal/v1/card-credit` — reversal credit. Body `{ partnerId, schemaName, authKey }` →
+    `data: { located: boolean }`.
+  - `POST /internal/v1/account-lookup` — issuance validation. Body `{ partnerId, schemaName, accountId }` →
+    `data: { exists, active, currencyCode }`.
+- **`amount` is major-unit `BigDecimal`; `currency` is ISO 4217 ALPHABETIC** (`"NGN"`). The card is the
+  single owner of currency translation: it scales DE49 minor→major AND translates DE49 numeric→alpha so
+  the engine compares alpha-to-alpha against `accounts.currency_code`. (FEP→card §2a stays numeric.)
+- **`authKey` = `stan|terminalId|transmissionDateTime`** — the SAME key the card uses for its own
+  idempotency, threaded through to the engine. The engine is the **money-dedupe authority**: debit+dedupe
+  is one atomic engine-schema transaction keyed by `card_auth_debit.auth_key` (UNIQUE); a repeat debit
+  returns the stored outcome and moves no money. Credit is idempotent on the same key.
+- **Card RC mapping:** `DEBITED→00 · INSUFFICIENT→51 · ACCOUNT_INVALID→78 · CURRENCY_MISMATCH→57`;
+  card-credit `located:true→00 / false→25`. The card maps a missing `linkedAccountId` to `78` (no engine
+  call) and any unknown currency to `12` (local, no engine call). **Fail-closed:** an unreachable/5xx
+  engine declines `91` on debit and returns `located:false` (→ `25`, no `reversed` flip) on credit, so a
+  reversal retry completes via the idempotent credit.
+- **Cross-service shape parity** is guarded by a per-module `CardMoneyContractShapeTest` in BOTH
+  `baas-engine` and `baas-card` (separate Maven modules). `CardDebitResult.outcome` is the engine
+  `CardAuthOutcome` enum on the engine side and the equivalent `String` on the card side.
+- **Card binding:** a card is bound to its funding account at issuance via `cards.linked_account_id`,
+  validated against the engine (`account-lookup`) before the card is created (`IssueCardRequest.linkedAccountId`,
+  `@NotNull`).
+- **Out of scope (DEF-1C-27):** no automatic GL double-entry posting — the engine reuses its single
+  `Transaction` debit/credit path, not balanced `JournalEntry` lines.
+
+## 2d. Engine→card provisioning trigger (Stage 5 — closes DEF-1C-22)
+
+- `baas-card` exposes `POST /internal/v1/provision { partnerId, schemaName }` (HMAC inter-service auth) →
+  runs card-tenant Flyway migrations into the partner schema (idempotent: `CREATE SCHEMA IF NOT EXISTS` +
+  Flyway, tracked by `flyway_schema_history_card`).
+- `baas-engine.TenantProvisioningService.provision(...)` calls it **after** its own tenant migrations and
+  **before** logging `SUCCESS` to `public.schema_provision_log`. A card-provisioning failure propagates →
+  the whole provisioning is marked `FAILED` and rethrown (no half-provisioned partner). Engine and card
+  share one database, so card runs its OWN migrations into the same `partner_*`/`sandbox_*` schemas.
+- New config: engine `app.internal-service.card-base-url`; card reuses `app.internal-service.engine-base-url`.
+  The engine→card call is gated by `app.internal-service.card-provisioning-enabled` (default true; false only
+  in the engine test profile where card is not running).
+
 ## 3. Admin namespace reservation (Custodian, Platform-Admin)
 - `/baas-admin/v1/**` is reserved for the NubBank admin chain.
 - Foundation scoped the partner chain to `@Order(2)` + `securityMatcher("/baas/v1/**", "/actuator/**",

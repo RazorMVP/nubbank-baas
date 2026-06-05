@@ -199,6 +199,67 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 
 ## Change History
 
+### Session 12 — 2026-06-05
+**Stage 5 — live card↔engine money wiring across `baas-engine` (`1ca0d3b`), `baas-card` (`1ca0d3b`), `baas-fep` (`a9e4cfd`); 138 + 102 + 55 tests passing. Closes DEF-1C-22, DEF-1C-23, DEF-1C-24, DEF-1C-25 (fund half); opens DEF-1C-27.**
+
+Brainstormed → spec (`docs/superpowers/specs/2026-06-04-card-engine-stage5-money-wiring-design.md`) → 17-task TDD plan (`docs/superpowers/plans/2026-06-04-card-engine-stage5-money-wiring.md`) → implemented. An approved card authorization now performs a real, idempotent, fail-closed debit of the cardholder's engine account; a reversal credits it back; card schemas are auto-provisioned when the engine onboards a partner; and the FEP keeps a best-effort authorization audit trail. **CBN surface (OBR/consent/KYC/payment-rails) unchanged this session** — this is internal card↔engine money movement, not Open Banking; CBN compliance gap analysis unchanged.
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-engine .../config/InternalServiceAuthFilter.java` + `SecurityConfig.java` | Inbound HMAC seam + `@Order(0)` internal chain for `/internal/v1/**` (Task 1) |
+| `baas-engine .../account/CardAuthDebit*.java` + `tenant/V4__card_auth_debit.sql` | Dedupe + reversal-locator table/entity, UNIQUE `auth_key` (Task 2) |
+| `baas-engine .../account/AccountService.java` | `cardAuthorizationDebit` (atomic idempotent), `cardAuthorizationCredit`, `lookupAccount` (Tasks 3–5) |
+| `baas-engine .../account/InternalCardMoneyController.java` + dto | `/internal/v1/{card-debit,card-credit,account-lookup}`; PartnerContext-from-body (Task 5) |
+| `baas-engine .../tenant/CardProvisioningClient.java` + `TenantProvisioningService.java` | Engine→card provisioning trigger; `card-provisioning-enabled` test flag (Task 12) |
+| `baas-card .../config/InternalServiceClient.java` + `engine/EngineClient.java` + dto | Outbound HMAC signer + fail-closed engine client (Task 6) |
+| `baas-card .../common/CurrencyMinorUnits.java` | `alphaFor` (DE49 numeric → ISO alpha) (Task 7) |
+| `baas-card .../card/{Card,CardService}.java` + `dto/IssueCardRequest.java` + `card-tenant/V3__linked_account_id.sql` | `linkedAccountId` binding, engine-validated at issuance (Task 8) |
+| `baas-card .../authorize/{AuthorizationDecisionService,ReversalService}.java` | authorize→engine-debit (RC 00/51/57/78/91), reversal→engine-credit (fail-closed 25) (Tasks 9–10) |
+| `baas-card .../tenant/InternalProvisioningController.java` + dto | `/internal/v1/provision` (Task 11) |
+| `baas-fep pom.xml` + `application.yml` + `db/migration/fep/V1__authorization_log.sql` | Datastore (Postgres prod / H2 tests) + audit migration (Task 13) |
+| `baas-fep .../audit/{FepAuthorizationLog,AuthorizationAuditService}.java` | Best-effort audit writer; BIN+last4 only (Task 14) |
+| `baas-fep .../router/{AuthorizationHandler,ReversalHandler}.java` | Record every authorize/reversal decision (Task 15) |
+| `*ContractShapeTest` (engine+card), `SignerParityTest` (card) | Cross-service parity guards (Task 16) |
+| `CLAUDE.md`, `baas-log.md`, `docs/contracts/phase1c-interfaces.md` (§2c/§2d), `docs/api-reference.html`, `docs/deferred-items.md` | Docs + gate close-out (Task 17) |
+
+#### Key Decisions
+- **Approach A — engine is the money-dedupe authority.** Debit+dedupe is one atomic engine-schema transaction keyed by `card_auth_debit.auth_key` (= `stan\|terminalId\|transmissionDateTime`). No distributed transaction; crash recovery is a plain idempotent retry. Card calls the engine first, then records its own decision row.
+- **Single-message immediate debit** (no settlement layer exists). Reversal credits back, idempotent on the same key; engine-unreachable on an APPROVE credit → RC 25 without flipping `reversed` (terminal retries; credit is idempotent).
+- **Card owns currency translation** — FEP→card stays ISO numeric; card translates to ISO alpha (and scales minor→major) so the engine compares alpha-to-alpha. (Self-review caught that comparing numeric to the engine's alphabetic `accounts.currency_code` would have declined every txn RC 57.)
+- **RC map:** `00/51/57/78/91` for debit outcomes; missing `linkedAccountId`→78 and unknown currency→12 are local (no engine call).
+- **FEP audit is best-effort** (a write failure never alters the ISO response) and stores BIN+last4 only.
+- **DEF-1C-27 opened:** no automatic GL double-entry posting — engine reuses its single-`Transaction` path (a platform-wide concern, not card-seam).
+- **FEP tests use H2 (PostgreSQL mode), not Testcontainers** — the FEP module's classpath trips a docker-java "Status 400" that engine/card don't hit; engine/card still verify the real-Postgres Flyway path. (See Known Gotchas.)
+
+#### Build Verification
+Tests run: baas-engine 138, baas-card 102, baas-fep 55 — Failures: 0, Errors: 0. BUILD SUCCESS (all three).
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.0 | `1ca0d3b` |
+| Java | 21 | `1ca0d3b` |
+| Hibernate (SCHEMA multi-tenancy) | 6.x managed | `1ca0d3b` |
+| Last git commit | `1ca0d3b` | Session 12 — Stage 5 card↔engine money seam; 138 tests |
+
+**BaaS Card (`baas-card/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.3 | `1ca0d3b` |
+| Java | 21 | `1ca0d3b` |
+| Last git commit | `1ca0d3b` | Session 12 — Stage 5 authorize→debit / reversal→credit / linkedAccountId; 102 tests |
+
+**BaaS FEP (`baas-fep/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.3 | `a9e4cfd` |
+| Java | 21 | `a9e4cfd` |
+| Persistence | spring-boot-starter-jdbc + Flyway (Postgres prod / H2 tests) | `a9e4cfd` |
+| Last git commit | `a9e4cfd` | Session 12 — Stage 5 FEP authorization audit log; 55 tests |
+
 ### Session 11 — 2026-06-04
 **Phase 1C seam hardening (F1–F8) — card↔FEP authorization seam correctness fixes across `baas-card` (`c8c5f28`) and `baas-fep` (`5a463cf`); 76 + 51 tests passing. Documentation/gate close-out commit is this entry.**
 
