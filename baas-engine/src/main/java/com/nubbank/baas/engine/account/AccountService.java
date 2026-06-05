@@ -23,6 +23,7 @@ public class AccountService {
     private final CustomerRepository customerRepo;
     private final VirtualAccountService virtualAccountService;
     private final ApplicationEventPublisher eventPublisher;
+    private final CardAuthDebitRepository cardAuthDebitRepo;
 
     @Transactional
     public AccountResponse open(OpenAccountRequest req) {
@@ -107,6 +108,51 @@ public class AccountService {
             .amount(req.amount()).runningBalance(account.getBalance())
             .currencyCode(account.getCurrencyCode())
             .reference(req.reference()).description(req.description()).build()));
+    }
+
+    /**
+     * Internal card-authorization debit (Stage 5). Atomic + idempotent on
+     * {@code req.authKey()}: a repeat call with the same key returns the stored outcome
+     * and moves no money. The engine is the money-dedupe authority. Single-message model —
+     * the authorization IS the debit. {@code req.currency()} is ISO 4217 alphabetic.
+     */
+    @Transactional
+    public CardDebitResult cardAuthorizationDebit(CardDebitRequest req) {
+        requireContext();
+        var existing = cardAuthDebitRepo.findByAuthKey(req.authKey());
+        if (existing.isPresent()) {
+            return new CardDebitResult(existing.get().getOutcome());   // idempotent: no second debit
+        }
+        Account account = accountRepo.findByIdForUpdate(req.accountId()).orElse(null);
+        if (account == null || account.getStatus() != AccountStatus.ACTIVE) {
+            return record(req, CardAuthOutcome.ACCOUNT_INVALID, null);
+        }
+        if (!account.getCurrencyCode().equals(req.currency())) {
+            return record(req, CardAuthOutcome.CURRENCY_MISMATCH, null);
+        }
+        BigDecimal floor = account.isAllowOverdraft() && account.getOverdraftLimit() != null
+            ? account.getOverdraftLimit().negate()
+            : account.getMinimumBalance();
+        if (account.getBalance().subtract(req.amount()).compareTo(floor) < 0) {
+            return record(req, CardAuthOutcome.INSUFFICIENT, null);
+        }
+        account.setBalance(account.getBalance().subtract(req.amount()));
+        account.setAvailableBalance(account.getAvailableBalance().subtract(req.amount()));
+        accountRepo.save(account);
+        Transaction txn = txRepo.save(Transaction.builder()
+            .account(account).transactionType(TransactionType.DEBIT)
+            .amount(req.amount()).runningBalance(account.getBalance())
+            .currencyCode(account.getCurrencyCode())
+            .reference("CARD_AUTH").description("Card authorization " + req.authKey())
+            .build());
+        return record(req, CardAuthOutcome.DEBITED, txn.getId());
+    }
+
+    private CardDebitResult record(CardDebitRequest req, CardAuthOutcome outcome, UUID txnId) {
+        cardAuthDebitRepo.save(CardAuthDebit.builder()
+            .authKey(req.authKey()).accountId(req.accountId()).amount(req.amount())
+            .currencyCode(req.currency()).outcome(outcome).transactionId(txnId).reversed(false).build());
+        return new CardDebitResult(outcome);
     }
 
     @Transactional(readOnly = true)
