@@ -155,6 +155,37 @@ public class AccountService {
         return new CardDebitResult(outcome);
     }
 
+    /**
+     * Internal card-authorization credit / reversal (Stage 5). Idempotent on {@code authKey}:
+     * credits the original debit back exactly once. {@code located=false} when no DEBITED row
+     * exists for the key (card maps to DE39 25). Crediting an already-reversed or
+     * never-debited row is a no-op.
+     */
+    @Transactional
+    public CardCreditResult cardAuthorizationCredit(String authKey) {
+        requireContext();
+        CardAuthDebit row = cardAuthDebitRepo.findByAuthKey(authKey).orElse(null);
+        if (row == null || row.getOutcome() != CardAuthOutcome.DEBITED) {
+            return new CardCreditResult(false);
+        }
+        if (row.isReversed()) {
+            return new CardCreditResult(true);   // idempotent: already credited
+        }
+        Account account = accountRepo.findByIdForUpdate(row.getAccountId())
+            .orElseThrow(() -> BaasException.notFound("ACCOUNT_NOT_FOUND", "Account not found"));
+        account.setBalance(account.getBalance().add(row.getAmount()));
+        account.setAvailableBalance(account.getAvailableBalance().add(row.getAmount()));
+        accountRepo.save(account);
+        txRepo.save(Transaction.builder()
+            .account(account).transactionType(TransactionType.CREDIT)
+            .amount(row.getAmount()).runningBalance(account.getBalance())
+            .currencyCode(account.getCurrencyCode())
+            .reference("CARD_REVERSAL").description("Card reversal " + authKey).build());
+        row.setReversed(true);
+        cardAuthDebitRepo.save(row);
+        return new CardCreditResult(true);
+    }
+
     @Transactional(readOnly = true)
     public Page<TransactionResponse> getTransactions(UUID accountId, int page, int size) {
         requireContext();
