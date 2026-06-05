@@ -10,6 +10,7 @@ import com.nubbank.baas.card.common.CurrencyMinorUnits;
 import com.nubbank.baas.card.config.FieldEncryptor;
 import com.nubbank.baas.card.engine.EngineClient;
 import com.nubbank.baas.card.engine.dto.AccountLookupResult;
+import com.nubbank.baas.card.engine.dto.CardDebitResult;
 import com.nubbank.baas.card.limit.CardLimit;
 import com.nubbank.baas.card.limit.CardLimitRepository;
 import com.nubbank.baas.card.partner.PartnerOrganizationRepository;
@@ -87,9 +88,12 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
     private static final UUID LINKED = UUID.randomUUID();
 
     @BeforeEach
-    void stubEngineLookup() {
+    void stubEngine() {
         Mockito.when(engineClient.accountLookup(Mockito.any()))
             .thenReturn(new AccountLookupResult(true, true, "NGN"));
+        // Default: the engine debit succeeds. Decline-outcome tests re-stub per test.
+        Mockito.when(engineClient.cardDebit(Mockito.any()))
+            .thenReturn(new CardDebitResult("DEBITED"));
     }
 
     // ---------- happy path ----------
@@ -160,6 +164,78 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
 
         assertThat(data(resp).get("decision")).isEqualTo("DECLINE");
         assertThat(data(resp).get("responseCode")).isEqualTo("54");
+    }
+
+    // ---------- Stage 5: engine debit outcomes ----------
+
+    @Test
+    void engineInsufficient_declines51() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-insuff");
+        Mockito.when(engineClient.cardDebit(Mockito.any())).thenReturn(new CardDebitResult("INSUFFICIENT"));
+
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, ic.pan, 5000, "566"));
+
+        assertThat(data(resp).get("decision")).isEqualTo("DECLINE");
+        assertThat(data(resp).get("responseCode")).isEqualTo("51");
+    }
+
+    @Test
+    void engineAccountInvalid_declines78() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-acctinv");
+        Mockito.when(engineClient.cardDebit(Mockito.any())).thenReturn(new CardDebitResult("ACCOUNT_INVALID"));
+
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, ic.pan, 5000, "566"));
+
+        assertThat(data(resp).get("responseCode")).isEqualTo("78");
+    }
+
+    @Test
+    void engineCurrencyMismatch_declines57() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-ccymis");
+        Mockito.when(engineClient.cardDebit(Mockito.any())).thenReturn(new CardDebitResult("CURRENCY_MISMATCH"));
+
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, ic.pan, 5000, "566"));
+
+        assertThat(data(resp).get("responseCode")).isEqualTo("57");
+    }
+
+    @Test
+    void engineUnreachable_declines91() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-unreach");
+        Mockito.when(engineClient.cardDebit(Mockito.any())).thenReturn(new CardDebitResult("UNREACHABLE"));
+
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, ic.pan, 5000, "566"));
+
+        assertThat(data(resp).get("decision")).isEqualTo("DECLINE");
+        assertThat(data(resp).get("responseCode")).isEqualTo("91");
+    }
+
+    @Test
+    void localDecline_makesNoEngineDebitCall() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        // Unknown currency "999" → local decline 12 BEFORE any engine debit.
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, "5060001234567890", 5000, "999"));
+
+        assertThat(data(resp).get("responseCode")).isEqualTo("12");
+        Mockito.verify(engineClient, Mockito.never()).cardDebit(Mockito.any());
+    }
+
+    @Test
+    void nullLinkedAccount_declines78_withoutEngineDebit() {
+        TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
+        IssuedCard ic = issueAndActivate(partner, "ext-nullacct");
+        // Simulate a legacy/unbound card by nulling its linked_account_id in the tenant schema.
+        jdbcTemplate.update("UPDATE " + partner.schemaName
+            + ".cards SET linked_account_id = NULL WHERE id = ?", ic.cardId);
+
+        ResponseEntity<Map> resp = hmacPost(authorizeBody(partner, ic.pan, 5000, "566"));
+
+        assertThat(data(resp).get("responseCode")).isEqualTo("78");
+        Mockito.verify(engineClient, Mockito.never()).cardDebit(Mockito.any());
     }
 
     @Test
@@ -243,7 +319,7 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
         AuthorizationDecisionService svc =
             new AuthorizationDecisionService(cardRepository, limitRepository, panHasher,
-                currencyMinorUnits, idempotencyRepository);
+                currencyMinorUnits, idempotencyRepository, engineClient);
         AuthorizationDecisionRequest req = new AuthorizationDecisionRequest(
             partner.orgId.toString(), partner.schemaName, "5060001234567890", 5000L, "566",
             "000001", "TERM0001", "0101120000");
@@ -263,7 +339,7 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
             .thenThrow(new RuntimeException("boom"));
         AuthorizationDecisionService svc =
             new AuthorizationDecisionService(throwingRepo, limitRepository, panHasher,
-                currencyMinorUnits, idempotencyRepository);
+                currencyMinorUnits, idempotencyRepository, engineClient);
         AuthorizationDecisionRequest req = new AuthorizationDecisionRequest(
             UUID.randomUUID().toString(), "partner_x", "5060001234567890", 5000L, "566",
             null, null, null);

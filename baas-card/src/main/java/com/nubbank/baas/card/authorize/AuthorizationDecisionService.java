@@ -7,6 +7,9 @@ import com.nubbank.baas.card.card.CardRepository;
 import com.nubbank.baas.card.card.CardStatus;
 import com.nubbank.baas.card.card.PanHasher;
 import com.nubbank.baas.card.common.CurrencyMinorUnits;
+import com.nubbank.baas.card.engine.EngineClient;
+import com.nubbank.baas.card.engine.dto.CardDebitRequest;
+import com.nubbank.baas.card.engine.dto.CardDebitResult;
 import com.nubbank.baas.card.limit.CardLimit;
 import com.nubbank.baas.card.limit.CardLimitRepository;
 import com.nubbank.baas.card.tenant.PartnerContext;
@@ -52,6 +55,7 @@ public class AuthorizationDecisionService {
     private final PanHasher panHasher;
     private final CurrencyMinorUnits currencyMinorUnits;
     private final AuthorizationIdempotencyRepository idempotencyRepo;
+    private final EngineClient engineClient;
 
     public AuthorizationDecisionResponse decide(AuthorizationDecisionRequest req) {
         String environment =
@@ -115,7 +119,27 @@ public class AuthorizationDecisionService {
             }
         }
 
-        return approve();
+        // Would-approve → debit the engine (Stage 5). The engine is the money-dedupe
+        // authority; the card translates DE49 numeric → ISO alphabetic so the engine
+        // compares alpha-to-alpha. Fail-closed: an unreachable engine declines RC 91.
+        if (card.getLinkedAccountId() == null) {
+            return decline("78", "No linked account");
+        }
+        String alpha = currencyMinorUnits.alphaFor(req.currency()).orElse(null);
+        if (alpha == null) {
+            return decline("12", "Unknown currency");   // defensive; exponent check already guards
+        }
+        PartnerContext ctx = PartnerContext.get();
+        CardDebitResult result = engineClient.cardDebit(new CardDebitRequest(
+            ctx.partnerId(), ctx.schemaName(), card.getLinkedAccountId(),
+            idemKey(req), amount, alpha));
+        return switch (result.outcome()) {
+            case "DEBITED"           -> approve();
+            case "INSUFFICIENT"      -> decline("51", "Insufficient funds");
+            case "ACCOUNT_INVALID"   -> decline("78", "No linked account");
+            case "CURRENCY_MISMATCH" -> decline("57", "Currency not permitted");
+            default                  -> decline("91", "Issuer unavailable");   // UNREACHABLE / unknown
+        };
     }
 
     private AuthorizationDecisionResponse persistOrReuse(
