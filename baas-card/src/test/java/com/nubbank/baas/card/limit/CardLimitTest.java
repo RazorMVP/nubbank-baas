@@ -2,9 +2,12 @@ package com.nubbank.baas.card.limit;
 
 import com.nubbank.baas.card.AbstractCardIntegrationTest;
 import com.nubbank.baas.card.auth.PartnerJwtService;
+import com.nubbank.baas.card.engine.EngineClient;
+import com.nubbank.baas.card.engine.dto.AccountLookupResult;
 import com.nubbank.baas.card.partner.PartnerOrganizationRepository;
 import com.nubbank.baas.card.support.TestPartner;
 import com.nubbank.baas.card.tenant.TenantProvisioningService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -12,6 +15,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -21,6 +25,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * Per-card limits integration tests ({@code /baas/v1/cards/{id}/limits} PUT + GET),
@@ -49,6 +55,15 @@ class CardLimitTest extends AbstractCardIntegrationTest {
     @Autowired private TenantProvisioningService provisioningService;
     @Autowired private PartnerJwtService jwtService;
     @Autowired private JdbcTemplate jdbcTemplate;
+
+    @MockitoBean private EngineClient engineClient;
+
+    private static final UUID LINKED = UUID.randomUUID();
+
+    @BeforeEach
+    void stubEngineLookup() {
+        when(engineClient.accountLookup(any())).thenReturn(new AccountLookupResult(true, true, "NGN"));
+    }
 
     @Test
     void put_thenGet_roundTripsAllFourValues() {
@@ -246,7 +261,8 @@ class CardLimitTest extends AbstractCardIntegrationTest {
     private String issueCard(TestPartner partner) {
         UUID productId = createProduct(partner);
         ResponseEntity<Map> issued = post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", productId.toString(), "customerRef", "ext-1", "virtual", true));
+            "productId", productId.toString(), "customerRef", "ext-1", "virtual", true,
+            "linkedAccountId", LINKED.toString()));
         assertThat(issued.getStatusCode().value()).isEqualTo(201);
         return (String) data(issued).get("id");
     }

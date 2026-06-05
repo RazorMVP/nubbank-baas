@@ -8,14 +8,18 @@ import com.nubbank.baas.card.card.CardRepository;
 import com.nubbank.baas.card.card.PanHasher;
 import com.nubbank.baas.card.common.CurrencyMinorUnits;
 import com.nubbank.baas.card.config.FieldEncryptor;
+import com.nubbank.baas.card.engine.EngineClient;
+import com.nubbank.baas.card.engine.dto.AccountLookupResult;
 import com.nubbank.baas.card.limit.CardLimit;
 import com.nubbank.baas.card.limit.CardLimitRepository;
 import com.nubbank.baas.card.partner.PartnerOrganizationRepository;
 import com.nubbank.baas.card.support.TestPartner;
 import com.nubbank.baas.card.tenant.PartnerContext;
 import com.nubbank.baas.card.tenant.TenantProvisioningService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -76,6 +80,17 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private CurrencyMinorUnits currencyMinorUnits;
     @Autowired private AuthorizationIdempotencyRepository idempotencyRepository;
+
+    @MockitoBean private EngineClient engineClient;
+
+    /** Account the issued cards bind to; the engine lookup is mocked to accept it. */
+    private static final UUID LINKED = UUID.randomUUID();
+
+    @BeforeEach
+    void stubEngineLookup() {
+        Mockito.when(engineClient.accountLookup(Mockito.any()))
+            .thenReturn(new AccountLookupResult(true, true, "NGN"));
+    }
 
     // ---------- happy path ----------
 
@@ -338,7 +353,8 @@ class AuthorizationDecisionTest extends AbstractCardIntegrationTest {
     private IssuedCard issue(TestPartner partner, String customerRef) {
         UUID productId = createProduct(partner);
         Map<String, Object> card = data(post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", productId.toString(), "customerRef", customerRef, "virtual", true)));
+            "productId", productId.toString(), "customerRef", customerRef, "virtual", true,
+            "linkedAccountId", LINKED.toString())));
         UUID cardId = UUID.fromString((String) card.get("id"));
         return new IssuedCard(cardId, recoverPan(partner, cardId));
     }

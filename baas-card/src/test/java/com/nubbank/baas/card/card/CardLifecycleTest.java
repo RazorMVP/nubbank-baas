@@ -3,10 +3,13 @@ package com.nubbank.baas.card.card;
 import com.nubbank.baas.card.AbstractCardIntegrationTest;
 import com.nubbank.baas.card.auth.PartnerJwtService;
 import com.nubbank.baas.card.config.FieldEncryptor;
+import com.nubbank.baas.card.engine.EngineClient;
+import com.nubbank.baas.card.engine.dto.AccountLookupResult;
 import com.nubbank.baas.card.partner.PartnerOrganizationRepository;
 import com.nubbank.baas.card.support.TestPartner;
 import com.nubbank.baas.card.tenant.PartnerContext;
 import com.nubbank.baas.card.tenant.TenantProvisioningService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -14,12 +17,15 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * Card issuance + lifecycle state-machine integration tests
@@ -51,6 +57,16 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
     @Autowired private FieldEncryptor fieldEncryptor;
     @Autowired private JdbcTemplate jdbcTemplate;
 
+    @MockitoBean private EngineClient engineClient;
+
+    /** Every issued card binds this account; the engine lookup is mocked to accept it. */
+    private static final UUID LINKED = UUID.randomUUID();
+
+    @BeforeEach
+    void stubEngineLookup() {
+        when(engineClient.accountLookup(any())).thenReturn(new AccountLookupResult(true, true, "NGN"));
+    }
+
     @Test
     void issue_thenFullLifecycle_andIllegalTransition() {
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
@@ -58,7 +74,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
 
         // issue → 201 ISSUED
         ResponseEntity<Map> issued = post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", productId.toString(), "customerRef", "ext-1", "virtual", true));
+            "productId", productId.toString(), "customerRef", "ext-1", "virtual", true, "linkedAccountId", LINKED.toString()));
         assertThat(issued.getStatusCode().value()).isEqualTo(201);
         Map<String, Object> card = data(issued);
         assertThat(card.get("status")).isEqualTo("ISSUED");
@@ -87,7 +103,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
         UUID productId = createProduct(partner);
         String id = (String) data(post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", productId.toString(), "customerRef", "ext-2", "virtual", true))).get("id");
+            "productId", productId.toString(), "customerRef", "ext-2", "virtual", true, "linkedAccountId", LINKED.toString()))).get("id");
 
         // ISSUED → BLOCKED is illegal: ISSUED only permits ACTIVE or CANCELLED.
         // (Note: `unblock` maps to target ACTIVE, which IS legal from ISSUED, so it is
@@ -102,7 +118,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
         UUID productId = createProduct(partner);
         String id = (String) data(post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", productId.toString(), "virtual", true))).get("id");
+            "productId", productId.toString(), "virtual", true, "linkedAccountId", LINKED.toString()))).get("id");
 
         ResponseEntity<Map> resp = commandRaw(partner.jwt, id, "frobnicate");
         assertThat(resp.getStatusCode().value()).isEqualTo(400);
@@ -113,7 +129,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
     void issue_nonExistentProduct_returns404() {
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
         ResponseEntity<Map> resp = post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", UUID.randomUUID().toString(), "virtual", true));
+            "productId", UUID.randomUUID().toString(), "virtual", true, "linkedAccountId", LINKED.toString()));
         assertThat(resp.getStatusCode().value()).isEqualTo(404);
         assertThat(firstErrorCode(resp)).isEqualTo("PRODUCT_NOT_FOUND");
     }
@@ -123,7 +139,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
         UUID productId = createProduct(partner);
         post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", productId.toString(), "customerRef", "ext-3", "virtual", true));
+            "productId", productId.toString(), "customerRef", "ext-3", "virtual", true, "linkedAccountId", LINKED.toString()));
 
         ResponseEntity<Map> listed = get(partner.jwt, "/baas/v1/cards");
         assertThat(listed.getStatusCode().value()).isEqualTo(200);
@@ -139,7 +155,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
         UUID productId = createProduct(partner);
         Map<String, Object> card = data(post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", productId.toString(), "virtual", true)));
+            "productId", productId.toString(), "virtual", true, "linkedAccountId", LINKED.toString())));
         String masked = (String) card.get("maskedPan");
         // bin(6) + ****** + last4  →  e.g. "506000******1234"
         assertThat(masked).matches("^\\d{6}\\*{6}\\d{4}$");
@@ -159,7 +175,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
         TestPartner partner = TestPartner.create(orgRepo, provisioningService, jwtService);
         UUID productId = createProduct(partner);
         Map<String, Object> card = data(post(partner.jwt, "/baas/v1/cards", Map.of(
-            "productId", productId.toString(), "virtual", true)));
+            "productId", productId.toString(), "virtual", true, "linkedAccountId", LINKED.toString())));
         UUID cardId = UUID.fromString((String) card.get("id"));
 
         // Read the encrypted PAN directly from the partner's tenant schema.
@@ -192,7 +208,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
         TestPartner partnerB = TestPartner.create(orgRepo, provisioningService, jwtService);
         UUID productA = createProduct(partnerA);
         String idA = (String) data(post(partnerA.jwt, "/baas/v1/cards", Map.of(
-            "productId", productA.toString(), "virtual", true))).get("id");
+            "productId", productA.toString(), "virtual", true, "linkedAccountId", LINKED.toString()))).get("id");
 
         // Partner B's schema has no such card → 404 CARD_NOT_FOUND.
         ResponseEntity<Map> resp = commandRaw(partnerB.jwt, idA, "activate");
@@ -209,7 +225,7 @@ class CardLifecycleTest extends AbstractCardIntegrationTest {
     @Test
     void issue_withoutAuth_returns401() {
         ResponseEntity<Map> resp = restTemplate.postForEntity("/baas/v1/cards",
-            Map.of("productId", UUID.randomUUID().toString(), "virtual", true), Map.class);
+            Map.of("productId", UUID.randomUUID().toString(), "virtual", true, "linkedAccountId", LINKED.toString()), Map.class);
         assertThat(resp.getStatusCode().value()).isEqualTo(401);
     }
 

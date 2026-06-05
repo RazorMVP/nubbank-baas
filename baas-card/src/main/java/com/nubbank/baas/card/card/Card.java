@@ -40,6 +40,10 @@ public class Card {
     @Column(name = "customer_ref", length = 100)
     private String customerRef;
 
+    /** The engine account this card draws funds from (bound + engine-validated at issuance). */
+    @Column(name = "linked_account_id")
+    private UUID linkedAccountId;
+
     /** Full PAN — AES-GCM at rest. NEVER returned or logged. */
     @Convert(converter = FieldEncryptor.class)
     @Column(name = "pan_encrypted", nullable = false, length = 500)

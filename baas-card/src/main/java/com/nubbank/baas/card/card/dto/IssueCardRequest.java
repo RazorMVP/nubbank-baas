@@ -9,12 +9,14 @@ import java.util.UUID;
  * from the authenticated PartnerContext (the schema is the isolation boundary),
  * never the request body.
  *
- * @param productId   the card product to issue against (must exist in this tenant)
- * @param customerRef opaque partner-side customer reference (optional)
- * @param virtual     whether this is a virtual card
+ * @param productId       the card product to issue against (must exist in this tenant)
+ * @param customerRef     opaque partner-side customer reference (optional)
+ * @param virtual         whether this is a virtual card
+ * @param linkedAccountId the engine account this card draws from — validated at issuance
  */
 public record IssueCardRequest(
     @NotNull(message = "productId is required") UUID productId,
     String customerRef,
-    boolean virtual
+    boolean virtual,
+    @NotNull(message = "linkedAccountId is required") UUID linkedAccountId
 ) {}

@@ -3,6 +3,9 @@ package com.nubbank.baas.card.card;
 import com.nubbank.baas.card.card.dto.CardResponse;
 import com.nubbank.baas.card.card.dto.IssueCardRequest;
 import com.nubbank.baas.card.common.BaasException;
+import com.nubbank.baas.card.engine.EngineClient;
+import com.nubbank.baas.card.engine.dto.AccountLookupRequest;
+import com.nubbank.baas.card.engine.dto.AccountLookupResult;
 import com.nubbank.baas.card.product.CardProduct;
 import com.nubbank.baas.card.product.CardProductRepository;
 import com.nubbank.baas.card.tenant.PartnerContext;
@@ -55,6 +58,7 @@ public class CardService {
     private final CardRepository cardRepository;
     private final CardProductRepository cardProductRepository;
     private final PanHasher panHasher;
+    private final EngineClient engineClient;
 
     @Transactional
     public CardResponse issue(IssueCardRequest req) {
@@ -64,6 +68,16 @@ public class CardService {
             .orElseThrow(() -> BaasException.notFound("PRODUCT_NOT_FOUND",
                 "Card product " + req.productId() + " not found"));
 
+        // Validate the funding account exists in the engine BEFORE binding the card to it.
+        // Off the hot path; prevents a card bound to a non-existent/foreign account (Stage 5).
+        PartnerContext ctx = PartnerContext.get();
+        AccountLookupResult lookup = engineClient.accountLookup(new AccountLookupRequest(
+            ctx.partnerId(), ctx.schemaName(), req.linkedAccountId()));
+        if (!lookup.exists()) {
+            throw BaasException.badRequest("LINKED_ACCOUNT_NOT_FOUND",
+                "linkedAccountId does not exist in the engine");
+        }
+
         // Derive the 8-digit BIN from the product's binStart (normalized to 8 digits
         // by zero-padding on the right), or fall back to a default test BIN.
         String bin = resolveBin(product.getBinStart());
@@ -72,6 +86,7 @@ public class CardService {
         Card card = Card.builder()
             .productId(product.getId())
             .customerRef(req.customerRef())
+            .linkedAccountId(req.linkedAccountId())
             .panEncrypted(pan)                 // converter encrypts on persist
             .panHash(panHasher.hash(pan))      // deterministic lookup; set BEFORE save
             .panLast4(pan.substring(pan.length() - 4))
