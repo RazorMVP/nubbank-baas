@@ -123,11 +123,21 @@ services:
       dockerfile: Dockerfile
     image: baas-fep:local
     restart: unless-stopped
-    # Enabled at Stage 5 when Track-Card's baas-card block merges into this file:
-    # depends_on:
-    #   baas-card:
-    #     condition: service_started
+    depends_on:
+      # Stage 5: the FEP gained a datastore (fep.authorization_log audit trail,
+      # DEF-1C-24), so postgres must be healthy before it boots.
+      postgres:
+        condition: service_healthy
+      baas-card:
+        condition: service_started
     environment:
+      # Stage 5: the FEP audit log lives in the non-tenant `fep` schema of the
+      # SHARED postgres/db. Flyway runs at boot with create-schemas:true +
+      # default-schema:fep, so the `fep` schema is created automatically — no DB
+      # init script required. (Previously the FEP was a stateless spine, no DB.)
+      DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-nubbank_baas}
+      DATASOURCE_USERNAME: ${POSTGRES_USER}
+      DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       CARD_BASE_URL: http://baas-card:8081
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       # Container listen port — kept in lockstep with the published host port below
