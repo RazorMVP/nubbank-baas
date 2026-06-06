@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baas-card-config
+  namespace: nubbank-baas
+data:
+  # Non-secret runtime config. Secrets live in the Secret of the same name suffix.
+  #
+  # Card shares the SAME postgres/db as engine — it reads engine's public
+  # partner_organizations / partner_api_keys and writes tenant schemas with its
+  # own Flyway history table (flyway_schema_history_card, public schema only).
+  DATASOURCE_URL: "jdbc:postgresql://postgres.nubbank-baas.svc.cluster.local:5432/nubbank_baas"
+  SPRING_PROFILES_ACTIVE: "production"
+  # Stage 5 money seam (card → engine: card-debit / card-credit / account-lookup).
+  # NOTE the port: the baas-engine Service exposes port 80 (→ targetPort 8080), so
+  # the app default of http://baas-engine:8080 is WRONG in k8s and must be overridden
+  # here. Hitting :8080 would connection-refuse against the ClusterIP Service.
+  ENGINE_BASE_URL: "http://baas-engine:80"

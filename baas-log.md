@@ -16,7 +16,7 @@
 | `baas-backoffice` — React | 🟡 In progress — Phase 1C Foundation (backend enablers) done Session 8; React app + remaining tracks pending | — |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
-| Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles for engine + ncube, `infrastructure/docker-compose.yml`, vanilla k8s manifests in `infrastructure/k8s/`, GHCR CI workflows) | Session 4 |
+| Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles + GHCR CI for all four services; `infrastructure/docker-compose.yml`; vanilla k8s manifests in `infrastructure/k8s/`). **Session 13: `baas-card` + `baas-fep` added to k8s base (Deployments, Services, NetworkPolicy mesh, PDBs, fep TCP LoadBalancer, partner→card Ingress routing) + FEP datastore env wired in compose.** | Session 13 |
 
 ---
 
@@ -198,6 +198,68 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 13 — 2026-06-05
+**Stage 5 deploy follow-up — wire the FEP datastore into deploy config; add `baas-card` + `baas-fep` to k8s. Infra/docs only, zero Java touched. Resolves the spec §11 "FEP deployment — datastore env required" follow-up.**
+
+The FEP gained a datastore in Stage 5 but the deploy config never caught up: the compose `baas-fep` block had no `DATASOURCE_*` env, and the k8s base only ever covered engine + ncube — `baas-fep` (and `baas-card`) had **no** manifests at all. Built both card and fep as independent Kustomize resources so the Stage 5 money path is deployable in k8s, not just compose. **CBN surface unchanged** (deployment plumbing, not Open Banking).
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `infrastructure/docker-compose.yml` | `baas-fep`: add `DATASOURCE_{URL,USERNAME,PASSWORD}` + `depends_on` postgres(healthy)+card(started) (commit `6c39ff2`) |
+| `infrastructure/.env.example` | Correct the stale "FEP — stateless, no DB" note; FEP reuses `POSTGRES_*` |
+| `infrastructure/k8s/base/45,46,47-baas-card.*` | NEW: card ConfigMap, secret example, Deployment + ClusterIP(80→8081) + HPA + PDB |
+| `infrastructure/k8s/base/70,71,72-baas-fep.*` | NEW: fep ConfigMap, secret example, Deployment + ClusterIP http(80→8082) + LoadBalancer TCP(8583); datastore env wired |
+| `infrastructure/k8s/base/20-configmap.yaml` | engine: add `CARD_BASE_URL`/`NCUBE_BASE_URL` = `:80` (Service-port override; ncube was a pre-existing latent bug) |
+| `infrastructure/k8s/base/60-ingress.yaml` | Partner→card routing: `/baas/v1/{cards,card-products,bins}` → baas-card (longest-prefix carve-out from engine's `/baas/v1`) |
+| `infrastructure/k8s/base/kustomization.yaml` + 3 overlays | Register card/fep resources + image refs (`base-do-not-deploy` sentinel) |
+| `infrastructure/k8s/components/network-policy/15-*.yaml` | +9 rules: ingress→card, terminals→fep:8583, fep→card, engine→card, card→engine, card/fep→postgres, card/fep egress; engine egress +card |
+| `infrastructure/k8s/components/pod-disruption-budgets/15-*.yaml` | card + fep PDBs (minAvailable:1) |
+| `docs/superpowers/specs/2026-06-04-...-design.md` (§11) | Marked the FEP-deployment follow-up ✅ RESOLVED with commit refs + sub-follow-ups |
+| `CLAUDE.md` | +2 Known Gotchas (k8s Service port-80 inter-service URL trap; FEP fixed-replicas/no-HPA + L4 LB) |
+
+#### Key Decisions
+- **Built both card AND fep (Option 2), not fep-only.** A FEP deployed without card is liveness-green but function-dead (RC-91 on every authorization, because `CARD_BASE_URL` resolves to nothing). card's manifest is a near-clone of engine's, so the marginal cost was low. Kustomize resources are independent — building both doesn't couple them.
+- **k8s Service-port trap (fixed + recorded as a gotcha).** Every `baas-*` Service fronts pods on port 80, so the app-side inter-service URL defaults (`:8081`/`:8082`/`:8080`) connection-refuse in k8s. All inter-service URLs pinned to `:80` in the ConfigMaps. Found and fixed a **pre-existing** instance: engine's `NCUBE_BASE_URL` override was missing.
+- **FEP runs fixed replicas=2, NO HPA.** ISO 8583 holds long-lived sockets a naive CPU HPA can't rebalance; scale-down would sever live sessions. Safe under 2 replicas because debit idempotency is enforced at the engine (`auth_key` UNIQUE). Raw TCP exposed via L4 `LoadBalancer` (the L7 Ingress can't carry it) with `externalTrafficPolicy: Local` for source-IP preservation.
+- **Flyway auto-creates the `fep` schema** (`create-schemas:true` + `default-schema:fep`) — no DB init script needed.
+- **Partner→card Ingress routing added** (not deferred). card's partner API (`/baas/v1/{cards,card-products,bins}`) is carved out of engine's `/baas/v1` namespace via more-specific Ingress prefixes (longest-prefix match) + an `allow-ingress-to-card` NetworkPolicy rule. Auth stays at the service (PartnerContextFilter); the Ingress only routes.
+- **Correction:** an earlier draft of this entry claimed card/fep had no GHCR CI — that was wrong (stale CLAUDE.md note). `.github/workflows/baas-card-ci.yml` and `baas-fep-ci.yml` already build + push `ghcr.io/<owner>/baas-{card,fep}:<sha>` on push to main (Trivy + SBOM + SLSA L1), so overlays resolve a real SHA today. No CI follow-up exists.
+
+#### Build Verification
+Zero Java files touched — no test run required (per skill gate). Infra validated instead:
+- `docker compose config` → renders valid.
+- `kubectl kustomize overlays/{dev,staging,prod}` → all build; rendered inter-service URLs all `:80`; fep-tcp = `LoadBalancer`; 6 Services / 15 NetworkPolicies / 5 PDBs / 3 HPAs (fep correctly has none).
+
+#### Confirmed Platform Versions
+
+No Java changed this session — engine/card/fep application code SHAs are unchanged from Session 12 (engine/card `1ca0d3b`, fep `a9e4cfd`). Infrastructure manifests advanced to `7cc5025`.
+
+**BaaS Engine (`baas-engine/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.0 | `1ca0d3b` |
+| Java | 21 | `1ca0d3b` |
+| Last git commit (app code) | `1ca0d3b` | Session 12 — Stage 5 (unchanged this session) |
+
+**BaaS Card (`baas-card/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.3 | `1ca0d3b` |
+| Java | 21 | `1ca0d3b` |
+| Last git commit (app code) | `1ca0d3b` | Session 12 — Stage 5 (unchanged this session) |
+
+**BaaS FEP (`baas-fep/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.3 | `a9e4cfd` |
+| Java | 21 | `a9e4cfd` |
+| Last git commit (app code) | `a9e4cfd` | Session 12 — Stage 5 (unchanged this session) |
+
+**Infrastructure (`infrastructure/`):** Last commit `7cc5025` — Session 13 — card + fep k8s manifests + compose FEP datastore env.
+
+---
 
 ### Session 12 — 2026-06-05
 **Stage 5 — live card↔engine money wiring across `baas-engine` (`1ca0d3b`), `baas-card` (`1ca0d3b`), `baas-fep` (`a9e4cfd`); 138 + 102 + 55 tests passing. Closes DEF-1C-22, DEF-1C-23, DEF-1C-24, DEF-1C-25 (fund half); opens DEF-1C-27.**

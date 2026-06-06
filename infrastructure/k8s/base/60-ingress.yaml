@@ -22,6 +22,33 @@ spec:
     - host: api.nubbank.example.com  # TODO: replace with real host before deploy
       http:
         paths:
+          # Card's partner API shares the /baas/v1 namespace with engine but owns
+          # three disjoint sub-resources. These MORE-SPECIFIC prefixes must precede
+          # the engine /baas/v1 catch-all; compliant Ingress controllers route by
+          # longest-prefix match, so /baas/v1/cards → card and /baas/v1/<anything
+          # else> → engine. Auth is enforced at the service (PartnerContextFilter),
+          # not at the edge — the Ingress only routes.
+          - path: /baas/v1/cards
+            pathType: Prefix
+            backend:
+              service:
+                name: baas-card
+                port:
+                  number: 80
+          - path: /baas/v1/card-products
+            pathType: Prefix
+            backend:
+              service:
+                name: baas-card
+                port:
+                  number: 80
+          - path: /baas/v1/bins
+            pathType: Prefix
+            backend:
+              service:
+                name: baas-card
+                port:
+                  number: 80
           - path: /baas/v1
             pathType: Prefix
             backend:

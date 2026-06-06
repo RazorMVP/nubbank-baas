@@ -50,6 +50,22 @@ spec:
         - protocol: TCP
           port: 8082
 ---
+# Allow: ingress controller → baas-card (Ingress routes /baas/v1/{cards,card-products,bins} here)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-card
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-card } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+      ports:
+        - protocol: TCP
+          port: 8081
+---
 # Allow: baas-engine → postgres
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -112,7 +128,7 @@ spec:
         - protocol: TCP
           port: 443
 ---
-# Allow: baas-engine egress (DNS, postgres, ncube on 8082)
+# Allow: baas-engine egress (DNS, postgres, ncube on 8082, card on 8081)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -139,3 +155,170 @@ spec:
       ports:
         - protocol: TCP
           port: 8082
+    # Stage 5: engine → card provisioning trigger (DEF-1C-22). Pod port 8081.
+    - to:
+        - podSelector: { matchLabels: { app: baas-card } }
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+# ───────────────────────────── Stage 5: card + fep mesh ─────────────────────────────
+# baas-card and baas-fep were added to k8s in Stage 5. The rules below open exactly
+# the paths the money flow needs and nothing more (default-deny still applies to all
+# other traffic). NetworkPolicy matches the DESTINATION POD port (containerPort /
+# targetPort), NOT the Service port — so these reference 8080/8081/8082/5432/8583,
+# even though the Services front them on port 80.
+
+# Allow: ingress (terminals/acquirers) → baas-fep ISO 8583 TCP socket (8583).
+# Ports-only rule (no `from`) = allow from any source. The L4 LoadBalancer with
+# externalTrafficPolicy: Local preserves the real client IP; restrict to acquirer
+# CIDRs here (add an `from: [ipBlock]`) or via loadBalancerSourceRanges in an overlay
+# before production. 8583 must NOT be world-reachable in a real deployment.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-terminals-to-fep
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-fep } }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8583
+---
+# Allow: baas-fep → baas-card (BIN lookup + authorize). Pod port 8081.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-fep-to-card
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-card } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: baas-fep } }
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+# Allow: baas-engine → baas-card (provisioning trigger). Pod port 8081.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-engine-to-card
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-card } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: baas-engine } }
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+# Allow: baas-card → baas-engine (Stage 5 money seam: card-debit/credit/lookup). Pod port 8080.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-card-to-engine
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-engine } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: baas-card } }
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow: baas-card → postgres (shared db; reads public.partner_*, writes tenant schemas).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-card-to-postgres
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: postgres } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: baas-card } }
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Allow: baas-fep → postgres (fep schema audit log only).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-fep-to-postgres
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: postgres } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: baas-fep } }
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Allow: baas-card egress (DNS, postgres, engine on 8080).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-card-egress
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-card } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector: { matchLabels: { app: postgres } }
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector: { matchLabels: { app: baas-engine } }
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow: baas-fep egress (DNS, postgres, card on 8081).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-fep-egress
+  namespace: nubbank-baas
+spec:
+  podSelector: { matchLabels: { app: baas-fep } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector: { matchLabels: { app: postgres } }
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector: { matchLabels: { app: baas-card } }
+      ports:
+        - protocol: TCP
+          port: 8081

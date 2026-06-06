@@ -11,3 +11,13 @@ data:
   # this flag is true. Set to "true" only in dry-run / staging environments
   # where a real sanctions provider isn't yet wired.
   APP_COMPLIANCE_ALLOW_STUB: "false"
+  # Inter-service base URLs. CRITICAL: every baas-* Service exposes port 80
+  # (→ targetPort 808x), so the app-side defaults (http://baas-card:8081 /
+  # http://baas-ncube:8082) connection-refuse against the ClusterIP Services in
+  # k8s. They MUST be overridden to :80 here.
+  #   - CARD_BASE_URL: engine → card provisioning trigger (Stage 5, DEF-1C-22).
+  #   - NCUBE_BASE_URL: engine → ncube ISO 20022 calls. Pre-existing latent bug —
+  #     this override was missing, so engine→ncube would have failed in k8s; fixed
+  #     here alongside the card wiring.
+  CARD_BASE_URL: "http://baas-card:80"
+  NCUBE_BASE_URL: "http://baas-ncube:80"

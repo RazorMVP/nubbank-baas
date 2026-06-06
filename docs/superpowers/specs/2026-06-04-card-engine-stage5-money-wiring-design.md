@@ -326,12 +326,27 @@ reflection shape test on both sides plus a signer-scheme parity test. No single 
 
 ## 11. Follow-up items (post-implementation)
 
-- **FEP deployment — datastore env required (NEW in Stage 5).** The FEP gained a datastore for the
-  authorization audit log (DEF-1C-24), so it now requires `DATASOURCE_URL` / `DATASOURCE_USERNAME` /
-  `DATASOURCE_PASSWORD` env vars and the non-tenant `fep` schema in the shared Postgres at runtime
-  (previously the FEP was a stateless spine with no datasource). `infrastructure/docker-compose.yml` and the
-  k8s manifests for `baas-fep` must add these datasource env vars (and ensure the `fep` schema / Flyway runs)
-  **before the next deploy**, or the FEP will fail to start in prod. (Tests are unaffected — they use H2.)
+- **FEP deployment — datastore env required (NEW in Stage 5).** ✅ **RESOLVED (commits `6c39ff2`, `7cc5025`).**
+  The FEP gained a datastore for the authorization audit log (DEF-1C-24), so it now requires
+  `DATASOURCE_URL` / `DATASOURCE_USERNAME` / `DATASOURCE_PASSWORD` env vars and the non-tenant `fep` schema in
+  the shared Postgres at runtime (previously the FEP was a stateless spine with no datasource).
+  - `infrastructure/docker-compose.yml`: `baas-fep` block now sets the three `DATASOURCE_*` vars and
+    `depends_on: postgres(service_healthy) + baas-card(service_started)`. Validated via `docker compose config`.
+  - k8s: the base only had engine + ncube — `baas-fep` (and `baas-card`) had **no** manifests at all, so this
+    resolution **created** them (`70/71/72-baas-fep.*`, `45/46/47-baas-card.*`) with datasource env, NetworkPolicy
+    mesh, PDBs, and a LoadBalancer for the ISO 8583 TCP port. Flyway auto-creates the `fep` schema
+    (`create-schemas: true`, `default-schema: fep`) — no DB init script needed. Validated via
+    `kubectl kustomize overlays/{dev,staging,prod}`.
+  - Also fixed a **pre-existing** latent k8s bug found en route: every `baas-*` Service fronts pods on port 80,
+    so the app-side inter-service URL defaults (`:8081`/`:8082`) connection-refuse; engine's `NCUBE_BASE_URL`
+    override was missing and would have failed engine→ncube in k8s. All inter-service URLs now pinned to `:80`.
+  - **Partner→card Ingress routing:** added in the same pass. card's partner API (`/baas/v1/{cards,card-products,
+    bins}`) is carved out of engine's `/baas/v1` namespace via more-specific Ingress prefixes (longest-prefix
+    match) + an `allow-ingress-to-card` NetworkPolicy rule. Auth stays at the service (PartnerContextFilter).
+  - **CI images already exist** (corrected — an earlier draft of this note wrongly said they didn't):
+    `.github/workflows/baas-card-ci.yml` and `baas-fep-ci.yml` build + push `ghcr.io/<owner>/baas-{card,fep}:<sha>`
+    on push to main, so overlays can resolve a real SHA today via `kustomize edit set image`. No follow-up needed.
+  (Tests are unaffected — they use H2.)
 - **Figma boards.** The Service Architecture + data-flow boards now understate reality (the engine↔card
   money seam over `/internal/v1/{card-debit,card-credit,account-lookup}`, the engine→card provisioning
   trigger, and the FEP datastore) — regenerate when convenient.

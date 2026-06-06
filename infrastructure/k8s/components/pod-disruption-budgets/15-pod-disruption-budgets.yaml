@@ -44,6 +44,33 @@ spec:
     matchLabels:
       app: baas-ncube
 ---
+# baas-card (HPA min=2, max=10) — permits draining all-but-one, same as baas-engine.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: baas-card-pdb
+  namespace: nubbank-baas
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: baas-card
+---
+# baas-fep (fixed replicas=2, no HPA) — always permits draining 1 of 2. Because the
+# FEP holds long-lived ISO 8583 sockets, a drained pod severs live terminal sessions;
+# acquirers reconnect to the surviving pod via the L4 LB. minAvailable: 1 keeps the
+# switch reachable throughout a node drain.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: baas-fep-pdb
+  namespace: nubbank-baas
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: baas-fep
+---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

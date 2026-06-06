@@ -16,5 +16,9 @@ resources:
 images:
   - name: ghcr.io/razormvp/baas-engine
     newTag: base-do-not-deploy
+  - name: ghcr.io/razormvp/baas-card
+    newTag: base-do-not-deploy
   - name: ghcr.io/razormvp/baas-ncube
+    newTag: base-do-not-deploy
+  - name: ghcr.io/razormvp/baas-fep
     newTag: base-do-not-deploy
