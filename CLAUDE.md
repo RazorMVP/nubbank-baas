@@ -305,7 +305,9 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 12 — 2026-06-05)
+## Confirmed Platform Versions (Session 13 — 2026-06-06; application code unchanged since Session 12)
+
+> **Session 13 was infra/docs only — zero Java touched.** All `Last git commit` SHAs below are the Session 12 app-code commits and remain current. Infrastructure manifests advanced to merge commit `0f78aed` (PR #19: `baas-card` + `baas-fep` k8s manifests + FEP datastore deploy config); see `baas-log.md` Session 13.
 
 ### BaaS Engine (`baas-engine/`)
 
