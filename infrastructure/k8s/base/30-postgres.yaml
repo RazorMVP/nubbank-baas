@@ -61,6 +61,15 @@ spec:
                 secretKeyRef:
                   name: baas-engine-secrets
                   key: DATASOURCE_PASSWORD
+            # PGDATA MUST be a SUBDIRECTORY of the mounted volume, never the mount
+            # root. Under the non-root securityContext (runAsUser 70), initdb runs
+            # `chmod 0700` on PGDATA; if PGDATA is the volume mount root (owned by
+            # root, only group-adjusted by fsGroup), the chmod fails with
+            # "could not change permissions ... Operation not permitted" and the
+            # pod CrashLoops. Pointing PGDATA at a subdir that initdb creates (and
+            # therefore owns) lets the chmod succeed. Verified via kind smoke test.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
