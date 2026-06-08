@@ -14,7 +14,7 @@ Structure: `ID | Item | Why deferred | Earliest phase | Source`. Append new defe
 | DEF-1C-08 | DB-level orphaned-grant guard for user_roles.user_id | Reconciliation sweep covers it | revisit | spec §6.2.4 |
 | DEF-1C-09 | Keycloak JWKS rotation/invalidation | Default decoder cache acceptable | Phase 2 | spec §6.1 |
 | DEF-1C-10 | Live external export delivery (SFTP) | Stub-mode in 1C | Phase 2 | spec §6.5 |
-| DEF-1C-11 | Frontend component-library choice | Decide at Track-Backoffice start | Phase 1C | spec §7.1 |
+| DEF-1C-11 | ✅ **RESOLVED (2026-06-07).** Frontend component-library choice = **shadcn/ui** (Radix + Tailwind, copy-in; tables via TanStack Table). Decided at Track-Backoffice start. | — | Phase 1C | spec §7.1 → `2026-06-07-baas-backoffice-design.md` §3 |
 | DEF-1C-12 | Routing-by-annotation vs by-chain | Start by-chain | Phase 1C/2 | spec §6.3 |
 | DEF-1C-13 | Maker-checker UI beyond engine support | Engine support is the constraint | Phase 3 | spec §13 |
 | DEF-1C-14 | TRADE_FINANCE_OFFICER role | No corporate partner in 1C | on corporate onboard | spec §14 |
