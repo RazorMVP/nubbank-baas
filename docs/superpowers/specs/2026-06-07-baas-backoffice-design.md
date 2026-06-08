@@ -49,11 +49,20 @@ From the 2026-05-29 spec §7.1 (locked) and reconfirmed here:
 
 ## 4. Design language (locked — adapted from Nubeero)
 
-Source: Figma `Nubeero-Jobs` (file `PsnGRotaBYfV0V13KG9Bak`) — dashboard `1662:27651`, jobs list `1662:29071`,
-admin login `1657:20493`, plus the design-system swatch area. Captured: Instrument Sans; blue `#0078D4` +
-light-blue `#28A8EA` + near-black `#1A1A1A`; black icon-rail sidebar; white topbar with pill search; light-blue
-KPI tiles; rounded cards; pill status badges. One deliberate adaptation: the jobs page's rainbow-pastel cards
-are dropped in favor of a blue/neutral family (too playful for a banking console).
+**Canonical design source:** Figma file **`gEDnLrLD4UrChcND0yCdZ9`** — "NubBank BaaS — Backoffice" (Nubeero
+team). This is the editable, token-bound design system built natively for D8: a **NubBank Tokens** variable
+collection (the token set in §4.1) plus five canonical screens at 1440 width — **Dashboard, Customers list,
+Customer detail, Command modal, Login**. All implementation visual decisions trace to this file; it is the
+source of truth that replaces ad-hoc screenshots so changes stay editable.
+
+**Adaptation lineage:** the language was adapted from the Figma `Nubeero-Jobs` file (`PsnGRotaBYfV0V13KG9Bak`) —
+dashboard `1662:27651`, jobs list `1662:29071`, admin login `1657:20493`, plus the design-system swatch area.
+Captured: Instrument Sans; blue `#0078D4` + light-blue `#28A8EA` + near-black `#1A1A1A`; black icon-rail
+sidebar; white topbar with pill search; light-blue KPI tiles; rounded cards; pill status badges. Deliberate
+adaptations carried into the canonical file: the jobs page's rainbow-pastel cards are dropped in favor of a
+blue/neutral family (too playful for a banking console); the sidebar active-accent is brand blue `#0078D4`
+(the Figma used red); and a dark **slate-ink `#23262E`** card surface (`--surface-ink`) was added alongside the
+white default.
 
 ### 4.1 Tokens (CSS variables; the source of truth)
 
@@ -165,7 +174,10 @@ baas-backoffice/
 
 ## 11. References
 
+- **Figma `gEDnLrLD4UrChcND0yCdZ9`** — "NubBank BaaS — Backoffice" — **the canonical design source** for D8: NubBank
+  Tokens variable collection + five 1440-width screens (Dashboard, Customers list, Customer detail, Command modal,
+  Login). Editable and token-bound; all implementation visuals trace here.
 - `docs/superpowers/specs/2026-05-29-nubbank-baas-phase1c-backoffice-design.md` — Phase-1C architecture (D1–D10).
-- Nubeero-Jobs Figma `PsnGRotaBYfV0V13KG9Bak` — design-language source (nodes `1662:27651`, `1662:29071`, `1657:20493`).
+- Nubeero-Jobs Figma `PsnGRotaBYfV0V13KG9Bak` — design-language *lineage* source (nodes `1662:27651`, `1662:29071`, `1657:20493`); superseded as the working file by `gEDnLrLD4UrChcND0yCdZ9`.
 - `CLAUDE.md` § Operator Identity & RBAC (Session 8) — the backend enablers D8 consumes.
 - `docs/deferred-items.md` — DEF-1C-11 (component library) resolved here = shadcn/ui.
