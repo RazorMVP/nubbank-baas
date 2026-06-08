@@ -62,9 +62,9 @@ jobs:
       image-tag: ${{ steps.img.outputs.tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
       - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -77,7 +77,7 @@ jobs:
           lower_owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
           echo "tag=ghcr.io/${lower_owner}/baas-card" >> "$GITHUB_OUTPUT"
       - name: Build and push image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
         with:
           context: baas-card
           file: baas-card/Dockerfile
@@ -107,7 +107,7 @@ jobs:
       # before scanning, which would silently turn off the strict CVE gate.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
