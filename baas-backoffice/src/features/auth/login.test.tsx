@@ -27,7 +27,13 @@ describe('Login', () => {
       </AuthContextProvider>,
     );
     expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument();
-    expect(screen.getByText(/15 banks live/i)).toBeInTheDocument();
+    // The stat renders as an accent number + muted label across nested spans,
+    // so match the wrapping element by its combined textContent.
+    expect(
+      screen.getByText(
+        (_, el) => el?.tagName === 'SPAN' && el?.textContent === '15 banks live',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('calls auth.login on submit', async () => {

@@ -36,10 +36,11 @@ export function Login() {
             Issue accounts, move money, and run your bank — on NubBank's rails.
           </p>
         </div>
-        <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm text-white/60">
+        <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
           {STATS.map(([n, l]) => (
-            <span key={l} className="whitespace-nowrap font-medium">
-              {n} {l}
+            <span key={l} className="whitespace-nowrap">
+              <span className="font-semibold text-brand-accent">{n}</span>{' '}
+              <span className="text-white/60">{l}</span>
             </span>
           ))}
         </div>
