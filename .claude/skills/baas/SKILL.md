@@ -10,7 +10,18 @@ Use this skill whenever working on the NubBank BaaS platform (`nubbank-baas/` re
 
 ### Mandatory End-of-Session Checklist
 
-- [ ] **1. Build verification** — `cd ~/nubbank-baas/baas-engine && ./mvnw test -q` — all tests must pass before any commit. Only sessions that touched zero Java files may skip.
+- [ ] **1. Build verification (per service touched)** — run the test suite of **every** service whose files changed this session. A service is exempt **only** if it had zero file changes. Find touched services with `git diff --name-only main...HEAD | sed 's#/.*##' | sort -u`.
+
+  | Service | Stack | Verify command |
+  |---------|-------|----------------|
+  | `baas-engine` | Java/Spring | `cd ~/nubbank-baas/baas-engine && ./mvnw test -q` |
+  | `baas-card` | Java/Spring | `cd ~/nubbank-baas/baas-card && ./mvnw test -q` |
+  | `baas-fep` | Java/Spring | `cd ~/nubbank-baas/baas-fep && ./mvnw test -q` |
+  | `baas-ncube` | Java/Spring | `cd ~/nubbank-baas/baas-ncube && ./mvnw test -q` |
+  | `baas-backoffice` | React/Vite | `cd ~/nubbank-baas/baas-backoffice && npm run typecheck && npm test` |
+  | `baas-portal` *(when built)* | React/Vite | `cd ~/nubbank-baas/baas-portal && npm run typecheck && npm test` |
+
+  All suites for all touched services must be green before any commit.
 
 - [ ] **2. `baas-log.md`** — New session entry added at the **top** of Change History. Must include:
   - Session number, date, one-line summary + final commit SHA
@@ -24,11 +35,17 @@ Use this skill whenever working on the NubBank BaaS platform (`nubbank-baas/` re
   - Module Catalogue — new modules ✅, pending modules current
   - Any new gotchas in the Known Gotchas table
 
-- [ ] **4. API docs** — If ANY `baas-engine` controller file was touched:
-  - `git diff HEAD~1 HEAD --name-only | grep -E '\.java$'` to find changed files
-  - Grep for `@GetMapping|@PostMapping|@PutMapping|@DeleteMapping|@PatchMapping`
-  - Update `docs/api-reference.html` for every new or changed endpoint
-  - Zero controller files touched = may skip
+- [ ] **4. Service docs (per service touched)** — **every** service worked on at any point in the session must have its reference doc updated. Not just `baas-engine` — `baas-backoffice`, `baas-card`, `baas-fep`, and `baas-ncube` each carry their own doc surface. A service is exempt **only** if it had zero file changes this session.
+
+  | Service | Doc artifact | What to update |
+  |---------|--------------|----------------|
+  | `baas-engine` | `docs/api-reference.html` | Every new/changed REST endpoint. Find with `git diff main...HEAD --name-only \| grep '\.java$'` then grep `@(Get\|Post\|Put\|Delete\|Patch)Mapping`. |
+  | `baas-card` | `docs/api-reference.html` (Card section) | New/changed card REST endpoints + any internal `/internal/v1/*` contract changes. |
+  | `baas-ncube` | `docs/api-reference.html` (Ncube/CBN section) | New/changed CBN-adapter endpoints + vendor media-type/format changes. |
+  | `baas-fep` | `docs/fep-iso8583-reference.md` *(create if absent)* | New/changed ISO 8583 MTIs, DEs, response codes, reversal/auth flow. FEP is TCP, not REST — it does **not** belong in `api-reference.html`. |
+  | `baas-backoffice` | `docs/backoffice-operations.md` *(create if absent)* | New screens/routes, RBAC permission codes consumed, env vars, auth modes (dev vs PKCE). The design spec under `docs/superpowers/specs/` stays the canonical *spec*; this is the living *operations* doc. |
+
+  Cross-cutting: if any service touched Open Banking / KYC / consent / payment surface, also do item 5 (CBN gap analysis).
 
 - [ ] **5. CBN compliance gap analysis** — If any Open Banking, KYC, consent, or payment feature changed:
   - Update `docs/regulatory/CBN-Open-Banking-Compliance-Gap-Analysis.md`
@@ -51,7 +68,10 @@ Use this skill whenever working on the NubBank BaaS platform (`nubbank-baas/` re
 
 - [ ] **9. Commit and push**
   ```bash
-  git add CLAUDE.md baas-log.md docs/regulatory/ .claude/skills/baas/SKILL.md
+  # Include every per-service doc touched this session (item 4 matrix):
+  #   docs/api-reference.html, docs/fep-iso8583-reference.md,
+  #   docs/backoffice-operations.md, docs/regulatory/
+  git add CLAUDE.md baas-log.md docs/ .claude/skills/baas/SKILL.md
   git commit -m "docs(baas-log+claude): Session N — <summary>
 
   Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
@@ -80,6 +100,8 @@ Use this skill whenever working on the NubBank BaaS platform (`nubbank-baas/` re
 | "Figma diagrams are optional" | They are the visual spec shared with stakeholders. Stale diagrams create confusion. |
 | "CBN gap analysis was updated last session" | Last session's analysis doesn't cover this session's changes. |
 | "The API docs can wait until we have more endpoints" | One missing endpoint breaks partner integrations silently. |
+| "Only `baas-engine` has docs to update" | Every service has its own doc surface — see gate item 4's matrix (`baas-backoffice`, `baas-card`, `baas-fep`, `baas-ncube`, `baas-engine`). Touching **any** of them triggers its doc update. FEP docs live in `fep-iso8583-reference.md`, backoffice in `backoffice-operations.md`. |
+| "It's a frontend service, frontends don't have API docs" | `baas-backoffice` carries an operations doc (routes, RBAC codes, env, auth modes). "No REST endpoints" ≠ "no docs". |
 
 ---
 
@@ -212,7 +234,7 @@ Every partner gets a dedicated PostgreSQL schema. Hibernate SCHEMA strategy rout
 | 1B | `baas-ncube` — CBN format + BVN/NIN | ✅ Complete (Session 2, commit `97544ce`) |
 | 1F-0 | Cross-cutting security baseline (1B C1, C2, C5, I1, I3, I7) | ✅ Complete (Session 5, branch `feature/phase1f-0-cross-cutting-security` HEAD `d8b1802`, 97 engine + 49 ncube tests) — adds `AuthEnforcementFilter`, body-signed HMAC inter-service auth, `StubModeGuard`, `X-NubBank-Stubbed` header, CBN vendor media type, `PiiMaskingConverter` (Logback) |
 | 1C / D7 | `baas-fep` — stateless ISO 8583 front-end processor (Netty + jPOS + MTI router + BIN routing + auth flow) | ✅ Complete (Session 9, branch `feature/phase1c-fep` HEAD `29400fc`, 46 tests; Card client mocked — live wiring Stage 5) |
-| 1C | `baas-backoffice` — React/Vite operations portal | ⬜ Next — start after Phase 1F-0 merges |
+| 1C | `baas-backoffice` — React/Vite operations portal | 🟡 **Foundation ✅** (Session 14, `57ffbdd`, 69 tests) — app skeleton, hybrid auth, RBAC gating, dashboard, CI/Docker/k8s. Per-domain screen tracks (Customers, Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. |
 | 1D | `baas-portal` — React developer portal | ⬜ Not started |
 | 1E | Infrastructure — Docker + k8s + CI/CD | ✅ Complete (Session 4) — `Dockerfile` for engine + ncube, `infrastructure/docker-compose.yml`, `infrastructure/k8s/` (vanilla manifests), `.github/workflows/baas-{engine,ncube}-ci.yml` |
 | 1F-E | Infrastructure hardening — 22 tasks, 28 findings (6C + 13I + 9m) | ✅ Complete (Session 6, merge commit `ac5687b`, tag `phase1f-e-merged`, PR #5, 22/22 tasks, 40 commits); includes Kustomize tree restructure, NetworkPolicy + PDB components, image digest pins, JVM hardening, compose hardening, GHCR CI + SBOM + SLSA L1, Dependabot, CODEOWNERS, HPA tuning, SecurityConfig `/actuator/health/**` fix |
