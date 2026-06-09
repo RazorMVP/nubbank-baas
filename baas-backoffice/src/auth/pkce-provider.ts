@@ -32,6 +32,7 @@ export function createPkceAuthProvider(config: PkceConfig): AuthProvider {
   };
   const mgr = new UserManager(settings);
   let current: User | null = null;
+  let ready = false;
 
   // Keep `current` authoritative across the lifecycle: oidc-client-ts renews
   // tokens in the background (automaticSilentRenew) and emits these events.
@@ -47,9 +48,14 @@ export function createPkceAuthProvider(config: PkceConfig): AuthProvider {
   // Fire-and-forget warm-up: `current` is null until this resolves, so
   // consumers must treat auth as async on first paint (use a loading state),
   // not read isAuthenticated() synchronously on mount expecting a warm cache.
-  void mgr.getUser().then((u) => {
-    current = u;
-  });
+  void mgr
+    .getUser()
+    .then((u) => {
+      current = u;
+    })
+    .finally(() => {
+      ready = true;
+    });
 
   const toUser = (u: User | null): AuthUser | null =>
     u
@@ -62,6 +68,7 @@ export function createPkceAuthProvider(config: PkceConfig): AuthProvider {
 
   return {
     isAuthenticated: () => current !== null && !current.expired,
+    isReady: () => ready,
     getUser: () => toUser(current),
     getAuthorities: () =>
       current ? parseAuthorities(current.profile as Record<string, unknown>) : [],

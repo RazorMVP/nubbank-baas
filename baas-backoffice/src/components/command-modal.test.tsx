@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { CommandModal } from './command-modal';
 import { FormField } from './form-field';
+import { Input } from './ui/input';
 
 const schema = z.object({ name: z.string().min(1, 'Required') });
 
@@ -19,7 +20,7 @@ describe('CommandModal', () => {
         defaultValues={{ name: '' }}
         onSubmit={onSubmit}
       >
-        {(form) => <FormField label="Name" error={form.formState.errors.name?.message}><input {...form.register('name')} /></FormField>}
+        {(form) => <FormField label="Name" error={form.formState.errors.name?.message}><Input {...form.register('name')} /></FormField>}
       </CommandModal>,
     );
     await userEvent.type(screen.getByLabelText('Name'), 'Acme');
@@ -38,7 +39,7 @@ describe('CommandModal', () => {
         defaultValues={{ name: '' }}
         onSubmit={onSubmit}
       >
-        {(form) => <FormField label="Name" error={form.formState.errors.name?.message}><input {...form.register('name')} /></FormField>}
+        {(form) => <FormField label="Name" error={form.formState.errors.name?.message}><Input {...form.register('name')} /></FormField>}
       </CommandModal>,
     );
     await userEvent.click(screen.getByRole('button', { name: /save/i }));

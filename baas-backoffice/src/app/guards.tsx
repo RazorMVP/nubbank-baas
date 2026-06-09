@@ -5,6 +5,11 @@ import { hasPermission } from '@/lib/rbac';
 
 export function RequireAuth() {
   const auth = useAuth();
+  if (!auth.isReady()) {
+    return (
+      <div className="grid min-h-screen place-items-center text-muted">Loading…</div>
+    );
+  }
   return auth.isAuthenticated() ? <Outlet /> : <Navigate to="/login" replace />;
 }
 

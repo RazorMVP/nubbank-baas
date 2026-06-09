@@ -1,4 +1,5 @@
 import { useId, type ReactElement, cloneElement } from 'react';
+import { Label } from '@/components/ui/label';
 
 // InputElement covers all HTML input-like elements that accept id + className.
 type InputElement = ReactElement<React.HTMLAttributes<HTMLElement> & { id?: string }>;
@@ -15,9 +16,9 @@ export function FormField({
   const id = useId();
   return (
     <div className="mb-3">
-      <label htmlFor={id} className="mb-1 block text-sm font-medium">
+      <Label htmlFor={id} className="mb-1 block">
         {label}
-      </label>
+      </Label>
       {cloneElement(children, {
         id,
         className:

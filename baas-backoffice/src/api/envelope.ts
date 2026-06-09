@@ -50,6 +50,41 @@ export function unwrap<T>(env: Envelope<T>, httpStatus?: number): T {
   return env.data as T;
 }
 
+/** The shape openapi-fetch returns from a request. On 2xx the parsed body is in
+ * `data`; on non-2xx it is in `error` (the engine still returns the standard
+ * envelope on errors). */
+export interface FetchResult {
+  data?: unknown;
+  error?: unknown;
+  response: Response;
+}
+
+/**
+ * Unwrap an openapi-fetch result to its payload, always surfacing failures as
+ * `ApiError` (never a raw `TypeError`). The single seam every data hook must use
+ * so the error contract (401/403/field/transport) holds uniformly.
+ */
+export function unwrapResult<T>(result: FetchResult): T {
+  const status = result.response?.status ?? 0;
+  const envelope = (result.error ?? result.data) as Envelope<T> | null | undefined;
+
+  if (envelope && envelope.errors && envelope.errors.length > 0) {
+    throw new ApiError(envelope.errors[0], status);
+  }
+  if (status >= 400 || envelope == null) {
+    throw new ApiError(
+      {
+        code: `ERR_HTTP_${status}`,
+        message: status ? `Request failed (${status})` : 'No response from server',
+        field: null,
+        docsUrl: null,
+      },
+      status,
+    );
+  }
+  return envelope.data as T;
+}
+
 export function extractPage<T>(page: Page<T>): NormalizedPage<T> {
   return {
     items: page.content,

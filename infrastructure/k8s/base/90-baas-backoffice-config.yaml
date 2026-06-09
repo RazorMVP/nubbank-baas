@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: baas-backoffice-config
-  namespace: nubbank-baas
-data:
-  # Build-time VITE_* are baked into the static bundle; this ConfigMap documents
-  # the intended runtime ingress host. The SPA calls the engine via the Ingress.
-  PUBLIC_API_BASE_URL: "https://api.nubbank.example.com"

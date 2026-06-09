@@ -7,16 +7,17 @@ import { AuthContextProvider } from '@/auth/context';
 import type { AuthProvider } from '@/auth/types';
 
 function stubAuth(over: Partial<AuthProvider> = {}): AuthProvider {
-  return {
+  const base: AuthProvider = {
     isAuthenticated: () => false,
+    isReady: () => false,
     getUser: () => null,
     getAuthorities: () => [],
     getToken: async () => null,
     login: vi.fn(async () => {}),
     completeRedirectLogin: async () => {},
     logout: async () => {},
-    ...over,
   };
+  return { ...base, ...over };
 }
 
 describe('Login', () => {

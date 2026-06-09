@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { RequireAuth, RequireRoutePermission } from './guards';
 import { AuthContextProvider } from '@/auth/context';
 import { createDevAuthProvider } from '@/auth/dev-provider';
+import type { AuthProvider } from '@/auth/types';
 
 function setup(authorities: string[], token: string | null, initial = '/secret') {
   const provider = createDevAuthProvider({ token, authorities, user: null });
@@ -40,5 +41,32 @@ describe('route guards', () => {
   it('renders content when authorized', () => {
     setup(['READ_CUSTOMER'], 't');
     expect(screen.getByText('secret-content')).toBeInTheDocument();
+  });
+
+  it('shows a loading state until the provider is ready (no false /login redirect)', () => {
+    const notReady: AuthProvider = {
+      isAuthenticated: () => false,
+      isReady: () => false,
+      getUser: () => null,
+      getAuthorities: () => [],
+      getToken: async () => null,
+      login: async () => {},
+      completeRedirectLogin: async () => {},
+      logout: async () => {},
+    };
+    render(
+      <AuthContextProvider provider={notReady}>
+        <MemoryRouter initialEntries={['/secret']}>
+          <Routes>
+            <Route path="/login" element={<div>login-page</div>} />
+            <Route element={<RequireAuth />}>
+              <Route path="/secret" element={<div>secret-content</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContextProvider>,
+    );
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByText('login-page')).not.toBeInTheDocument();
   });
 });

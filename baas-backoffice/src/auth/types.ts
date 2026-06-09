@@ -7,6 +7,9 @@ export interface AuthUser {
 /** The single auth seam. Prod = PKCE; dev/CI/e2e = configured token. */
 export interface AuthProvider {
   isAuthenticated(): boolean;
+  /** False until the provider has determined the initial session (PKCE warm-up).
+   * Dev provider is always ready. Guards should show a loading state until true. */
+  isReady(): boolean;
   getUser(): AuthUser | null;
   getAuthorities(): string[];
   getToken(): Promise<string | null>;

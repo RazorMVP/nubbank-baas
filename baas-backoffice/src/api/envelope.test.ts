@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { unwrap, extractPage, ApiError, type Envelope, type Page } from './envelope';
+import { unwrap, unwrapResult, extractPage, ApiError, type Envelope, type Page } from './envelope';
 
 describe('unwrap', () => {
   it('returns data on success', () => {
@@ -26,6 +26,55 @@ describe('unwrap', () => {
       expect(err.code).toBe('ERR_VALIDATION');
       expect(err.message).toBe('bad');
       expect(err.field).toBe('email');
+    }
+  });
+});
+
+describe('unwrapResult', () => {
+  it('returns the data on a 200 success envelope', () => {
+    const result = {
+      data: { data: { id: 'x' }, meta: null, errors: null },
+      error: undefined,
+      response: new Response(null, { status: 200 }),
+    };
+    expect(unwrapResult<{ id: string }>(result)).toEqual({ id: 'x' });
+  });
+
+  it('throws ApiError with the envelope error code on a 403 error envelope', () => {
+    const result = {
+      data: undefined,
+      error: {
+        data: null,
+        meta: null,
+        errors: [{ code: 'ERR_FORBIDDEN', message: 'no', field: null, docsUrl: null }],
+      },
+      response: new Response(null, { status: 403 }),
+    };
+    try {
+      unwrapResult(result);
+      expect.unreachable('should throw');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      const err = e as ApiError;
+      expect(err.code).toBe('ERR_FORBIDDEN');
+      expect(err.httpStatus).toBe(403);
+    }
+  });
+
+  it('throws ApiError with ERR_HTTP_500 on a bare HTTP failure (no envelope)', () => {
+    const result = {
+      data: undefined,
+      error: undefined,
+      response: new Response(null, { status: 500 }),
+    };
+    try {
+      unwrapResult(result);
+      expect.unreachable('should throw');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      const err = e as ApiError;
+      expect(err.httpStatus).toBe(500);
+      expect(err.code).toBe('ERR_HTTP_500');
     }
   });
 });

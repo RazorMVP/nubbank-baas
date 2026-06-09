@@ -10,6 +10,7 @@ export function createDevAuthProvider(config: DevAuthConfig): AuthProvider {
   let { token, authorities, user } = config;
   return {
     isAuthenticated: () => token !== null,
+    isReady: () => true,
     getUser: () => user,
     getAuthorities: () => authorities,
     getToken: async () => token,

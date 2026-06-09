@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo } from 'react';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@/components/ui/sonner';
 import { AuthContextProvider } from '@/auth/context';
 import { createAuthProvider } from '@/auth/create-provider';
 import { ApiClientProvider } from '@/api/context';
@@ -39,7 +40,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <ApiClientProvider client={apiClient}>
           <QueryClientProvider client={queryClient}>
             {children}
-            <Toaster position="top-right" richColors />
+            <Toaster richColors />
           </QueryClientProvider>
         </ApiClientProvider>
       </AuthContextProvider>

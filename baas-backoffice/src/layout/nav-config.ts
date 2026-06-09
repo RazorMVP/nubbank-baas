@@ -3,7 +3,7 @@ import {
   Banknote, Receipt, BookOpenCheck, FileBarChart, ShieldCheck, Building2,
   KeyRound, ScrollText, type LucideIcon,
 } from 'lucide-react';
-import { hasPermission } from '@/lib/rbac';
+import { hasPermission, PERMISSIONS } from '@/lib/rbac';
 
 export interface NavItem {
   label: string;
@@ -25,29 +25,29 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Banking',
     items: [
-      { label: 'Customers', to: '/customers', icon: Users, requiredPermission: 'READ_CUSTOMER' },
-      { label: 'Accounts', to: '/accounts', icon: Wallet, requiredPermission: 'READ_ACCOUNT' },
-      { label: 'Deposits', to: '/deposits', icon: PiggyBank, requiredPermission: 'READ_ACCOUNT' },
-      { label: 'Loans', to: '/loans', icon: Landmark, requiredPermission: 'READ_LOAN' },
-      { label: 'Payments', to: '/payments', icon: ArrowLeftRight, requiredPermission: 'INITIATE_PAYMENT' },
-      { label: 'Teller / Cash', to: '/teller', icon: Banknote, requiredPermission: 'DEPOSIT' },
-      { label: 'Charges', to: '/charges', icon: Receipt, requiredPermission: 'READ_ACCOUNT' },
+      { label: 'Customers', to: '/customers', icon: Users, requiredPermission: PERMISSIONS.READ_CUSTOMER },
+      { label: 'Accounts', to: '/accounts', icon: Wallet, requiredPermission: PERMISSIONS.READ_ACCOUNT },
+      { label: 'Deposits', to: '/deposits', icon: PiggyBank, requiredPermission: PERMISSIONS.READ_ACCOUNT },
+      { label: 'Loans', to: '/loans', icon: Landmark, requiredPermission: PERMISSIONS.READ_LOAN },
+      { label: 'Payments', to: '/payments', icon: ArrowLeftRight, requiredPermission: PERMISSIONS.INITIATE_PAYMENT },
+      { label: 'Teller / Cash', to: '/teller', icon: Banknote, requiredPermission: PERMISSIONS.DEPOSIT },
+      { label: 'Charges', to: '/charges', icon: Receipt, requiredPermission: PERMISSIONS.READ_ACCOUNT },
     ],
   },
   {
     title: 'Finance',
     items: [
-      { label: 'Accounting', to: '/accounting', icon: BookOpenCheck, requiredPermission: 'RUN_REPORT' },
-      { label: 'Reports', to: '/reports', icon: FileBarChart, requiredPermission: 'RUN_REPORT' },
-      { label: 'Compliance', to: '/compliance', icon: ShieldCheck, requiredPermission: 'RUN_REPORT' },
+      { label: 'Accounting', to: '/accounting', icon: BookOpenCheck, requiredPermission: PERMISSIONS.RUN_REPORT },
+      { label: 'Reports', to: '/reports', icon: FileBarChart, requiredPermission: PERMISSIONS.RUN_REPORT },
+      { label: 'Compliance', to: '/compliance', icon: ShieldCheck, requiredPermission: PERMISSIONS.RUN_REPORT },
     ],
   },
   {
     title: 'Admin',
     items: [
-      { label: 'Offices / Staff', to: '/offices', icon: Building2, requiredPermission: 'UPDATE_CUSTOMER' },
-      { label: 'Roles', to: '/roles', icon: KeyRound, requiredPermission: 'UPDATE_CUSTOMER' },
-      { label: 'Audit', to: '/audit', icon: ScrollText, requiredPermission: 'RUN_REPORT' },
+      { label: 'Offices / Staff', to: '/offices', icon: Building2, requiredPermission: PERMISSIONS.UPDATE_CUSTOMER },
+      { label: 'Roles', to: '/roles', icon: KeyRound, requiredPermission: PERMISSIONS.UPDATE_CUSTOMER },
+      { label: 'Audit', to: '/audit', icon: ScrollText, requiredPermission: PERMISSIONS.RUN_REPORT },
     ],
   },
 ];

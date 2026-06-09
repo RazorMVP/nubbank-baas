@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/page-header';
 import { DataTable } from '@/components/data-table';
 import { StatusBadge, type StatusVariant } from '@/components/status-badge';
 import { RequirePermission } from '@/components/require-permission';
+import { PERMISSIONS } from '@/lib/rbac';
 import { Button } from '@/components/ui/button';
 import { KpiTile } from './kpi-tile';
 import { useRecentCustomers, type CustomerRow } from './use-dashboard';
@@ -49,7 +50,7 @@ export function Dashboard() {
       <div className="rounded-[var(--radius-card)] border border-border bg-surface">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <span className="font-semibold">Recent customers</span>
-          <RequirePermission code="CREATE_CUSTOMER">
+          <RequirePermission code={PERMISSIONS.CREATE_CUSTOMER}>
             <Button size="sm">+ New customer</Button>
           </RequirePermission>
         </div>

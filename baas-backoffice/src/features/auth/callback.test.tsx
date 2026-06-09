@@ -8,6 +8,7 @@ import type { AuthProvider } from '@/auth/types';
 function stubAuth(completeRedirectLogin: () => Promise<void>): AuthProvider {
   return {
     isAuthenticated: () => true,
+    isReady: () => true,
     getUser: () => null,
     getAuthorities: () => [],
     getToken: async () => null,
