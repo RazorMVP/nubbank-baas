@@ -20,6 +20,8 @@ export function createDevAuthProvider(config: DevAuthConfig): AuthProvider {
         user = user ?? { sub: 'dev', name: 'Dev Operator', email: 'dev@nubbank.test' };
       }
     },
+    // No redirect leg in dev — the configured token is already the session.
+    completeRedirectLogin: async () => {},
     logout: async () => {
       token = null;
     },

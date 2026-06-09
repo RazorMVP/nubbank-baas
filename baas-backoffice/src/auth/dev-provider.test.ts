@@ -18,4 +18,10 @@ describe('DevAuthProvider', () => {
     const p = createDevAuthProvider({ token: null, authorities: [], user: null });
     expect(p.isAuthenticated()).toBe(false);
   });
+
+  it('completeRedirectLogin is a no-op that resolves (no PKCE redirect leg in dev)', async () => {
+    const p = createDevAuthProvider({ token: 'dev-tok', authorities: [], user: null });
+    await expect(p.completeRedirectLogin()).resolves.toBeUndefined();
+    expect(p.isAuthenticated()).toBe(true);
+  });
 });

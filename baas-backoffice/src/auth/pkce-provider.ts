@@ -33,6 +33,20 @@ export function createPkceAuthProvider(config: PkceConfig): AuthProvider {
   const mgr = new UserManager(settings);
   let current: User | null = null;
 
+  // Keep `current` authoritative across the lifecycle: oidc-client-ts renews
+  // tokens in the background (automaticSilentRenew) and emits these events.
+  // Without subscribing, `current` would go stale after a valid silent renew
+  // and isAuthenticated()/getUser() would wrongly report logged-out.
+  mgr.events.addUserLoaded((u) => {
+    current = u;
+  });
+  mgr.events.addUserSignedOut(() => {
+    current = null;
+  });
+
+  // Fire-and-forget warm-up: `current` is null until this resolves, so
+  // consumers must treat auth as async on first paint (use a loading state),
+  // not read isAuthenticated() synchronously on mount expecting a warm cache.
   void mgr.getUser().then((u) => {
     current = u;
   });
@@ -58,9 +72,17 @@ export function createPkceAuthProvider(config: PkceConfig): AuthProvider {
     login: async () => {
       await mgr.signinRedirect();
     },
+    completeRedirectLogin: async () => {
+      // Finish the authorization-code exchange on the redirect_uri route.
+      // addUserLoaded also fires and sets `current`; we set it here too so the
+      // session is established synchronously by the time this resolves.
+      current = await mgr.signinRedirectCallback();
+    },
     logout: async () => {
-      await mgr.signoutRedirect();
+      // Clear local state BEFORE the redirect — signoutRedirect navigates away,
+      // so any code after the await typically never runs.
       current = null;
+      await mgr.signoutRedirect();
     },
   };
 }
