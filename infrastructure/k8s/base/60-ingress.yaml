@@ -63,3 +63,10 @@ spec:
                 name: baas-ncube
                 port:
                   number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: baas-backoffice
+                port:
+                  number: 80

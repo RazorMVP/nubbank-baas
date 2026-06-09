@@ -31,6 +31,8 @@ Structure: `ID | Item | Why deferred | Earliest phase | Source`. Append new defe
 | DEF-1C-25 | ✅ **CLOSED (Session 12 / Stage 5).** Reversal (0400) fund reversal — credit cardholder account | Located in Session 11; Stage 5 added the fund credit: `ReversalService` calls engine `POST /internal/v1/card-credit` (idempotent on `auth_key`) to credit the account back, only when the original was an APPROVE-debit. Engine-unreachable → RC 25 without flipping `reversed` (terminal retries; credit is idempotent). | Phase 2 | Track-FEP / Sessions 11–12 |
 | DEF-1C-26 | Card-BIN-change cache invalidation push (vs 5-min Caffeine TTL only) | 5-min TTL acceptable in 1C | Phase 2 | Track-FEP |
 | DEF-1C-27 | Automatic GL double-entry posting for account money movements (platform-wide) | Engine's `account/` package uses a single-`Transaction` debit/credit path and does not post balanced `JournalEntry` lines against `GlAccount`; the GL's only entry point today is `postManualJournalEntry`. Auto-posting every money movement (deposit, withdrawal, transfer, card) to the GL is a uniform cross-cutting concern, not a card-seam one — doing it for the Stage 5 card path alone would book card money differently from every other debit. | Phase 2+ (platform-wide) | Stage 5 design (2026-06-04) |
+| DEF-1C-28 | `GET /baas/v1/operators/me` (operator identity + authorities) | Dev provider supplies authorities; PKCE reads token claim as interim | Phase 1C/2 | baas-backoffice Foundation (F5) |
+| DEF-1C-29 | Dashboard aggregate endpoint (deposits total, KYC-pending count, cards issued) | No summary endpoint; tiles show "—" until built | Phase 1C/2 | baas-backoffice Foundation (Task 15) |
 
 ## Hard prerequisites (not optional deferrals — must accompany the named work)
 

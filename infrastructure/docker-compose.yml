@@ -154,6 +154,18 @@ services:
       retries: 3
       start_period: 120s
 
+  baas-backoffice:
+    build:
+      context: ../baas-backoffice
+      dockerfile: Dockerfile
+    image: baas-backoffice:local
+    ports:
+      - "3001:3001"
+    depends_on:
+      baas-engine:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   pgdata:
     driver: local
