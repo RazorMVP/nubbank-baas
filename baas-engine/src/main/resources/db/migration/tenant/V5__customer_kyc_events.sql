@@ -3,6 +3,8 @@
 ALTER TABLE customers ADD COLUMN name_search_tokens TEXT[] NOT NULL DEFAULT '{}';
 CREATE INDEX idx_customers_name_search_tokens ON customers USING GIN (name_search_tokens);
 
+-- Append-only audit table: rows are only ever INSERTed, never UPDATEd or DELETEd.
+-- No `version` column is needed because optimistic locking does not apply here.
 CREATE TABLE customer_kyc_events (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id UUID NOT NULL REFERENCES customers(id),

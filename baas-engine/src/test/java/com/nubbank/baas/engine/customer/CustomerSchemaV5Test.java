@@ -3,7 +3,7 @@ package com.nubbank.baas.engine.customer;
 import com.nubbank.baas.engine.AbstractIntegrationTest;
 import com.nubbank.baas.engine.partner.*;
 import com.nubbank.baas.engine.tenant.TenantProvisioningService;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.UUID;
@@ -16,7 +16,7 @@ class CustomerSchemaV5Test extends AbstractIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
 
     @Test
-    void v5_addsKycEventsTableAndNameSearchTokensColumn() {
+    void provision_addsKycEventsTableAndNameSearchTokensColumn() {
         String schema = "partner_" + UUID.randomUUID().toString().replace("-", "");
         PartnerOrganization org = orgRepo.save(PartnerOrganization.builder()
             .name("V5").status(PartnerStatus.SANDBOX).tier(PartnerTier.SANDBOX)
@@ -31,5 +31,12 @@ class CustomerSchemaV5Test extends AbstractIntegrationTest {
             + "WHERE table_schema = ? AND table_name = 'customers' AND column_name = 'name_search_tokens'",
             Integer.class, schema);
         assertThat(col).isEqualTo(1);
+
+        java.util.Map<String, Object> meta = jdbc.queryForMap(
+            "SELECT data_type, udt_name FROM information_schema.columns "
+            + "WHERE table_schema = ? AND table_name = 'customers' AND column_name = 'name_search_tokens'",
+            schema);
+        assertThat(meta.get("data_type")).isEqualTo("ARRAY");
+        assertThat(meta.get("udt_name")).isEqualTo("_text");
     }
 }
