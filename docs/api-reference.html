@@ -345,6 +345,43 @@
       </tr>
     </tbody>
   </table>
+
+  <h3>Engine→card stats (dashboard — DEF-1C-29)</h3>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/internal/v1/stats</span></td>
+        <td>Hosted on <strong>baas-card</strong>. Body <code>{ partnerId, schemaName }</code> → <code>data: { cardsIssued }</code> — the count of cards in the partner schema. The engine's <code>CardStatsClient</code> calls this for the dashboard "cards issued" tile; a card-service outage is non-fatal (the engine degrades that one tile to null). HMAC-guarded via the <code>@Order(1)</code> internal chain.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="baas-engine-operations">
+  <h2>baas-engine — Operations Console API <span class="pill">partner-scoped</span></h2>
+  <p>
+    Operator-facing endpoints consumed by <code>baas-backoffice</code>. Authenticated by partner JWT
+    (first-party) or Keycloak operator JWT; every query is automatically scoped to the caller's partner
+    schema. The engine's full REST surface (customers, accounts, loans, payments, …) is published at
+    <code>/v3/api-docs</code> / <code>/swagger-ui.html</code>; only the operations-console additions are
+    listed here.
+  </p>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/operators/me</span></td>
+        <td>any authenticated operator</td>
+        <td>DEF-1C-28. Returns <code>data: { operatorId, authMode, partnerId, tier, environment, roles[], authorities[] }</code>. <code>authorities</code> are the per-request server-resolved permission codes (they are <strong>not</strong> in the Keycloak token), so a PKCE backoffice fetches them here to drive RBAC. <code>roles</code> is populated from <code>user_roles</code> for operator tokens; empty for first-party partner credentials (full authority, no role rows).</td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/dashboard/summary</span></td>
+        <td>any authenticated operator</td>
+        <td>DEF-1C-29. Partner-scoped summary tiles: <code>data: { totalCustomers, kycPendingCustomers, totalAccounts, activeAccounts, totalDeposits, totalLoans, activeLoans, cardsIssued }</code>. <code>totalDeposits</code> sums <code>ACTIVE</code> account balances; <code>activeLoans</code> counts <code>DISBURSED+ACTIVE+IN_ARREARS</code>. <code>cardsIssued</code> is fetched from <code>baas-card</code> and is <strong>null</strong> when card-service is unreachable (every other tile still renders).</td>
+      </tr>
+    </tbody>
+  </table>
 </section>
 
 <section id="baas-fep">
@@ -410,7 +447,7 @@
   </section>
 
 <footer>
-  NubBank BaaS · API Reference · Phase 1C — <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
+  NubBank BaaS · API Reference · Phase 1C — <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
 </footer>
 
 </div>

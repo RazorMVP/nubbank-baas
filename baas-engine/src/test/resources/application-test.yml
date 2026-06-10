@@ -32,5 +32,8 @@ app:
     shared-secret: test-shared-secret-min-32-chars-long-okay
     # baas-card is not running in engine tests; the dedicated Task 12 test uses a mock.
     card-provisioning-enabled: false
+    # Dead loopback so the dashboard's best-effort card-stats call fails fast → cardsIssued=null
+    # (exercises CardStatsClient's graceful-degradation path without a 5s DNS/connect wait).
+    card-base-url: http://127.0.0.1:1
   keycloak:
     admin-issuer: https://auth.nubbank.test/realms/baas-nubbank-admin

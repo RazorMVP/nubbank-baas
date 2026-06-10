@@ -9,4 +9,7 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     boolean existsByExternalReference(String externalReference);
     Optional<Customer> findByExternalReference(String externalReference);
     Page<Customer> findByKycStatus(KycStatus status, Pageable pageable);
+
+    /** Dashboard tile (DEF-1C-29) — count of customers in a given KYC state. */
+    long countByKycStatus(KycStatus status);
 }
