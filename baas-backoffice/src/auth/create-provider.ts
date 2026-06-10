@@ -9,6 +9,7 @@ export interface AuthEnv {
   VITE_OIDC_AUTHORITY?: string;
   VITE_OIDC_CLIENT_ID?: string;
   VITE_OIDC_REDIRECT_URI?: string;
+  VITE_API_BASE_URL?: string;
 }
 
 export function createAuthProvider(env: AuthEnv): AuthProvider {
@@ -26,5 +27,6 @@ export function createAuthProvider(env: AuthEnv): AuthProvider {
     authority: env.VITE_OIDC_AUTHORITY ?? '',
     clientId: env.VITE_OIDC_CLIENT_ID ?? '',
     redirectUri: env.VITE_OIDC_REDIRECT_URI ?? '',
+    apiBaseUrl: env.VITE_API_BASE_URL ?? '',
   });
 }
