@@ -10,6 +10,20 @@ export interface paths {
       };
     };
   };
+  '/baas/v1/dashboard/summary': {
+    get: {
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/operators/me': {
+    get: {
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components { schemas: Record<string, never> }

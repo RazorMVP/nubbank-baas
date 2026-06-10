@@ -7,7 +7,12 @@ import { RequirePermission } from '@/components/require-permission';
 import { PERMISSIONS } from '@/lib/rbac';
 import { Button } from '@/components/ui/button';
 import { KpiTile } from './kpi-tile';
-import { useRecentCustomers, type CustomerRow } from './use-dashboard';
+import { useRecentCustomers, useDashboardSummary, type CustomerRow } from './use-dashboard';
+
+const NAIRA = new Intl.NumberFormat('en-NG');
+/** Tile value: the number (grouped) when loaded, else an em dash. */
+const tile = (n: number | null | undefined, fmt: (v: number) => string = String) =>
+  n === null || n === undefined ? '—' : fmt(n);
 
 const KYC_VARIANT: Record<string, StatusVariant> = {
   VERIFIED: 'success',
@@ -30,21 +35,22 @@ const columns = [
 export function Dashboard() {
   const name = useAuth().getUser()?.name?.split(' ')[0] ?? 'there';
   const customers = useRecentCustomers(5);
+  const summary = useDashboardSummary().data;
 
   return (
     <div>
       <PageHeader title={`Good afternoon, ${name}`} />
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile label="Customers" value={tile(summary?.totalCustomers)} tone="tint" />
         <KpiTile
-          label="Customers"
-          value={customers.data ? String(customers.data.total) : '—'}
-          tone="tint"
+          label="Deposits (₦)"
+          value={tile(summary?.totalDeposits, (v) => NAIRA.format(v))}
+          tone="plain"
         />
-        {/* No aggregate endpoint yet — see Task 18 follow-up. */}
-        <KpiTile label="Deposits (₦)" value="—" tone="plain" />
-        <KpiTile label="KYC pending" value="—" tone="plain" />
-        <KpiTile label="Cards issued" value="—" tone="ink" />
+        <KpiTile label="KYC pending" value={tile(summary?.kycPendingCustomers)} tone="plain" />
+        {/* cardsIssued is null when card-service is down → tile() renders an em dash. */}
+        <KpiTile label="Cards issued" value={tile(summary?.cardsIssued)} tone="ink" />
       </div>
 
       <div className="rounded-[var(--radius-card)] border border-border bg-surface">

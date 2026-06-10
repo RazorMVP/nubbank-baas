@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { useRecentCustomers } from './use-dashboard';
+import { useRecentCustomers, useDashboardSummary } from './use-dashboard';
 import { ApiClientProvider } from '@/api/context';
 import { ApiError } from '@/api/envelope';
 
@@ -56,5 +56,58 @@ describe('useRecentCustomers', () => {
     const { result } = renderHook(() => useRecentCustomers(5), { wrapper });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect((result.current.error as ApiError).code).toBe('ERR_FORBIDDEN');
+  });
+});
+
+describe('useDashboardSummary', () => {
+  it('unwraps the envelope into the summary tiles', async () => {
+    const wrapper = makeWrapper({
+      data: {
+        data: {
+          totalCustomers: 5,
+          kycPendingCustomers: 2,
+          totalAccounts: 3,
+          activeAccounts: 3,
+          totalDeposits: 1000.0,
+          totalLoans: 1,
+          activeLoans: 1,
+          cardsIssued: 4,
+        },
+        meta: { requestId: 'r', timestamp: 't' },
+        errors: null,
+      },
+      error: undefined,
+      response: new Response(null, { status: 200 }),
+    });
+    const { result } = renderHook(() => useDashboardSummary(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.totalCustomers).toBe(5);
+    expect(result.current.data?.kycPendingCustomers).toBe(2);
+    expect(result.current.data?.totalDeposits).toBe(1000);
+    expect(result.current.data?.cardsIssued).toBe(4);
+  });
+
+  it('tolerates a null cardsIssued tile (card-service down)', async () => {
+    const wrapper = makeWrapper({
+      data: {
+        data: {
+          totalCustomers: 0,
+          kycPendingCustomers: 0,
+          totalAccounts: 0,
+          activeAccounts: 0,
+          totalDeposits: 0,
+          totalLoans: 0,
+          activeLoans: 0,
+          cardsIssued: null,
+        },
+        meta: { requestId: 'r', timestamp: 't' },
+        errors: null,
+      },
+      error: undefined,
+      response: new Response(null, { status: 200 }),
+    });
+    const { result } = renderHook(() => useDashboardSummary(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.cardsIssued).toBeNull();
   });
 });

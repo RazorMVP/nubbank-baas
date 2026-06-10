@@ -25,3 +25,26 @@ export function useRecentCustomers(size = 5) {
     },
   });
 }
+
+/** Operations-console summary tiles (DEF-1C-29). `cardsIssued` is null when card-service is down. */
+export interface DashboardSummary {
+  totalCustomers: number;
+  kycPendingCustomers: number;
+  totalAccounts: number;
+  activeAccounts: number;
+  totalDeposits: number;
+  totalLoans: number;
+  activeLoans: number;
+  cardsIssued: number | null;
+}
+
+export function useDashboardSummary() {
+  const client = useApiClient();
+  return useQuery<DashboardSummary>({
+    queryKey: ['dashboard', 'summary'],
+    queryFn: async () => {
+      const result = await client.GET('/baas/v1/dashboard/summary');
+      return unwrapResult<DashboardSummary>(result);
+    },
+  });
+}
