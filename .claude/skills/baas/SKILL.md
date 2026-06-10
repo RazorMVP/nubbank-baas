@@ -102,6 +102,26 @@ Use this skill whenever working on the NubBank BaaS platform (`nubbank-baas/` re
 | "The API docs can wait until we have more endpoints" | One missing endpoint breaks partner integrations silently. |
 | "Only `baas-engine` has docs to update" | Every service has its own doc surface — see gate item 4's matrix (`baas-backoffice`, `baas-card`, `baas-fep`, `baas-ncube`, `baas-engine`). Touching **any** of them triggers its doc update. FEP docs live in `fep-iso8583-reference.md`, backoffice in `backoffice-operations.md`. |
 | "It's a frontend service, frontends don't have API docs" | `baas-backoffice` carries an operations doc (routes, RBAC codes, env, auth modes). "No REST endpoints" ≠ "no docs". |
+| "It's one feature, one branch is simpler" | A feature spanning services splits into one PR per service — see § Branch & PR Discipline. Bundling couples their merge/deploy. |
+
+---
+
+## 🌿 Branch & PR Discipline — One Service Per PR
+
+Each service is an **independent deployable** — its own CI workflow, Dockerfile, k8s manifests, and deploy cadence. Work on a service goes on **its own branch and its own PR**. **Never bundle changes to multiple services onto one branch/PR.** The five services share a monorepo, not a release.
+
+| Rule | Detail |
+|------|--------|
+| **One service per PR** | A PR's *code* changes touch exactly ONE of `baas-engine`, `baas-card`, `baas-fep`, `baas-ncube`, `baas-backoffice` (+ future `baas-portal`, `baas-docs`). |
+| **Split cross-service features** | A feature spanning services (e.g. a frontend that consumes a new backend endpoint) → **one PR per service, each independently mergeable**. The dependent side must degrade gracefully if the other isn't deployed yet (no hard merge-order dependency). |
+| **Zero-overlap docs** | Keep the split PRs from touching the same files: consolidate shared ledgers (`baas-log.md`, `CLAUDE.md`, `docs/deferred-items.md`) into **one** of the PRs; each service's API/ops doc (`docs/api-reference.html`, `docs/backoffice-operations.md`, `docs/fep-iso8583-reference.md`) rides with **that service's** PR. Zero file overlap ⇒ merge in any order, no conflict. |
+| **Branch naming** | `feat/<service>-<short-desc>` — e.g. `feat/baas-engine-card-operations-api`, `feat/baas-backoffice-foundation`. |
+
+**Pre-merge check (do before opening or merging a PR):** run `git diff --name-only main...HEAD | sed 's#/.*##' | sort -u`. The service directories listed must be exactly one (`baas-*`), plus shared non-service paths (`docs/`, `infrastructure/`, `.github/`, `.claude/`, `CLAUDE.md`, `baas-log.md`, `assets/`). More than one `baas-*` service ⇒ **split before merge**.
+
+**Worked example (Session 15, DEF-1C-28/29):** a cross-service feature (engine + card endpoints + backoffice wiring) was split into PR #27 `feat/baas-engine-card-operations-api` (`baas-engine` + `baas-card` + `api-reference.html`) and PR #26 `feat/baas-backoffice-foundation` (`baas-backoffice` + ledgers) — **zero file overlap**, mergeable in any order.
+
+**Why:** bundling couples the services' merge and deploy. A frontend ready to ship shouldn't wait on a backend PR's review (or vice-versa). Independence at the **git level** — not just conceptually — is the goal.
 
 ---
 
