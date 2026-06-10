@@ -13,7 +13,7 @@
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
 | `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
-| `baas-backoffice` — React | 🟡 In progress — Phase 1C Foundation (backend enablers) done Session 8; React app + remaining tracks pending | — |
+| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`281739a`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). Per-domain tracks (Customers, Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 15 |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
 | Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles + GHCR CI for all four services; `infrastructure/docker-compose.yml`; vanilla k8s manifests in `infrastructure/k8s/`). **Session 13: `baas-card` + `baas-fep` added to k8s base (Deployments, Services, NetworkPolicy mesh, PDBs, fep TCP LoadBalancer, partner→card Ingress routing) + FEP datastore env wired in compose.** | Session 13 |
@@ -198,6 +198,99 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 15 — 2026-06-10
+**Close DEF-1C-28 + DEF-1C-29 — the two engine-side gaps the backoffice Foundation was waiting on. Vertical slice across `baas-engine` (`b2f1709`), `baas-card` (`d647a4f`), `baas-backoffice` (`281739a`); engine 144 + card 105 + backoffice 75 tests green.**
+
+The Foundation shipped with a dashboard whose tiles showed "—" and a PKCE auth path that resolved to zero authorities (Keycloak tokens don't carry them). This session built the two endpoints that close those gaps and wired the frontend to them — strict TDD. **CBN surface unchanged** (operator-facing identity + read-only aggregate, not Open Banking).
+
+> **Split into two independently-mergeable PRs** (each service merges on its own track, no file overlap): the **backend** endpoints (`baas-engine` `b2f1709`/`ca7f855`, `baas-card` `d647a4f` + `docs/api-reference.html`) are in PR `feat/baas-engine-card-operations-api` (#27); the **frontend** wiring (`baas-backoffice`) + this session ledger are in PR `feat/baas-backoffice-foundation` (#26). Engine/card SHAs are recorded here for the unified session snapshot; that code lives in #27.
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-engine .../operator/{OperatorMeController,OperatorIdentityService,OperatorMeResponse}.java` | NEW `GET /baas/v1/operators/me` — identity + server-resolved authorities (DEF-1C-28) |
+| `baas-engine .../role/UserRoleRepository.java` | +`findRoleNamesByUserId` |
+| `baas-engine .../dashboard/{DashboardController,DashboardService,DashboardSummaryResponse,CardStatsClient}.java` | NEW `GET /baas/v1/dashboard/summary` (DEF-1C-29) + best-effort engine→card stats client (graceful null) |
+| `baas-engine .../{customer,account,loan}/*Repository.java` | +`countByKycStatus`, `countByStatus`/`sumBalanceByStatus`, `countByStatusIn` |
+| `baas-engine src/test/resources/application-test.yml` | `card-base-url: http://127.0.0.1:1` (fast-fail → cardsIssued null in tests) |
+| `baas-card .../stats/{CardStatsController,CardStatsService,CardStatsRequest,CardStatsResponse}.java` | NEW `POST /internal/v1/stats` — cards-issued count for the dashboard (DEF-1C-29) |
+| `baas-backoffice src/features/dashboard/{use-dashboard.ts,dashboard.tsx}` | `useDashboardSummary` + tiles wired to real values |
+| `baas-backoffice src/auth/{pkce-provider,create-provider}.ts` | `fetchOperatorAuthorities` + PKCE caches `/me` authorities (refresh on warm-up/userLoaded/redirect); `apiBaseUrl` threaded through |
+| `baas-backoffice src/api/schema.d.ts` | Hand-seeded the two new GET paths |
+| `docs/api-reference.html` | NEW baas-engine Operations API section + card `/internal/v1/stats` |
+| `docs/backoffice-operations.md`, `docs/deferred-items.md` | `/me` authorities note + endpoints-consumed table; DEF-1C-28/29 → ✅ CLOSED |
+| `assets/brand/nubeero-icon-round-border.png` | Preserved (relocated from repo root, `a8c7c58`) |
+
+#### Key Decisions
+- **`/me` is the fix for PKCE RBAC, not cosmetics.** The engine resolves authorities server-side and does NOT put them in the Keycloak token — so PKCE mode previously got `[]` (all nav hidden, all routes blocked). The provider now fetches `/me` on every session change and caches; token-claim parse is fallback-only. Dev mode (env authorities) unchanged, which is why CI/e2e stayed green throughout.
+- **Cards tile crosses a service boundary, fail-soft.** Cards live in `baas-card`; the engine `CardStatsClient` calls `POST /internal/v1/stats` over the existing HMAC seam and returns `null` on any error. The dashboard renders every other tile when card-service is down (verified: engine tests have no card-service → `cardsIssued` null via a dead-loopback `card-base-url`).
+- **Both new endpoints gate on `isAuthenticated()`, not a permission.** `/me` is self-identity; the dashboard is the operator's landing page and its data is already partner-schema isolated. No new permission/migration needed.
+- **Auth gate honoured:** `/me` and `/dashboard/summary` reachable by any authenticated operator; unauthenticated → 401 via the existing tenant chain (tested).
+
+#### Build Verification
+- `baas-engine`: **Tests run: 144, Failures: 0** (+6) — BUILD SUCCESS
+- `baas-card`: **Tests run: 105, Failures: 0** (+3) — BUILD SUCCESS
+- `baas-backoffice`: typecheck clean · **75 tests** (+6) · `vite build` succeeds
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):** Last commit (app code) `b2f1709` — Session 15 — operations API (DEF-1C-28/29); 144 tests.
+**BaaS Card (`baas-card/`):** Last commit (app code) `d647a4f` — Session 15 — `/internal/v1/stats` (DEF-1C-29); 105 tests.
+**BaaS Backoffice (`baas-backoffice/`):** Last commit `281739a` — Session 15 — dashboard tiles + PKCE `/me` authorities; 75 tests.
+**BaaS FEP (`baas-fep/`):** Last commit (app code) `a9e4cfd` — Session 12 (unchanged this session).
+
+---
+
+### Session 14 — 2026-06-09
+**Phase 1C `baas-backoffice` Foundation — React 19 + Vite 6 + TS 5 operations console (deliverable D8); 22 commits `09c6807`→`57ffbdd`, 69 tests passing. Subagent-driven TDD build of the 18-task Foundation plan + 8-finding final-review fix batch. Governance: SESSION COMPLETION GATE broadened to per-service docs (all five services).**
+
+Brainstormed → design spec (`docs/superpowers/specs/2026-06-07-baas-backoffice-design.md`, Figma `gEDnLrLD4UrChcND0yCdZ9` canonical) → 18-task TDD plan (`docs/superpowers/plans/2026-06-08-baas-backoffice-foundation.md`) → executed task-by-task with fresh implementer + two-stage review (spec then quality) per task. Foundation = the app skeleton every per-domain track builds on: Vite/Tailwind-4 setup, design tokens, shadcn/ui primitives, openapi-fetch client with auth middleware + envelope error seam, hybrid auth (dev-token vs Keycloak PKCE), RBAC permission gating, app shell + sidebar/topbar, dashboard, route guards, CI + Docker + k8s. **No Java touched** — engine/card/fep/ncube application SHAs unchanged; **CBN surface unchanged** (operator-facing UI, not Open Banking).
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-backoffice/**` (81 files; 39 src + 25 test) | NEW React/Vite app: `src/api/` (client, envelope `unwrapResult` seam, query keys, schema.d.ts), `src/auth/` (types, dev-provider, pkce-provider, create-provider, context), `src/components/` (ui/* shadcn primitives, data-table, command-modal, form-field, status-badge, require-permission), `src/layout/` (app-shell, sidebar, topbar, nav-config), `src/features/` (auth/login+callback, dashboard), `src/lib/` (rbac, cn), `src/styles/` (tokens) |
+| `baas-backoffice/{Dockerfile,nginx.conf,vite.config.ts,tsconfig*,playwright.config.ts,.env.example,.gitignore}` | Deployment-agnostic build: `node:22-alpine` build → `nginx:1.27-alpine` serve; Vitest + Playwright config |
+| `.github/workflows/baas-backoffice-ci.yml` | NEW CI mirroring baas-engine-ci: test → e2e (Playwright) → build-and-push (GHCR + provenance + SBOM) → Trivy |
+| `infrastructure/k8s/base/*` | baas-backoffice Deployment/Service/Ingress (Kustomize); documentary ConfigMap removed (runtime config injected by cluster) |
+| `docs/backoffice-operations.md` | NEW living operations doc — routes, RBAC codes consumed, env vars, auth modes (gate item 4) |
+| `docs/deferred-items.md` | DEF-1C-28 (operator `/me` endpoint), DEF-1C-29 (dashboard aggregate endpoint) recorded |
+| `.claude/skills/baas/SKILL.md` | SESSION COMPLETION GATE broadened: item 1 (build) + item 4 (docs) now per-service matrices covering all five services; +2 rationalisation-trap rows |
+
+#### Key Decisions
+- **Hybrid auth provider, env-selected.** `VITE_DEV_AUTH=true` → fixed-token dev provider (local/CI/e2e); else Keycloak PKCE via `oidc-client-ts` v3. Both satisfy one `AuthProvider` contract so UI code is auth-agnostic. `isReady()` gate (FIX 3) holds protected routes behind a `Loading…` state until PKCE silent-signin resolves — prevents the login-flash a mid-bootstrap `isAuthenticated()===false` would otherwise cause.
+- **Envelope error seam (FIX 1).** `unwrapResult(result)` inspects `result.response.status` + envelope `errors[]` and throws `ApiError`; the old `const { data } = await client.GET(...)` silently dropped openapi-fetch's parallel error channel. `use-dashboard.ts` is the first production consumer migrated, proving the seam end-to-end.
+- **RBAC by permission code, not role.** Engine authorities (`READ_CUSTOMER`, `RUN_REPORT`, …) are NOT in the JWT — fetched per-request server-side; the UI mirrors them in `PERMISSIONS` (no string literals at call sites, FIX 6) and gates nav + routes via `hasPermission()`.
+- **Final-review fix batch (8 findings, commit `57ffbdd`).** All fixed in-session, not deferred (per user standing preference): error seam, logout menu, async-ready guard, CI e2e job + dead-coverage-step removal, PERMISSIONS constants, reserved/duplicate primitive cleanup, documentary ConfigMap removal.
+- **Gate governance change (user-directed).** SESSION COMPLETION GATE previously enforced API docs for `baas-engine` controllers only. Broadened so **every** service touched at any point in a session (`baas-backoffice`, `baas-card`, `baas-engine`, `baas-fep`, `baas-ncube`) must update its own doc surface — `api-reference.html` for REST services, `fep-iso8583-reference.md` for FEP, `backoffice-operations.md` for the console. Build-verification item likewise made per-service.
+
+#### Build Verification
+`baas-backoffice` only (no Java touched, other services exempt per gate item 1):
+- `npm run typecheck` → clean (`tsc -b`)
+- `npm test` → **Test Files 25 passed (25), Tests 69 passed (69)**
+- `npm run build` → `vite build` succeeds (536 kB bundle; code-split deferred to per-domain tracks)
+- `kubectl kustomize infrastructure/k8s/base` → renders OK after ConfigMap removal
+
+#### Confirmed Platform Versions
+
+No Java changed this session — engine/card/fep/ncube application SHAs unchanged from Session 13 (engine/card `1ca0d3b`, fep `a9e4cfd`). New frontend service added.
+
+**BaaS Backoffice (`baas-backoffice/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| React | 19.x | `57ffbdd` |
+| Vite | 6.x | `57ffbdd` |
+| TypeScript | 5.x | `57ffbdd` |
+| Tailwind CSS | 4.x | `57ffbdd` |
+| Node | 22 | `57ffbdd` |
+| Last git commit | `57ffbdd` | Session 14 — Foundation + final-review fix batch |
+
+**BaaS Engine (`baas-engine/`):** Last commit (app code) `1ca0d3b` — Session 12 (unchanged this session).
+**BaaS Card (`baas-card/`):** Last commit (app code) `1ca0d3b` — Session 12 (unchanged this session).
+**BaaS FEP (`baas-fep/`):** Last commit (app code) `a9e4cfd` — Session 12 (unchanged this session).
+
+---
 
 ### Session 13 — 2026-06-05
 **Stage 5 deploy follow-up — wire the FEP datastore into deploy config; add `baas-card` + `baas-fep` to k8s. Infra/docs only, zero Java touched. Resolves the spec §11 "FEP deployment — datastore env required" follow-up.**

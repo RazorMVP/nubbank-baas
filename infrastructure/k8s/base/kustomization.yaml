@@ -27,3 +27,4 @@ resources:
   - 60-ingress.yaml
   - 70-baas-fep-config.yaml
   - 72-baas-fep.yaml
+  - 92-baas-backoffice.yaml

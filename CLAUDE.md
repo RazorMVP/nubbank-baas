@@ -222,7 +222,9 @@ Revenue: per-API + per-account     Revenue: per-transaction           Revenue: m
 
 Run through this list in order. Do not skip any item, even for tiny changes.
 
-- [ ] **1. Build verification** — Run `cd ~/nubbank-baas/baas-engine && ./mvnw test -q` before any commit. All tests must pass. A failing build blocks the push — fix it now, not later. Only sessions that touched zero Java files may skip the test run.
+- [ ] **1. Build verification (per service touched)** — run the test suite of **every** service whose files changed this session (find them with `git diff --name-only main...HEAD | sed 's#/.*##' | sort -u`). A service is exempt **only** if it had zero file changes. A failing build blocks the push — fix it now, not later.
+  - Java services (`baas-engine`, `baas-card`, `baas-fep`, `baas-ncube`): `cd ~/nubbank-baas/<svc> && ./mvnw test -q`
+  - React services (`baas-backoffice`, future `baas-portal`): `cd ~/nubbank-baas/<svc> && npm run typecheck && npm test`
 
 - [ ] **2. `baas-log.md`** — New session entry added at the **top** of the Change History section. Must include:
   - Session number and date
@@ -239,11 +241,12 @@ Run through this list in order. Do not skip any item, even for tiny changes.
   - Any new gotchas added to the Known Gotchas table
   - Architecture diagrams section if service boundaries changed
 
-- [ ] **4. API docs** — If ANY `baas-engine` controller file was touched this session:
-  - Run: `git diff HEAD~1 HEAD --name-only | grep -E '\.java$'` to list changed Java files
-  - For each changed file, grep for `@GetMapping|@PostMapping|@PutMapping|@DeleteMapping|@PatchMapping`
-  - For every new or changed endpoint: update `docs/api-reference.html` (to be created in Session 2+)
-  - Only sessions that touched **zero** controller files may skip this step — no exceptions
+- [ ] **4. Service docs (per service touched)** — **every** service worked on at any point this session must have its own reference doc updated, not just `baas-engine`. A service is exempt **only** if it had zero file changes.
+  - `baas-engine` → `docs/api-reference.html` — every new/changed REST endpoint (grep changed `.java` for `@(Get|Post|Put|Delete|Patch)Mapping`)
+  - `baas-card` → `docs/api-reference.html` (Card section) — card REST + `/internal/v1/*` contract changes
+  - `baas-ncube` → `docs/api-reference.html` (Ncube/CBN section) — CBN-adapter endpoints + vendor media-type changes
+  - `baas-fep` → `docs/fep-iso8583-reference.md` (create if absent) — ISO 8583 MTIs/DEs/response codes; FEP is TCP, **not** REST — keep it out of `api-reference.html`
+  - `baas-backoffice` → `docs/backoffice-operations.md` (create if absent) — routes, RBAC codes consumed, env vars, auth modes
 
 - [ ] **5. CBN compliance gap analysis** — If ANY of the following changed this session:
   - A new API endpoint related to Open Banking, consent, KYC, or payments
@@ -302,12 +305,14 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | "Figma diagrams are optional" | They are the visual spec shared with stakeholders. Stale diagrams create confusion. |
 | "CBN gap analysis was updated last session" | Last session's analysis doesn't cover this session's changes. |
 | "The API docs can wait until we have more endpoints" | One missing endpoint breaks partner integrations silently. Document immediately. |
+| "Only `baas-engine` has docs to update" | Every service has its own doc surface (item 4): `baas-backoffice`→`backoffice-operations.md`, `baas-fep`→`fep-iso8583-reference.md`, card/ncube/engine→`api-reference.html` sections. Touching **any** triggers its update. |
+| "It's a frontend service, frontends don't have API docs" | `baas-backoffice` carries an operations doc (routes, RBAC codes, env, auth modes). "No REST endpoints" ≠ "no docs". |
 
 ---
 
-## Confirmed Platform Versions (Session 13 — 2026-06-06; application code unchanged since Session 12)
+## Confirmed Platform Versions (Session 15 — 2026-06-10; DEF-1C-28/29 closed across engine + card + backoffice)
 
-> **Session 13 was infra/docs only — zero Java touched.** All `Last git commit` SHAs below are the Session 12 app-code commits and remain current. Infrastructure manifests advanced to merge commit `0f78aed` (PR #19: `baas-card` + `baas-fep` k8s manifests + FEP datastore deploy config); see `baas-log.md` Session 13.
+> **Session 15 closed DEF-1C-28 (operator `/me`) + DEF-1C-29 (dashboard summary).** `baas-engine` advanced to `b2f1709` (operations API, 144 tests), `baas-card` to `d647a4f` (`/internal/v1/stats`, 105 tests), `baas-backoffice` to `281739a` (dashboard tiles + PKCE `/me` authorities, 75 tests). `baas-fep` unchanged (`a9e4cfd`). See `baas-log.md` Session 15.
 
 ### BaaS Engine (`baas-engine/`)
 
@@ -327,7 +332,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
 | **Internal money seam** | Stage 5 | `/internal/v1/{card-debit,card-credit,account-lookup}` (HMAC); atomic idempotent debit/credit keyed by `card_auth_debit.auth_key`; engine→card provisioning trigger in `TenantProvisioningService` |
-| **Last git commit** | `1ca0d3b` | Session 12 — Stage 5 card↔engine money wiring (DEF-1C-22/23/24/25); 138 tests passing |
+| **Last git commit** | `b2f1709` | Session 15 — operations API: `/operators/me` + `/dashboard/summary` (DEF-1C-28/29); 144 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -355,7 +360,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Testcontainers** | PostgreSQL 16 in integration tests | Card tests self-provision their own tenant schema |
 | **EngineClient** | Stage 5 | Outbound HMAC client → engine `/internal/v1/{card-debit,card-credit,account-lookup}`; fail-closed (unreachable → RC 91 on debit, `located:false` on credit). Card owns minor→major scaling AND DE49 numeric→ISO-alpha translation |
 | **linkedAccountId** | Stage 5 | `cards.linked_account_id`; `IssueCardRequest.linkedAccountId @NotNull`, validated against the engine at issuance |
-| **Last git commit** | `1ca0d3b` | Session 12 — Stage 5 card↔engine money wiring (authorize→debit, reversal→credit, linkedAccountId, provisioning endpoint); 102 tests passing |
+| **Last git commit** | `d647a4f` | Session 15 — `POST /internal/v1/stats` cards-issued count for dashboard (DEF-1C-29); 105 tests passing |
 
 ### BaaS FEP (`baas-fep/`)
 
@@ -372,13 +377,23 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Persistence** | spring-boot-starter-jdbc + Flyway | `db/migration/fep/V1__authorization_log.sql`; `AuthorizationAuditService` (JdbcTemplate, best-effort — a write failure never alters the ISO 8583 response); stores BIN + last4 only |
 | **Last git commit** | `a9e4cfd` | Session 12 — Stage 5 FEP audit log (DEF-1C-24): datastore + migration + handler wiring; 55 tests passing |
 
-### BaaS Backoffice Portal (`baas-backoffice/`) — NOT YET BUILT
+### BaaS Backoffice Portal (`baas-backoffice/`) — FOUNDATION BUILT (Session 14)
+
+Operations console for bank staff. **Foundation complete** (`57ffbdd`, 69 tests); per-domain screens land via sub-plans. Ops reference: `docs/backoffice-operations.md`. Port 3001.
 
 | Component | Version | Notes |
 |-----------|---------|-------|
-| **React** | 19.x | Planned — Sub-plan 1C |
-| **Vite** | 6.x | Planned |
-| **Tailwind CSS** | 4.x | Planned |
+| **React** | 19.x | Foundation ✅ Session 14 |
+| **Vite** | 6.x | Build tool; `vite build` (no Vercel CLI in build step) |
+| **TypeScript** | 5.x | Composite project (`tsc -b`) |
+| **Tailwind CSS** | 4.x | CSS-first `@theme` (no `tailwind.config.js`) |
+| **Routing / state** | React Router 7 · TanStack Query 5 · Zustand 5 | — |
+| **UI** | shadcn/ui (Radix + Tailwind, copied-in) · TanStack Table 8 | `src/components/ui/` |
+| **API client** | `openapi-fetch` + `openapi-typescript` | Auth middleware; `unwrapResult` envelope error seam |
+| **Auth** | `oidc-client-ts` v3 (PKCE) / dev-token | Hybrid, env-selected (`VITE_DEV_AUTH`) |
+| **Test** | Vitest 3 + RTL · Playwright (e2e) | 25 test files, 69 tests |
+| **Node** | 22 | `node:22-alpine` build → `nginx:1.27-alpine` serve |
+| **Last git commit** | `281739a` | Session 15 — dashboard tiles wired + PKCE `/me` authorities (DEF-1C-28/29); 75 tests |
 
 ### BaaS Developer Portal (`baas-portal/`) — NOT YET BUILT
 
@@ -439,7 +454,7 @@ nubbank-baas/                           ← github.com/RazorMVP/nubbank-baas
 ├── baas-fep/                           ← ISO 8583 front-end processor (HTTP 8082 / TCP 8583) — stateless ✅ Session 9
 ├── baas-ncube/                         ← CBN/Ncube adapter (PORT 8082) — NOT YET BUILT
 ├── baas-portal/                        ← React developer portal (PORT 3000) — NOT YET BUILT
-├── baas-backoffice/                    ← React operations backoffice (PORT 3001) — NOT YET BUILT
+├── baas-backoffice/                    ← React operations backoffice (PORT 3001) — Foundation ✅ Session 14
 ├── baas-docs/                          ← Docusaurus docs (PORT 3002) — NOT YET BUILT
 └── infrastructure/
     ├── docker-compose.yml              ← NOT YET CREATED
@@ -618,7 +633,7 @@ maps the decision to DE39. Built against a **mocked `CardClient`** — live Card
 | Module | Sub-plan | Status |
 |--------|---------|--------|
 | baas-ncube (CBN format + Ncube) | 1B | ✅ Complete (Session 2) |
-| baas-backoffice (React operations portal) | 1C | ⬜ Next — start now |
+| baas-backoffice (React operations portal) | 1C | 🟡 Foundation ✅ (Session 14) — per-domain screens pending |
 | baas-portal (React developer portal) | 1D | ⬜ Not started |
 | Infrastructure (Docker + CI) | 1E | ⬜ Not started |
 | KYC delegation + Ncube live | Phase 2 | ⬜ Not started |

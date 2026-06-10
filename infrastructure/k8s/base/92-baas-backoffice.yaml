@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baas-backoffice
+  namespace: nubbank-baas
+  labels:
+    app: baas-backoffice
+    app.kubernetes.io/component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: baas-backoffice
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: baas-backoffice
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101          # nginx unprivileged user in the alpine image
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: baas-backoffice
+          # Sentinel tag — does NOT exist in GHCR. Direct `kubectl apply -f base/`
+          # fails fast with ImagePullBackOff intentionally. Real deploys go through
+          # an overlay with CI substituting the real SHA via `kustomize edit set image`.
+          # Published by .github/workflows/baas-backoffice-ci.yml as
+          # ghcr.io/<owner>/baas-backoffice:<sha> on push to main.
+          image: ghcr.io/razormvp/baas-backoffice:base-do-not-deploy
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: nginx-cache
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: nginx-run
+          emptyDir:
+            sizeLimit: 8Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: baas-backoffice
+  namespace: nubbank-baas
+spec:
+  type: ClusterIP
+  selector:
+    app: baas-backoffice
+  ports:
+    - port: 80
+      targetPort: 3001
+      name: http
