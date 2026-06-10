@@ -31,7 +31,7 @@ Provider is selected at runtime by env (`src/auth/create-provider.ts`):
 | Mode | Trigger | Behaviour |
 |------|---------|-----------|
 | **Dev** | `VITE_DEV_AUTH=true` | `createDevAuthProvider` — fixed token + authorities from `VITE_DEV_AUTHORITIES`. Used locally, in CI, and by Playwright e2e. `isReady()` is always `true`. |
-| **PKCE** | `VITE_DEV_AUTH` unset/false | `createPkceAuthProvider` (`oidc-client-ts` v3) — Authorization Code + PKCE against Keycloak. `isReady()` flips `true` after silent-signin bootstrap resolves; the `/auth/callback` route completes the redirect via `completeRedirectLogin()`. |
+| **PKCE** | `VITE_DEV_AUTH` unset/false | `createPkceAuthProvider` (`oidc-client-ts` v3) — Authorization Code + PKCE against Keycloak. `isReady()` flips `true` after silent-signin bootstrap resolves; the `/auth/callback` route completes the redirect via `completeRedirectLogin()`. **Authorities** are fetched from `GET /baas/v1/operators/me` on every session change (warm-up, user-loaded, redirect-callback) — Keycloak tokens don't carry them; the token-claim parse is a fallback only when `/me` is unreachable. |
 
 Both providers satisfy the `AuthProvider` contract (`src/auth/types.ts`):
 `isAuthenticated() · isReady() · getUser() · getAuthorities() · getToken() · login() · completeRedirectLogin() · logout()`.
@@ -99,6 +99,17 @@ operator's authorities via `visibleNav()`.
 inside `data`. Consumers call `unwrapResult<T>(result)` (`src/api/envelope.ts`) which surfaces any
 non-2xx status or non-empty `errors[]` as a thrown `ApiError` — never silently destructures `data`.
 Mutation errors are toasted globally via the `MutationCache` `onError` in `src/app/providers.tsx`.
+
+### Engine endpoints consumed
+
+| Endpoint | Used by | Notes |
+|----------|---------|-------|
+| `GET /baas/v1/customers` | `useRecentCustomers` | Recent-customers table (Spring `Page`) |
+| `GET /baas/v1/dashboard/summary` | `useDashboardSummary` | KPI tiles (customers, deposits, KYC-pending, cards). `cardsIssued` may be null → em-dash tile |
+| `GET /baas/v1/operators/me` | PKCE provider (`fetchOperatorAuthorities`) | Authoritative operator permission codes for RBAC (not in the Keycloak token) |
+
+New paths are hand-seeded into `src/api/schema.d.ts` (the committed OpenAPI snapshot) until the next
+`npm run gen:api` against a live engine regenerates it.
 
 ## Local development
 

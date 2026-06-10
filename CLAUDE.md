@@ -310,9 +310,9 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 14 — 2026-06-09; backend application code unchanged since Session 12)
+## Confirmed Platform Versions (Session 15 — 2026-06-10; DEF-1C-28/29 closed across engine + card + backoffice)
 
-> **Session 14 built the `baas-backoffice` Foundation (frontend) — zero Java touched.** All backend `Last git commit` SHAs below remain the Session 12 app-code commits. New frontend service `baas-backoffice` added at `57ffbdd` (69 tests); see its version block below and `baas-log.md` Session 14.
+> **Session 15 closed DEF-1C-28 (operator `/me`) + DEF-1C-29 (dashboard summary).** `baas-engine` advanced to `0644b37` (operations API, 144 tests), `baas-card` to `5bf4183` (`/internal/v1/stats`, 105 tests), `baas-backoffice` to `00d81ef` (dashboard tiles + PKCE `/me` authorities, 75 tests). `baas-fep` unchanged (`a9e4cfd`). See `baas-log.md` Session 15.
 
 ### BaaS Engine (`baas-engine/`)
 
@@ -332,7 +332,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
 | **Internal money seam** | Stage 5 | `/internal/v1/{card-debit,card-credit,account-lookup}` (HMAC); atomic idempotent debit/credit keyed by `card_auth_debit.auth_key`; engine→card provisioning trigger in `TenantProvisioningService` |
-| **Last git commit** | `1ca0d3b` | Session 12 — Stage 5 card↔engine money wiring (DEF-1C-22/23/24/25); 138 tests passing |
+| **Last git commit** | `0644b37` | Session 15 — operations API: `/operators/me` + `/dashboard/summary` (DEF-1C-28/29); 144 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -360,7 +360,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Testcontainers** | PostgreSQL 16 in integration tests | Card tests self-provision their own tenant schema |
 | **EngineClient** | Stage 5 | Outbound HMAC client → engine `/internal/v1/{card-debit,card-credit,account-lookup}`; fail-closed (unreachable → RC 91 on debit, `located:false` on credit). Card owns minor→major scaling AND DE49 numeric→ISO-alpha translation |
 | **linkedAccountId** | Stage 5 | `cards.linked_account_id`; `IssueCardRequest.linkedAccountId @NotNull`, validated against the engine at issuance |
-| **Last git commit** | `1ca0d3b` | Session 12 — Stage 5 card↔engine money wiring (authorize→debit, reversal→credit, linkedAccountId, provisioning endpoint); 102 tests passing |
+| **Last git commit** | `5bf4183` | Session 15 — `POST /internal/v1/stats` cards-issued count for dashboard (DEF-1C-29); 105 tests passing |
 
 ### BaaS FEP (`baas-fep/`)
 
@@ -393,7 +393,7 @@ Operations console for bank staff. **Foundation complete** (`57ffbdd`, 69 tests)
 | **Auth** | `oidc-client-ts` v3 (PKCE) / dev-token | Hybrid, env-selected (`VITE_DEV_AUTH`) |
 | **Test** | Vitest 3 + RTL · Playwright (e2e) | 25 test files, 69 tests |
 | **Node** | 22 | `node:22-alpine` build → `nginx:1.27-alpine` serve |
-| **Last git commit** | `57ffbdd` | Session 14 — Foundation + final-review fix batch |
+| **Last git commit** | `00d81ef` | Session 15 — dashboard tiles wired + PKCE `/me` authorities (DEF-1C-28/29); 75 tests |
 
 ### BaaS Developer Portal (`baas-portal/`) — NOT YET BUILT
 

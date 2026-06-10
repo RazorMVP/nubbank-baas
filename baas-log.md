@@ -13,7 +13,7 @@
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
 | `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
-| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`, 69 tests):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, dashboard, route guards, CI + Docker + k8s). Per-domain tracks (Customers, Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 14 |
+| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`00d81ef`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). Per-domain tracks (Customers, Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 15 |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
 | Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles + GHCR CI for all four services; `infrastructure/docker-compose.yml`; vanilla k8s manifests in `infrastructure/k8s/`). **Session 13: `baas-card` + `baas-fep` added to k8s base (Deployments, Services, NetworkPolicy mesh, PDBs, fep TCP LoadBalancer, partner→card Ingress routing) + FEP datastore env wired in compose.** | Session 13 |
@@ -198,6 +198,47 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 15 — 2026-06-10
+**Close DEF-1C-28 + DEF-1C-29 — the two engine-side gaps the backoffice Foundation was waiting on. Vertical slice across `baas-engine` (`0644b37`), `baas-card` (`5bf4183`), `baas-backoffice` (`00d81ef`); engine 144 + card 105 + backoffice 75 tests green.**
+
+The Foundation shipped with a dashboard whose tiles showed "—" and a PKCE auth path that resolved to zero authorities (Keycloak tokens don't carry them). This session built the two endpoints that close those gaps and wired the frontend to them — strict TDD, all on the open PR #26 branch so the Foundation merges complete. **CBN surface unchanged** (operator-facing identity + read-only aggregate, not Open Banking).
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-engine .../operator/{OperatorMeController,OperatorIdentityService,OperatorMeResponse}.java` | NEW `GET /baas/v1/operators/me` — identity + server-resolved authorities (DEF-1C-28) |
+| `baas-engine .../role/UserRoleRepository.java` | +`findRoleNamesByUserId` |
+| `baas-engine .../dashboard/{DashboardController,DashboardService,DashboardSummaryResponse,CardStatsClient}.java` | NEW `GET /baas/v1/dashboard/summary` (DEF-1C-29) + best-effort engine→card stats client (graceful null) |
+| `baas-engine .../{customer,account,loan}/*Repository.java` | +`countByKycStatus`, `countByStatus`/`sumBalanceByStatus`, `countByStatusIn` |
+| `baas-engine src/test/resources/application-test.yml` | `card-base-url: http://127.0.0.1:1` (fast-fail → cardsIssued null in tests) |
+| `baas-card .../stats/{CardStatsController,CardStatsService,CardStatsRequest,CardStatsResponse}.java` | NEW `POST /internal/v1/stats` — cards-issued count for the dashboard (DEF-1C-29) |
+| `baas-backoffice src/features/dashboard/{use-dashboard.ts,dashboard.tsx}` | `useDashboardSummary` + tiles wired to real values |
+| `baas-backoffice src/auth/{pkce-provider,create-provider}.ts` | `fetchOperatorAuthorities` + PKCE caches `/me` authorities (refresh on warm-up/userLoaded/redirect); `apiBaseUrl` threaded through |
+| `baas-backoffice src/api/schema.d.ts` | Hand-seeded the two new GET paths |
+| `docs/api-reference.html` | NEW baas-engine Operations API section + card `/internal/v1/stats` |
+| `docs/backoffice-operations.md`, `docs/deferred-items.md` | `/me` authorities note + endpoints-consumed table; DEF-1C-28/29 → ✅ CLOSED |
+| `assets/brand/nubeero-icon-round-border.png` | Preserved (relocated from repo root, `a8c7c58`) |
+
+#### Key Decisions
+- **`/me` is the fix for PKCE RBAC, not cosmetics.** The engine resolves authorities server-side and does NOT put them in the Keycloak token — so PKCE mode previously got `[]` (all nav hidden, all routes blocked). The provider now fetches `/me` on every session change and caches; token-claim parse is fallback-only. Dev mode (env authorities) unchanged, which is why CI/e2e stayed green throughout.
+- **Cards tile crosses a service boundary, fail-soft.** Cards live in `baas-card`; the engine `CardStatsClient` calls `POST /internal/v1/stats` over the existing HMAC seam and returns `null` on any error. The dashboard renders every other tile when card-service is down (verified: engine tests have no card-service → `cardsIssued` null via a dead-loopback `card-base-url`).
+- **Both new endpoints gate on `isAuthenticated()`, not a permission.** `/me` is self-identity; the dashboard is the operator's landing page and its data is already partner-schema isolated. No new permission/migration needed.
+- **Auth gate honoured:** `/me` and `/dashboard/summary` reachable by any authenticated operator; unauthenticated → 401 via the existing tenant chain (tested).
+
+#### Build Verification
+- `baas-engine`: **Tests run: 144, Failures: 0** (+6) — BUILD SUCCESS
+- `baas-card`: **Tests run: 105, Failures: 0** (+3) — BUILD SUCCESS
+- `baas-backoffice`: typecheck clean · **75 tests** (+6) · `vite build` succeeds
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):** Last commit (app code) `0644b37` — Session 15 — operations API (DEF-1C-28/29); 144 tests.
+**BaaS Card (`baas-card/`):** Last commit (app code) `5bf4183` — Session 15 — `/internal/v1/stats` (DEF-1C-29); 105 tests.
+**BaaS Backoffice (`baas-backoffice/`):** Last commit `00d81ef` — Session 15 — dashboard tiles + PKCE `/me` authorities; 75 tests.
+**BaaS FEP (`baas-fep/`):** Last commit (app code) `a9e4cfd` — Session 12 (unchanged this session).
+
+---
 
 ### Session 14 — 2026-06-09
 **Phase 1C `baas-backoffice` Foundation — React 19 + Vite 6 + TS 5 operations console (deliverable D8); 22 commits `09c6807`→`57ffbdd`, 69 tests passing. Subagent-driven TDD build of the 18-task Foundation plan + 8-finding final-review fix batch. Governance: SESSION COMPLETION GATE broadened to per-service docs (all five services).**
