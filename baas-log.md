@@ -13,7 +13,7 @@
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
 | `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
-| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`00d81ef`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). Per-domain tracks (Customers, Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 15 |
+| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`281739a`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). Per-domain tracks (Customers, Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 15 |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
 | Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles + GHCR CI for all four services; `infrastructure/docker-compose.yml`; vanilla k8s manifests in `infrastructure/k8s/`). **Session 13: `baas-card` + `baas-fep` added to k8s base (Deployments, Services, NetworkPolicy mesh, PDBs, fep TCP LoadBalancer, partner→card Ingress routing) + FEP datastore env wired in compose.** | Session 13 |
@@ -200,9 +200,11 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ## Change History
 
 ### Session 15 — 2026-06-10
-**Close DEF-1C-28 + DEF-1C-29 — the two engine-side gaps the backoffice Foundation was waiting on. Vertical slice across `baas-engine` (`0644b37`), `baas-card` (`5bf4183`), `baas-backoffice` (`00d81ef`); engine 144 + card 105 + backoffice 75 tests green.**
+**Close DEF-1C-28 + DEF-1C-29 — the two engine-side gaps the backoffice Foundation was waiting on. Vertical slice across `baas-engine` (`b2f1709`), `baas-card` (`d647a4f`), `baas-backoffice` (`281739a`); engine 144 + card 105 + backoffice 75 tests green.**
 
-The Foundation shipped with a dashboard whose tiles showed "—" and a PKCE auth path that resolved to zero authorities (Keycloak tokens don't carry them). This session built the two endpoints that close those gaps and wired the frontend to them — strict TDD, all on the open PR #26 branch so the Foundation merges complete. **CBN surface unchanged** (operator-facing identity + read-only aggregate, not Open Banking).
+The Foundation shipped with a dashboard whose tiles showed "—" and a PKCE auth path that resolved to zero authorities (Keycloak tokens don't carry them). This session built the two endpoints that close those gaps and wired the frontend to them — strict TDD. **CBN surface unchanged** (operator-facing identity + read-only aggregate, not Open Banking).
+
+> **Split into two independently-mergeable PRs** (each service merges on its own track, no file overlap): the **backend** endpoints (`baas-engine` `b2f1709`/`ca7f855`, `baas-card` `d647a4f` + `docs/api-reference.html`) are in PR `feat/baas-engine-card-operations-api` (#27); the **frontend** wiring (`baas-backoffice`) + this session ledger are in PR `feat/baas-backoffice-foundation` (#26). Engine/card SHAs are recorded here for the unified session snapshot; that code lives in #27.
 
 #### New/Updated Files
 | File | Change |
@@ -233,9 +235,9 @@ The Foundation shipped with a dashboard whose tiles showed "—" and a PKCE auth
 
 #### Confirmed Platform Versions
 
-**BaaS Engine (`baas-engine/`):** Last commit (app code) `0644b37` — Session 15 — operations API (DEF-1C-28/29); 144 tests.
-**BaaS Card (`baas-card/`):** Last commit (app code) `5bf4183` — Session 15 — `/internal/v1/stats` (DEF-1C-29); 105 tests.
-**BaaS Backoffice (`baas-backoffice/`):** Last commit `00d81ef` — Session 15 — dashboard tiles + PKCE `/me` authorities; 75 tests.
+**BaaS Engine (`baas-engine/`):** Last commit (app code) `b2f1709` — Session 15 — operations API (DEF-1C-28/29); 144 tests.
+**BaaS Card (`baas-card/`):** Last commit (app code) `d647a4f` — Session 15 — `/internal/v1/stats` (DEF-1C-29); 105 tests.
+**BaaS Backoffice (`baas-backoffice/`):** Last commit `281739a` — Session 15 — dashboard tiles + PKCE `/me` authorities; 75 tests.
 **BaaS FEP (`baas-fep/`):** Last commit (app code) `a9e4cfd` — Session 12 (unchanged this session).
 
 ---
