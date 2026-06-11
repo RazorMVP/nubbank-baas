@@ -50,6 +50,7 @@ class CustomerSearchTest extends AbstractIntegrationTest {
         assertThat(count("?kycStatus=PENDING_KYC")).isEqualTo(1); // status → Mary
         assertThat(count("?kycStatus=ACTIVE&search=mary")).isEqualTo(0); // combined → none
         assertThat(count("")).isEqualTo(2);                     // no filter → both
+        assertThat(count("?search=z")).isEqualTo(0);   // short/no-match search must not dump all
     }
 
     @SuppressWarnings("unchecked")

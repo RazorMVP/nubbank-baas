@@ -24,6 +24,8 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
      * Parameters:
      *   status    — kyc_status string value, or NULL to skip status filter
      *   hasSearch — true when a search term was supplied; false skips the token/extRef checks
+     *   hasTokens — true only when at least one word in the search term is ≥2 chars long;
+     *               guards the @> arm so an empty tokens array never matches all rows
      *   tokens    — Postgres text[] literal, e.g. "{hash1,hash2}" — the HMAC prefix hashes
      *   extRef    — ILIKE pattern e.g. "%ext-200%" for external_reference fallback, or NULL
      */
@@ -32,7 +34,7 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
         WHERE (CAST(:status AS text) IS NULL OR c.kyc_status = CAST(:status AS text))
           AND (
                 :hasSearch = FALSE
-                OR c.name_search_tokens @> CAST(:tokens AS text[])
+                OR (:hasTokens = TRUE AND c.name_search_tokens @> CAST(:tokens AS text[]))
                 OR (CAST(:extRef AS text) IS NOT NULL
                     AND c.external_reference ILIKE CAST(:extRef AS text))
               )
@@ -43,7 +45,7 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
         WHERE (CAST(:status AS text) IS NULL OR c.kyc_status = CAST(:status AS text))
           AND (
                 :hasSearch = FALSE
-                OR c.name_search_tokens @> CAST(:tokens AS text[])
+                OR (:hasTokens = TRUE AND c.name_search_tokens @> CAST(:tokens AS text[]))
                 OR (CAST(:extRef AS text) IS NOT NULL
                     AND c.external_reference ILIKE CAST(:extRef AS text))
               )
@@ -52,6 +54,7 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     Page<Customer> search(
         @Param("status")    String status,
         @Param("hasSearch") boolean hasSearch,
+        @Param("hasTokens") boolean hasTokens,
         @Param("tokens")    String tokens,
         @Param("extRef")    String extRef,
         Pageable pageable);

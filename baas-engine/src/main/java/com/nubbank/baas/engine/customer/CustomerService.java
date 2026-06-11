@@ -11,6 +11,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -154,17 +155,19 @@ public class CustomerService {
     public Page<CustomerResponse> list(int page, int size, String kycStatus, String search) {
         requireContext();
         boolean hasSearch = search != null && !search.isBlank();
+        boolean hasTokens = false;
         String tokensLiteral = "{}";
         String extRef = null;
         if (hasSearch) {
-            List<String> hashes = new java.util.ArrayList<>();
+            List<String> hashes = new ArrayList<>();
             for (String w : search.trim().split("\\s+")) {
                 if (w.length() >= 2) hashes.add(nameTokenizer.queryToken(w));
             }
+            hasTokens = !hashes.isEmpty();
             tokensLiteral = "{" + String.join(",", hashes) + "}";
             extRef = "%" + search.trim() + "%";
         }
-        return customerRepo.search(kycStatus, hasSearch, tokensLiteral, extRef,
+        return customerRepo.search(kycStatus, hasSearch, hasTokens, tokensLiteral, extRef,
                 PageRequest.of(page, size)).map(this::toResponse);
     }
 
