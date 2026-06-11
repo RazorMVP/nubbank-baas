@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApiClient } from '@/api/context';
 import { qk } from '@/api/query';
 import { unwrapResult, extractPage, type Page, type NormalizedPage } from '@/api/envelope';
@@ -73,6 +73,74 @@ export function useCustomerKycEvents(id: string) {
     queryFn: async () => {
       const result = await client.GET('/baas/v1/customers/{id}/kyc-events', { params: { path: { id } } } as never);
       return unwrapResult<KycEvent[]>(result);
+    },
+  });
+}
+
+// ─── Mutation hooks ────────────────────────────────────────────────────────
+
+export interface CustomerWriteBody {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  externalReference?: string;
+  bvn?: string;
+  nin?: string;
+}
+
+export function useCreateCustomer() {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CustomerWriteBody) => {
+      const result = await client.POST('/baas/v1/customers', { body } as never);
+      return unwrapResult<CustomerDetail>(result);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['customers', 'list'] }),
+  });
+}
+
+export interface CustomerUpdateBody {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: string;
+}
+
+export function useUpdateCustomer(id: string) {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CustomerUpdateBody) => {
+      const result = await client.PUT('/baas/v1/customers/{id}', { params: { path: { id } }, body } as never);
+      return unwrapResult<CustomerDetail>(result);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.detail('customers', id) });
+      qc.invalidateQueries({ queryKey: ['customers', 'list'] });
+    },
+  });
+}
+
+export type KycCommand = 'activate' | 'suspend' | 'reactivate' | 'close';
+
+export function useKycTransition(id: string) {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ command, reason }: { command: KycCommand; reason: string }) => {
+      const result = await client.POST(`/baas/v1/customers/{id}/${command}` as never,
+        { params: { path: { id } }, body: { reason } } as never);
+      return unwrapResult<CustomerDetail>(result);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.detail('customers', id) });
+      qc.invalidateQueries({ queryKey: ['customers', 'list'] });
     },
   });
 }

@@ -9,6 +9,12 @@ export interface paths {
         200: { content: { 'application/json': unknown } };
       };
     };
+    post: {
+      requestBody: { content: { 'application/json': unknown } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
   };
   '/baas/v1/customers/{id}': {
     get: {
@@ -36,6 +42,7 @@ export interface paths {
   '/baas/v1/customers/{id}/activate': {
     post: {
       parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
       responses: {
         200: { content: { 'application/json': unknown } };
       };
@@ -44,6 +51,7 @@ export interface paths {
   '/baas/v1/customers/{id}/suspend': {
     post: {
       parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
       responses: {
         200: { content: { 'application/json': unknown } };
       };
@@ -52,6 +60,7 @@ export interface paths {
   '/baas/v1/customers/{id}/reactivate': {
     post: {
       parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
       responses: {
         200: { content: { 'application/json': unknown } };
       };
@@ -60,6 +69,7 @@ export interface paths {
   '/baas/v1/customers/{id}/close': {
     post: {
       parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
       responses: {
         200: { content: { 'application/json': unknown } };
       };

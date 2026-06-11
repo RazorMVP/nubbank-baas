@@ -2,12 +2,12 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { useCustomers, useCustomer, useCustomerKycEvents } from './use-customers';
+import { useCustomers, useCustomer, useCustomerKycEvents, useCreateCustomer, useUpdateCustomer, useKycTransition } from './use-customers';
 import { ApiClientProvider } from '@/api/context';
 import { ApiError } from '@/api/envelope';
 
 function makeWrapper(getResult: unknown) {
-  const client = { GET: vi.fn(async () => getResult), POST: vi.fn(), PUT: vi.fn() };
+  const client = { GET: vi.fn(async () => getResult), POST: vi.fn(async () => getResult), PUT: vi.fn(async () => getResult) };
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <ApiClientProvider client={client as never}>
@@ -67,5 +67,34 @@ describe('useCustomerKycEvents', () => {
     const { result } = renderHook(() => useCustomerKycEvents('c1'), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.[0].toStatus).toBe('ACTIVE');
+  });
+});
+
+describe('useKycTransition', () => {
+  it('POSTs the command path with a reason', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 'c1', kycStatus: 'ACTIVE' }));
+    const { result } = renderHook(() => useKycTransition('c1'), { wrapper: Wrapper });
+    await result.current.mutateAsync({ command: 'activate', reason: 'verified' });
+    expect(client.POST).toHaveBeenCalledWith('/baas/v1/customers/{id}/activate',
+      { params: { path: { id: 'c1' } }, body: { reason: 'verified' } });
+  });
+});
+
+describe('useCreateCustomer', () => {
+  it('POSTs the create body', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 'new' }));
+    const { result } = renderHook(() => useCreateCustomer(), { wrapper: Wrapper });
+    await result.current.mutateAsync({ firstName: 'A', lastName: 'B' });
+    expect(client.POST).toHaveBeenCalledWith('/baas/v1/customers', { body: { firstName: 'A', lastName: 'B' } });
+  });
+});
+
+describe('useUpdateCustomer', () => {
+  it('PUTs the update body', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 'c1', firstName: 'New' }));
+    const { result } = renderHook(() => useUpdateCustomer('c1'), { wrapper: Wrapper });
+    await result.current.mutateAsync({ firstName: 'New', lastName: 'B' });
+    expect(client.PUT).toHaveBeenCalledWith('/baas/v1/customers/{id}',
+      { params: { path: { id: 'c1' } }, body: { firstName: 'New', lastName: 'B' } });
   });
 });
