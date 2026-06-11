@@ -14,7 +14,7 @@ class CustomerKycEventsApiTest extends AbstractIntegrationTest {
     @Autowired private PartnerJwtService jwtService;
     @Autowired private PartnerOrganizationRepository orgRepo;
     @Autowired private TenantProvisioningService provisioningService;
-    private String jwt; private String schemaName; private UUID orgId;
+    private String jwt; private String schemaName;
 
     @BeforeEach void setup() {
         schemaName = "partner_" + UUID.randomUUID().toString().replace("-", "");
@@ -22,7 +22,7 @@ class CustomerKycEventsApiTest extends AbstractIntegrationTest {
             .name("Evt").status(PartnerStatus.SANDBOX).tier(PartnerTier.SANDBOX)
             .environment(PartnerEnvironment.SANDBOX).schemaName(schemaName)
             .contactEmail("evt@partner.com").build());
-        orgId = org.getId(); provisioningService.provision(org.getId(), schemaName);
+        provisioningService.provision(org.getId(), schemaName);
         jwt = jwtService.issue(UUID.randomUUID().toString(), "evt@partner.com", "PARTNER_ADMIN",
             org.getId().toString(), "Evt", schemaName, "SANDBOX", "SANDBOX");
     }
@@ -62,5 +62,13 @@ class CustomerKycEventsApiTest extends AbstractIntegrationTest {
         @SuppressWarnings("unchecked")
         List<Map<String,Object>> events = (List<Map<String,Object>>) r.getBody().get("data");
         assertThat(events).isEmpty();
+    }
+
+    @Test
+    void kycEvents_unknownCustomer_returns404() {
+        ResponseEntity<Map> r = restTemplate.exchange(
+            "/baas/v1/customers/" + java.util.UUID.randomUUID() + "/kyc-events",
+            HttpMethod.GET, new HttpEntity<>(auth()), Map.class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 }

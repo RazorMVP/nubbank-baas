@@ -116,6 +116,9 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public List<CustomerKycEventResponse> kycEvents(UUID id) {
         requireContext();
+        if (!customerRepo.existsById(id)) {
+            throw BaasException.notFound("CUSTOMER_NOT_FOUND", "Customer " + id + " not found");
+        }
         return eventRepo.findByCustomerIdOrderByChangedAtDesc(id).stream()
             .map(e -> new CustomerKycEventResponse(e.getId(), e.getFromStatus(), e.getToStatus(),
                 e.getReason(), e.getChangedBy(), e.getChangedAt()))
