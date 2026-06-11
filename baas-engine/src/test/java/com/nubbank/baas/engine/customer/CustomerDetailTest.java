@@ -53,4 +53,12 @@ class CustomerDetailTest extends AbstractIntegrationTest {
         assertThat(data.get("ninMasked")).isEqualTo("•••••••7766");
         assertThat(data).doesNotContainKey("bvn");   // full value never returned
     }
+
+    @Test
+    void create_malformedDateOfBirth_returns400() {
+        ResponseEntity<Map> r = restTemplate.exchange("/baas/v1/customers", HttpMethod.POST,
+            new HttpEntity<>(Map.of("firstName", "Bad", "lastName", "Date",
+                "dateOfBirth", "01/01/1990"), auth()), Map.class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
 }

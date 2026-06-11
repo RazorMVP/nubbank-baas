@@ -38,8 +38,7 @@ public class CustomerService {
             .bvnEncrypted(req.bvn())
             .ninEncrypted(req.nin())
             .gender(req.gender())
-            .dateOfBirth(req.dateOfBirth() == null || req.dateOfBirth().isBlank()
-                ? null : java.time.LocalDate.parse(req.dateOfBirth()))
+            .dateOfBirth(parseDob(req.dateOfBirth()))
             .nameSearchTokens(nameTokenizer.tokensForName(req.firstName(), req.lastName()))
             .build();
 
@@ -80,6 +79,17 @@ public class CustomerService {
         requireContext();
         return customerRepo.findAll(PageRequest.of(page, size, Sort.by("createdAt").descending()))
             .map(this::toResponse);
+    }
+
+    /** Parse an optional ISO-8601 (yyyy-MM-dd) date of birth; a malformed value is a 400, not a 500. */
+    private static java.time.LocalDate parseDob(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(value);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw BaasException.badRequest("INVALID_DATE_OF_BIRTH",
+                "dateOfBirth must be ISO-8601 (yyyy-MM-dd)");
+        }
     }
 
     private void requireContext() {
