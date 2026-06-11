@@ -14,6 +14,8 @@ class CustomerUpdateTest extends AbstractIntegrationTest {
     @Autowired private PartnerJwtService jwtService;
     @Autowired private PartnerOrganizationRepository orgRepo;
     @Autowired private TenantProvisioningService provisioningService;
+    @Autowired private com.nubbank.baas.engine.customer.NameTokenizer nameTokenizer;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
     private String jwt; private String schemaName;
 
     @BeforeEach void setup() {
@@ -58,8 +60,27 @@ class CustomerUpdateTest extends AbstractIntegrationTest {
         body.put("firstName", "Jonathan"); body.put("lastName", "Doe");
         restTemplate.exchange("/baas/v1/customers/" + id, HttpMethod.PUT,
             new HttpEntity<>(body, auth()), Map.class);
-        // After the name change, the persisted tokens reflect "jonathan" — verified directly by JDBC
-        // (the search ENDPOINT is a later task; here we just confirm the update path re-tokenizes).
+
+        java.sql.Array arr = jdbc.queryForObject(
+            "SELECT name_search_tokens FROM " + schemaName + ".customers WHERE id = ?",
+            java.sql.Array.class, id);
+        java.util.Set<String> tokens;
+        try {
+            Object raw = arr.getArray();
+            if (raw instanceof String[]) {
+                tokens = new java.util.HashSet<>(java.util.Arrays.asList((String[]) raw));
+            } else {
+                Object[] objs = (Object[]) raw;
+                tokens = new java.util.HashSet<>();
+                for (Object o : objs) tokens.add(String.valueOf(o));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        // After renaming John -> Jonathan, the index reflects the new name:
+        assertThat(tokens).contains(nameTokenizer.queryToken("jonathan"));
+        // and the old full-word token "john" is gone ("john" is NOT a prefix of "jonathan").
+        assertThat(tokens).doesNotContain(nameTokenizer.queryToken("john"));
     }
 
     @Test
