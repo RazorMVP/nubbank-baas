@@ -18,6 +18,10 @@ public class CustomerKycEvent {
     @Column(name = "customer_id", nullable = false)
     private UUID customerId;
 
+    // from/to status are stored as plain String, not the KycStatus enum, on purpose:
+    // this is an append-only audit record. Keeping it decoupled from the live enum means
+    // a future enum change can never break deserialization of historical rows. The write
+    // path only ever passes KycStatus.name(), so invalid values cannot be persisted.
     @Column(name = "from_status", nullable = false, length = 50)
     private String fromStatus;
 
