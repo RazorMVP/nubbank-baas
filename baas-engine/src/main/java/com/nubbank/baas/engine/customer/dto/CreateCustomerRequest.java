@@ -5,7 +5,7 @@ import jakarta.validation.constraints.*;
 public record CreateCustomerRequest(
     @NotBlank(message = "firstName is required") String firstName,
     @NotBlank(message = "lastName is required") String lastName,
-    String email,
+    @Email(message = "email must be valid") String email,
     String phone,
     String dateOfBirth,
     String gender,

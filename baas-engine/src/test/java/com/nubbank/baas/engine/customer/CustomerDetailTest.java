@@ -61,4 +61,12 @@ class CustomerDetailTest extends AbstractIntegrationTest {
                 "dateOfBirth", "01/01/1990"), auth()), Map.class);
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
+
+    @Test
+    void getById_unknownId_returns404() {
+        ResponseEntity<Map> r = restTemplate.exchange(
+            "/baas/v1/customers/" + java.util.UUID.randomUUID(),
+            HttpMethod.GET, new HttpEntity<>(auth()), Map.class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
 }

@@ -92,6 +92,14 @@ class CustomerKycTransitionTest extends AbstractIntegrationTest {
         assertThat(after.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
+    @Test
+    void transition_unknownCustomer_returns404() {
+        ResponseEntity<Map> r = restTemplate.exchange(
+            "/baas/v1/customers/" + java.util.UUID.randomUUID() + "/activate",
+            HttpMethod.POST, new HttpEntity<>(Map.of("reason", "x"), auth()), Map.class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     private ResponseEntity<Map> post(UUID id, String cmd, String reason) {
         return restTemplate.exchange("/baas/v1/customers/" + id + "/" + cmd, HttpMethod.POST,
             new HttpEntity<>(Map.of("reason", reason), auth()), Map.class);

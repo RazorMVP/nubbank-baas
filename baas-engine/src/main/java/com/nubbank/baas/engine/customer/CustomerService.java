@@ -38,7 +38,7 @@ public class CustomerService {
 
         Customer customer = Customer.builder()
             .externalReference(req.externalReference())
-            .firstNameEncrypted(req.firstName())    // Phase 2: encrypt with Jasypt
+            .firstNameEncrypted(req.firstName())
             .lastNameEncrypted(req.lastName())
             .emailEncrypted(blankToNull(req.email()))
             .phoneEncrypted(blankToNull(req.phone()))
