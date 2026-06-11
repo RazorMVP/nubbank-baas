@@ -10,6 +10,7 @@ import org.springframework.data.domain.*;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -110,6 +111,15 @@ public class CustomerService {
         if (auth == null) return null;
         Object principal = auth.getPrincipal();
         return (principal == null || "anonymousUser".equals(principal)) ? null : principal.toString();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CustomerKycEventResponse> kycEvents(UUID id) {
+        requireContext();
+        return eventRepo.findByCustomerIdOrderByChangedAtDesc(id).stream()
+            .map(e -> new CustomerKycEventResponse(e.getId(), e.getFromStatus(), e.getToStatus(),
+                e.getReason(), e.getChangedBy(), e.getChangedAt()))
+            .toList();
     }
 
     /** Show only the last 4 digits, never the full identity value. */

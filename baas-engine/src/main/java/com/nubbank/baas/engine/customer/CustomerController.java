@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -69,5 +70,11 @@ public class CustomerController {
             @PathVariable UUID id, @Valid @RequestBody KycTransitionRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(
             customerService.transition(id, CustomerService.KycCommand.CLOSE, req.reason())));
+    }
+
+    @PreAuthorize("hasAuthority('READ_CUSTOMER')")
+    @GetMapping("/{id}/kyc-events")
+    public ResponseEntity<ApiResponse<List<CustomerKycEventResponse>>> kycEvents(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(customerService.kycEvents(id)));
     }
 }
