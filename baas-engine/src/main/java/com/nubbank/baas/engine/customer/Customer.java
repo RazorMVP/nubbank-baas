@@ -3,8 +3,12 @@ package com.nubbank.baas.engine.customer;
 import com.nubbank.baas.engine.common.FieldEncryptor;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -61,6 +65,11 @@ public class Customer {
     @Convert(converter = FieldEncryptor.class)
     @Column(name = "nin_encrypted", length = 500)
     private String ninEncrypted;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "name_search_tokens", columnDefinition = "text[]")
+    @Builder.Default
+    private List<String> nameSearchTokens = new ArrayList<>();
 
     @Version
     private Long version;

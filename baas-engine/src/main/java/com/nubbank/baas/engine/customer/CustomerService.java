@@ -18,6 +18,7 @@ public class CustomerService {
 
     private final CustomerRepository customerRepo;
     private final ComplianceService complianceService;
+    private final NameTokenizer nameTokenizer;
 
     @Transactional
     public CustomerResponse create(CreateCustomerRequest req) {
@@ -36,6 +37,7 @@ public class CustomerService {
             .phoneEncrypted(req.phone())
             .bvnEncrypted(req.bvn())
             .ninEncrypted(req.nin())
+            .nameSearchTokens(nameTokenizer.tokensForName(req.firstName(), req.lastName()))
             .build();
 
         Customer saved = customerRepo.save(customer);
