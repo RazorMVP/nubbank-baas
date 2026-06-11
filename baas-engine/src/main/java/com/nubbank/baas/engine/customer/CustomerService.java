@@ -6,7 +6,8 @@ import com.nubbank.baas.engine.customer.dto.*;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -150,10 +151,21 @@ public class CustomerService {
     }
 
     @Transactional(readOnly = true)
-    public Page<CustomerResponse> list(int page, int size) {
+    public Page<CustomerResponse> list(int page, int size, String kycStatus, String search) {
         requireContext();
-        return customerRepo.findAll(PageRequest.of(page, size, Sort.by("createdAt").descending()))
-            .map(this::toResponse);
+        boolean hasSearch = search != null && !search.isBlank();
+        String tokensLiteral = "{}";
+        String extRef = null;
+        if (hasSearch) {
+            List<String> hashes = new java.util.ArrayList<>();
+            for (String w : search.trim().split("\\s+")) {
+                if (w.length() >= 2) hashes.add(nameTokenizer.queryToken(w));
+            }
+            tokensLiteral = "{" + String.join(",", hashes) + "}";
+            extRef = "%" + search.trim() + "%";
+        }
+        return customerRepo.search(kycStatus, hasSearch, tokensLiteral, extRef,
+                PageRequest.of(page, size)).map(this::toResponse);
     }
 
     /** Optional free-text fields: treat a blank string as absent (store null, not ""). */

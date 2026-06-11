@@ -36,8 +36,10 @@ public class CustomerController {
     @GetMapping
     public ResponseEntity<ApiResponse<Page<CustomerResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(ApiResponse.ok(customerService.list(page, size)));
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String kycStatus,
+            @RequestParam(required = false) String search) {
+        return ResponseEntity.ok(ApiResponse.ok(customerService.list(page, size, kycStatus, search)));
     }
 
     @PreAuthorize("hasAuthority('UPDATE_CUSTOMER')")
