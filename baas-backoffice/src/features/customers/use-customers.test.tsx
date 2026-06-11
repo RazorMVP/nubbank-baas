@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { useCustomers, useCustomer, useCustomerKycEvents } from './use-customers';
 import { ApiClientProvider } from '@/api/context';
+import { ApiError } from '@/api/envelope';
 
 function makeWrapper(getResult: unknown) {
   const client = { GET: vi.fn(async () => getResult), POST: vi.fn(), PUT: vi.fn() };
@@ -44,6 +45,18 @@ describe('useCustomer', () => {
     const { result } = renderHook(() => useCustomer('c1'), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.bvnMasked).toBe('•••••••1234');
+  });
+
+  it('surfaces ApiError on a 403 error envelope', async () => {
+    const { Wrapper } = makeWrapper({
+      data: undefined,
+      error: { data: null, meta: null,
+        errors: [{ code: 'ERR_FORBIDDEN', message: 'denied', field: null, docsUrl: null }] },
+      response: new Response(null, { status: 403 }),
+    });
+    const { result } = renderHook(() => useCustomer('c1'), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect((result.current.error as ApiError).code).toBe('ERR_FORBIDDEN');
   });
 });
 

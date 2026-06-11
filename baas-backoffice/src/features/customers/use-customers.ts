@@ -37,16 +37,19 @@ export interface KycEvent {
 export interface CustomerListParams {
   page: number;
   size: number;
-  kycStatus?: string;
+  kycStatus?: KycStatus;
   search?: string;
 }
 
 export function useCustomers(params: CustomerListParams) {
   const client = useApiClient();
+  const query: Record<string, unknown> = { page: params.page, size: params.size };
+  if (params.kycStatus) query.kycStatus = params.kycStatus;
+  if (params.search) query.search = params.search;
   return useQuery<NormalizedPage<CustomerRow>>({
-    queryKey: qk.list('customers', params as unknown as Record<string, unknown>),
+    queryKey: qk.list('customers', query),
     queryFn: async () => {
-      const result = await client.GET('/baas/v1/customers', { params: { query: params } } as never);
+      const result = await client.GET('/baas/v1/customers', { params: { query } } as never);
       return extractPage(unwrapResult<Page<CustomerRow>>(result));
     },
   });
