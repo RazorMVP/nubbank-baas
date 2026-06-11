@@ -16,7 +16,10 @@ import java.util.UUID;
 @Slf4j
 public class CustomerService {
 
+    public enum KycCommand { ACTIVATE, SUSPEND, REACTIVATE, CLOSE }
+
     private final CustomerRepository customerRepo;
+    private final CustomerKycEventRepository eventRepo;
     private final ComplianceService complianceService;
     private final NameTokenizer nameTokenizer;
 
@@ -60,11 +63,51 @@ public class CustomerService {
         Customer c = customerRepo.findById(id)
             .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
                 "Customer " + id + " not found"));
+        return getByIdInternal(c);
+    }
+
+    private CustomerDetailResponse getByIdInternal(Customer c) {
         return new CustomerDetailResponse(c.getId(), c.getExternalReference(),
             c.getFirstNameEncrypted(), c.getLastNameEncrypted(), c.getEmailEncrypted(),
             c.getPhoneEncrypted(), c.getDateOfBirth(), c.getGender(),
             mask(c.getBvnEncrypted()), mask(c.getNinEncrypted()),
             c.getKycStatus(), c.getKycLevel(), c.getCreatedAt(), c.getUpdatedAt());
+    }
+
+    @Transactional
+    public CustomerDetailResponse transition(UUID id, KycCommand command, String reason) {
+        requireContext();
+        Customer c = customerRepo.findById(id)
+            .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
+                "Customer " + id + " not found"));
+        KycStatus from = c.getKycStatus();
+        KycStatus to = target(from, command);
+        if (to == null) {
+            throw BaasException.conflict("INVALID_KYC_TRANSITION",
+                "Cannot " + command + " a customer in status " + from);
+        }
+        c.setKycStatus(to);
+        customerRepo.save(c);
+        eventRepo.save(CustomerKycEvent.builder()
+            .customerId(id).fromStatus(from.name()).toStatus(to.name())
+            .reason(reason).changedBy(currentPrincipal()).build());
+        return getByIdInternal(c);
+    }
+
+    private static KycStatus target(KycStatus from, KycCommand command) {
+        return switch (command) {
+            case ACTIVATE   -> from == KycStatus.PENDING_KYC ? KycStatus.ACTIVE : null;
+            case SUSPEND    -> from == KycStatus.ACTIVE      ? KycStatus.SUSPENDED : null;
+            case REACTIVATE -> from == KycStatus.SUSPENDED   ? KycStatus.ACTIVE : null;
+            case CLOSE      -> (from == KycStatus.ACTIVE || from == KycStatus.SUSPENDED)
+                                   ? KycStatus.CLOSED : null;
+        };
+    }
+
+    private String currentPrincipal() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder
+            .getContext().getAuthentication();
+        return auth == null ? null : String.valueOf(auth.getPrincipal());
     }
 
     /** Show only the last 4 digits, never the full identity value. */

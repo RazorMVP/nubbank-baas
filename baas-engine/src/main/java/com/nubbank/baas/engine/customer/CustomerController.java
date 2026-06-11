@@ -38,4 +38,36 @@ public class CustomerController {
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.ok(customerService.list(page, size)));
     }
+
+    @PreAuthorize("hasAuthority('UPDATE_CUSTOMER')")
+    @PostMapping("/{id}/activate")
+    public ResponseEntity<ApiResponse<CustomerDetailResponse>> activate(
+            @PathVariable UUID id, @Valid @RequestBody KycTransitionRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            customerService.transition(id, CustomerService.KycCommand.ACTIVATE, req.reason())));
+    }
+
+    @PreAuthorize("hasAuthority('UPDATE_CUSTOMER')")
+    @PostMapping("/{id}/suspend")
+    public ResponseEntity<ApiResponse<CustomerDetailResponse>> suspend(
+            @PathVariable UUID id, @Valid @RequestBody KycTransitionRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            customerService.transition(id, CustomerService.KycCommand.SUSPEND, req.reason())));
+    }
+
+    @PreAuthorize("hasAuthority('UPDATE_CUSTOMER')")
+    @PostMapping("/{id}/reactivate")
+    public ResponseEntity<ApiResponse<CustomerDetailResponse>> reactivate(
+            @PathVariable UUID id, @Valid @RequestBody KycTransitionRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            customerService.transition(id, CustomerService.KycCommand.REACTIVATE, req.reason())));
+    }
+
+    @PreAuthorize("hasAuthority('UPDATE_CUSTOMER')")
+    @PostMapping("/{id}/close")
+    public ResponseEntity<ApiResponse<CustomerDetailResponse>> close(
+            @PathVariable UUID id, @Valid @RequestBody KycTransitionRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            customerService.transition(id, CustomerService.KycCommand.CLOSE, req.reason())));
+    }
 }
