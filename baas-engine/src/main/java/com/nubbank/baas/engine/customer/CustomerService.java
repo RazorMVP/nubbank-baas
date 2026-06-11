@@ -37,6 +37,9 @@ public class CustomerService {
             .phoneEncrypted(req.phone())
             .bvnEncrypted(req.bvn())
             .ninEncrypted(req.nin())
+            .gender(req.gender())
+            .dateOfBirth(req.dateOfBirth() == null || req.dateOfBirth().isBlank()
+                ? null : java.time.LocalDate.parse(req.dateOfBirth()))
             .nameSearchTokens(nameTokenizer.tokensForName(req.firstName(), req.lastName()))
             .build();
 
@@ -53,11 +56,23 @@ public class CustomerService {
     }
 
     @Transactional(readOnly = true)
-    public CustomerResponse getById(UUID id) {
+    public CustomerDetailResponse getById(UUID id) {
         requireContext();
-        return toResponse(customerRepo.findById(id)
+        Customer c = customerRepo.findById(id)
             .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
-                "Customer " + id + " not found")));
+                "Customer " + id + " not found"));
+        return new CustomerDetailResponse(c.getId(), c.getExternalReference(),
+            c.getFirstNameEncrypted(), c.getLastNameEncrypted(), c.getEmailEncrypted(),
+            c.getPhoneEncrypted(), c.getDateOfBirth(), c.getGender(),
+            mask(c.getBvnEncrypted()), mask(c.getNinEncrypted()),
+            c.getKycStatus(), c.getKycLevel(), c.getCreatedAt(), c.getUpdatedAt());
+    }
+
+    /** Show only the last 4 digits, never the full identity value. */
+    private static String mask(String value) {
+        if (value == null || value.isBlank()) return null;
+        String last4 = value.length() <= 4 ? value : value.substring(value.length() - 4);
+        return "•••••••" + last4;
     }
 
     @Transactional(readOnly = true)

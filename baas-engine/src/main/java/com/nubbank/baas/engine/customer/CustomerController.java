@@ -27,7 +27,7 @@ public class CustomerController {
 
     @PreAuthorize("hasAuthority('READ_CUSTOMER')")
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<CustomerResponse>> getById(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<CustomerDetailResponse>> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(customerService.getById(id)));
     }
 
