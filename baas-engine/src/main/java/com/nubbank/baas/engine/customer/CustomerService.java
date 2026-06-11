@@ -7,6 +7,7 @@ import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
@@ -105,9 +106,10 @@ public class CustomerService {
     }
 
     private String currentPrincipal() {
-        var auth = org.springframework.security.core.context.SecurityContextHolder
-            .getContext().getAuthentication();
-        return auth == null ? null : String.valueOf(auth.getPrincipal());
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return null;
+        Object principal = auth.getPrincipal();
+        return (principal == null || "anonymousUser".equals(principal)) ? null : principal.toString();
     }
 
     /** Show only the last 4 digits, never the full identity value. */

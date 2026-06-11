@@ -52,6 +52,8 @@ class CustomerKycTransitionTest extends AbstractIntegrationTest {
             assertThat(events.get(0).getFromStatus()).isEqualTo("PENDING_KYC");
             assertThat(events.get(0).getToStatus()).isEqualTo("ACTIVE");
             assertThat(events.get(0).getReason()).isEqualTo("docs verified");
+            assertThat(events.get(0).getChangedBy()).isNotNull();
+            assertThat(events.get(0).getChangedBy()).isNotEqualTo("null");
         } finally {
             PartnerContext.clear();
         }
