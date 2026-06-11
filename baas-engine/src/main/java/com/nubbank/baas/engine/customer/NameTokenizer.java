@@ -28,10 +28,14 @@ public class NameTokenizer {
         if (configuredKey == null || configuredKey.isBlank()) {
             throw new IllegalStateException("app.encryption.key must be configured for name tokenization");
         }
+        if (configuredKey.length() < 16) {
+            throw new IllegalStateException(
+                "app.encryption.key is too short for name tokenization — must be at least 16 characters");
+        }
         this.key = configuredKey.getBytes(StandardCharsets.UTF_8);
     }
 
-    /** All stored prefix tokens for a customer's name. */
+    /** All stored prefix tokens for a customer's name. Returns an empty list if both names are null/blank. */
     public List<String> tokensForName(String firstName, String lastName) {
         LinkedHashSet<String> tokens = new LinkedHashSet<>();
         for (String word : words(firstName, lastName)) {
