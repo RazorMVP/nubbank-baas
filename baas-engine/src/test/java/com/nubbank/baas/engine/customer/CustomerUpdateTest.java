@@ -51,6 +51,7 @@ class CustomerUpdateTest extends AbstractIntegrationTest {
         assertThat(data.get("firstName")).isEqualTo("Jonathan");
         assertThat(data.get("email")).isEqualTo("jon@x.com");
         assertThat(data.get("gender")).isEqualTo("M");
+        assertThat(data.get("phone")).isEqualTo("0805");
     }
 
     @Test

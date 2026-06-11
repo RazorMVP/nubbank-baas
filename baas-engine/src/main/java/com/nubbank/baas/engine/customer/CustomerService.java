@@ -38,11 +38,11 @@ public class CustomerService {
             .externalReference(req.externalReference())
             .firstNameEncrypted(req.firstName())    // Phase 2: encrypt with Jasypt
             .lastNameEncrypted(req.lastName())
-            .emailEncrypted(req.email())
-            .phoneEncrypted(req.phone())
+            .emailEncrypted(blankToNull(req.email()))
+            .phoneEncrypted(blankToNull(req.phone()))
             .bvnEncrypted(req.bvn())
             .ninEncrypted(req.nin())
-            .gender(req.gender())
+            .gender(blankToNull(req.gender()))
             .dateOfBirth(parseDob(req.dateOfBirth()))
             .nameSearchTokens(nameTokenizer.tokensForName(req.firstName(), req.lastName()))
             .build();
@@ -84,9 +84,9 @@ public class CustomerService {
                 "Customer " + id + " not found"));
         c.setFirstNameEncrypted(req.firstName());
         c.setLastNameEncrypted(req.lastName());
-        c.setEmailEncrypted(req.email());
-        c.setPhoneEncrypted(req.phone());
-        c.setGender(req.gender());
+        c.setEmailEncrypted(blankToNull(req.email()));
+        c.setPhoneEncrypted(blankToNull(req.phone()));
+        c.setGender(blankToNull(req.gender()));
         c.setDateOfBirth(parseDob(req.dateOfBirth()));
         c.setNameSearchTokens(nameTokenizer.tokensForName(req.firstName(), req.lastName()));
         customerRepo.save(c);
@@ -154,6 +154,11 @@ public class CustomerService {
         requireContext();
         return customerRepo.findAll(PageRequest.of(page, size, Sort.by("createdAt").descending()))
             .map(this::toResponse);
+    }
+
+    /** Optional free-text fields: treat a blank string as absent (store null, not ""). */
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 
     /** Parse an optional ISO-8601 (yyyy-MM-dd) date of birth; a malformed value is a 400, not a 500. */
