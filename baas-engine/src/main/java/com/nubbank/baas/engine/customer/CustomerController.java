@@ -41,6 +41,13 @@ public class CustomerController {
     }
 
     @PreAuthorize("hasAuthority('UPDATE_CUSTOMER')")
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<CustomerDetailResponse>> update(
+            @PathVariable UUID id, @Valid @RequestBody UpdateCustomerRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(customerService.update(id, req)));
+    }
+
+    @PreAuthorize("hasAuthority('UPDATE_CUSTOMER')")
     @PostMapping("/{id}/activate")
     public ResponseEntity<ApiResponse<CustomerDetailResponse>> activate(
             @PathVariable UUID id, @Valid @RequestBody KycTransitionRequest req) {

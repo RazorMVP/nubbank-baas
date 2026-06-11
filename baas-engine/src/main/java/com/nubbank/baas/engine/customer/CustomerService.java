@@ -77,6 +77,23 @@ public class CustomerService {
     }
 
     @Transactional
+    public CustomerDetailResponse update(UUID id, UpdateCustomerRequest req) {
+        requireContext();
+        Customer c = customerRepo.findById(id)
+            .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
+                "Customer " + id + " not found"));
+        c.setFirstNameEncrypted(req.firstName());
+        c.setLastNameEncrypted(req.lastName());
+        c.setEmailEncrypted(req.email());
+        c.setPhoneEncrypted(req.phone());
+        c.setGender(req.gender());
+        c.setDateOfBirth(parseDob(req.dateOfBirth()));
+        c.setNameSearchTokens(nameTokenizer.tokensForName(req.firstName(), req.lastName()));
+        customerRepo.save(c);
+        return getByIdInternal(c);
+    }
+
+    @Transactional
     public CustomerDetailResponse transition(UUID id, KycCommand command, String reason) {
         requireContext();
         Customer c = customerRepo.findById(id)
