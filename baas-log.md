@@ -260,6 +260,19 @@ The backoffice gains its first real domain screen set: a Customers list with KYC
 **BaaS Card (`baas-card/`):** unchanged this session — last commit `d647a4f` (Session 15).
 **BaaS FEP (`baas-fep/`):** unchanged this session — last commit `a9e4cfd` (Session 12).
 
+#### Figma designs (SESSION COMPLETION GATE item 7)
+
+Editable **Customers — As Built** frames added to the [NubBank BaaS — Backoffice](https://www.figma.com/design/gEDnLrLD4UrChcND0yCdZ9/NubBank-BaaS-%E2%80%94-Backoffice?node-id=0-1) Figma design file (`gEDnLrLD4UrChcND0yCdZ9`), grouped in section **"Customers — As Built (shipped UI · Session 16)"** (`138:2`). Built natively via `use_figma` — real frames, auto-layout, selectable text, reusing the existing **NubBank Tokens** variable collection + Instrument Sans (not screenshots). The original canonical frames are preserved untouched (reconciliation **option B** — design target + shipped reality side by side).
+
+| As-Built frame | Node | Mirrors |
+|---|---|---|
+| Customers — As Built · List | `113:2` | Name/Email/External-ref/KYC columns, search + "All statuses" filter, ACTIVE/PENDING KYC/SUSPENDED/CLOSED badges |
+| Customers — As Built · Detail | `113:287` | Masked BVN/NIN + Gender profile grid, lean KYC card, KYC history timeline (state-machine transitions) |
+| Customers — As Built · New customer | `113:523` | First/Last name, Email, Phone, DOB, Gender, External ref, BVN, NIN, **Save** |
+| Customers — As Built · KYC action | `113:848` | Reason textarea + ACTIVE → SUSPENDED transition note + Confirm |
+
+> Gate item 7 was added Session 16 (PR #30); these frames are its first application. Going forward, every `baas-backoffice` module ships its editable Figma frames the same session.
+
 ---
 
 ### Session 15 — 2026-06-10
