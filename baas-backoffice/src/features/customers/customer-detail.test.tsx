@@ -78,7 +78,10 @@ describe('CustomerDetail', () => {
   });
 
   it('activates a customer through the modal', async () => {
-    const post = vi.fn(async () => ({
+    const post = vi.fn(async (
+      _path: string,
+      _opts: { params?: { path?: { id?: string } }; body?: { reason?: string } },
+    ) => ({
       data: { data: { id: 'c1' }, meta: null, errors: null },
       error: undefined,
       response: new Response(null, { status: 200 }),
@@ -96,7 +99,7 @@ describe('CustomerDetail', () => {
     await waitFor(() => expect(post).toHaveBeenCalled());
     // useKycTransition POSTs to the literal path template `/baas/v1/customers/{id}/${command}`
     // (the real id `c1` travels via params.path.id), with the reason in the request body.
-    const [path, opts] = post.mock.calls[0] as unknown as [string, { body?: { reason?: string } }];
+    const [path, opts] = post.mock.calls[0];
     expect(path).toBe('/baas/v1/customers/{id}/activate');
     expect(opts?.body).toMatchObject({ reason: 'kyc done' });
   });
