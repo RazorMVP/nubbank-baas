@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { RequirePermission } from '@/components/require-permission';
 import { PERMISSIONS } from '@/lib/rbac';
-import { humanizeStatus, formatDateTime } from '@/lib/format';
+import { formatDateTime } from '@/lib/format';
 import {
   useCustomer,
   useCustomerKycEvents,
@@ -26,6 +26,8 @@ const ACTIONS: Record<KycStatus, KycCommand[]> = {
   CLOSED: [],
 };
 
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function CustomerDetail() {
   const { id = '' } = useParams();
   const customer = useCustomer(id);
@@ -35,10 +37,12 @@ export function CustomerDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [action, setAction] = useState<KycCommand | null>(null);
 
-  if (customer.isLoading) return <p className="text-muted">Loading…</p>;
-  if (customer.isError || !customer.data) return <p className="text-danger">Customer not found.</p>;
+  if (customer.isLoading) return <p className="px-4 py-10 text-center text-sm text-muted">Loading…</p>;
+  if (customer.isError || !customer.data)
+    return <p className="px-4 py-10 text-center text-sm text-danger">Customer not found.</p>;
 
   const c = customer.data;
+  // ?? [] guards against an out-of-union kycStatus arriving from the wire (TS can't prove wire data; .map on undefined would crash the page).
   const actions = ACTIONS[c.kycStatus] ?? [];
 
   return (
@@ -59,7 +63,7 @@ export function CustomerDetail() {
           <div className="flex gap-2">
             {actions.map((cmd) => (
               <Button key={cmd} variant="outline" onClick={() => setAction(cmd)}>
-                {humanizeStatus(cmd.charAt(0).toUpperCase() + cmd.slice(1))}
+                {capitalize(cmd)}
               </Button>
             ))}
             <Button onClick={() => setEditOpen(true)}>Edit</Button>
