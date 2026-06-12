@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { type ColumnDef } from '@tanstack/react-table';
+import { createColumnHelper } from '@tanstack/react-table';
 import { DataTable } from '@/components/data-table';
+import { PageHeader } from '@/components/page-header';
+import { RequirePermission } from '@/components/require-permission';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/auth/context';
-import { hasPermission, PERMISSIONS } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/rbac';
 import {
   useCustomers,
   useCreateCustomer,
@@ -19,9 +20,36 @@ import type { CustomerFormValues } from './customer-form';
 
 const STATUSES: Array<KycStatus | ''> = ['', 'PENDING_KYC', 'ACTIVE', 'SUSPENDED', 'CLOSED'];
 
+const col = createColumnHelper<CustomerRow>();
+// All display() columns so every TValue is unknown — a typed accessor (e.g. kycStatus: KycStatus)
+// would make the helper array heterogeneous in TValue, which TanStack can't unify to one ColumnDef.
+const columns = [
+  col.display({
+    id: 'name',
+    header: 'Name',
+    cell: (ctx) => (
+      <Link
+        to={`/customers/${ctx.row.original.id}`}
+        className="font-medium text-brand-primary"
+      >
+        {ctx.row.original.firstName} {ctx.row.original.lastName}
+      </Link>
+    ),
+  }),
+  col.display({ id: 'email', header: 'Email', cell: (ctx) => ctx.row.original.email }),
+  col.display({
+    id: 'externalReference',
+    header: 'External ref',
+    cell: (ctx) => ctx.row.original.externalReference,
+  }),
+  col.display({
+    id: 'kyc',
+    header: 'KYC',
+    cell: (ctx) => <KycStatusBadge status={ctx.row.original.kycStatus} />,
+  }),
+];
+
 export function CustomersList() {
-  const auth = useAuth();
-  const canCreate = hasPermission(auth.getAuthorities(), PERMISSIONS.CREATE_CUSTOMER);
   const [search, setSearch] = useState('');
   const [kycStatus, setKycStatus] = useState<KycStatus | ''>('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -34,29 +62,16 @@ export function CustomersList() {
     kycStatus: kycStatus || undefined,
   });
 
-  const columns = useMemo<ColumnDef<CustomerRow>[]>(
-    () => [
-      {
-        header: 'Name',
-        cell: ({ row }) => (
-          <Link to={`/customers/${row.original.id}`} className="font-medium text-brand-primary">
-            {row.original.firstName} {row.original.lastName}
-          </Link>
-        ),
-      },
-      { header: 'Email', accessorKey: 'email' },
-      { header: 'External ref', accessorKey: 'externalReference' },
-      { header: 'KYC', cell: ({ row }) => <KycStatusBadge status={row.original.kycStatus} /> },
-    ],
-    [],
-  );
-
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Customers</h1>
-        {canCreate && <Button onClick={() => setCreateOpen(true)}>New customer</Button>}
-      </div>
+      <PageHeader
+        title="Customers"
+        action={
+          <RequirePermission code={PERMISSIONS.CREATE_CUSTOMER}>
+            <Button onClick={() => setCreateOpen(true)}>New customer</Button>
+          </RequirePermission>
+        }
+      />
       <div className="flex gap-2">
         <Input
           placeholder="Search name or external ref…"
@@ -65,22 +80,27 @@ export function CustomersList() {
           className="max-w-xs"
         />
         <select
+          aria-label="Filter by KYC status"
           value={kycStatus}
           onChange={(e) => setKycStatus(e.target.value as KycStatus | '')}
-          className="rounded-[var(--radius-control)] border border-border px-3 text-sm"
+          className="h-9 rounded-[var(--radius-control)] border border-border bg-surface px-3 text-sm shadow-sm"
         >
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s ? s.replace('_', ' ') : 'All statuses'}
+              {s ? s.replaceAll('_', ' ') : 'All statuses'}
             </option>
           ))}
         </select>
       </div>
-      <DataTable
-        columns={columns}
-        data={query.data?.items ?? []}
-        emptyMessage={query.isLoading ? 'Loading…' : 'No customers'}
-      />
+      {query.isError ? (
+        <p className="px-4 py-10 text-center text-sm text-danger">Couldn't load customers.</p>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={query.data?.items ?? []}
+          emptyMessage={query.isLoading ? 'Loading…' : 'No customers'}
+        />
+      )}
       <CustomerFormModal
         open={createOpen}
         mode="create"

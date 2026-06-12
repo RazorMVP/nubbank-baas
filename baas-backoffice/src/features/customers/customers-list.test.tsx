@@ -32,6 +32,7 @@ function wrap(
   );
 }
 
+// Double-nested: outer `data` is the openapi-fetch response body; inner `data` is the Envelope<Page<T>> payload.
 const pageOf = (rows: unknown[]) => ({
   data: {
     data: { content: rows, number: 0, size: 20, totalElements: rows.length, totalPages: 1 },

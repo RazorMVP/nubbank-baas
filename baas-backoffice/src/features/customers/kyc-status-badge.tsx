@@ -9,5 +9,5 @@ const VARIANT: Record<KycStatus, StatusVariant> = {
 };
 
 export function KycStatusBadge({ status }: { status: KycStatus }) {
-  return <StatusBadge label={status.replace('_', ' ')} variant={VARIANT[status] ?? 'neutral'} />;
+  return <StatusBadge label={status.replaceAll('_', ' ')} variant={VARIANT[status]} />;
 }
