@@ -69,6 +69,8 @@ WITHDRAW · READ_LOAN · CREATE_LOAN · APPROVE_LOAN · DISBURSE_LOAN · INITIAT
 | `/login` | `Login` | public | ✅ live |
 | `/auth/callback` | `AuthCallback` | public | ✅ live (PKCE redirect completion) |
 | `/` (index) | `Dashboard` | `RequireAuth` → `AppShell` | ✅ live |
+| `/customers` | `CustomersList` | `RequireAuth` → `AppShell` → `RequireRoutePermission(READ_CUSTOMER)` | ✅ live |
+| `/customers/:id` | `CustomerDetail` | `RequireAuth` → `AppShell` → `RequireRoutePermission(READ_CUSTOMER)` | ✅ live |
 
 Domain routes below are **scaffolded in the sidebar nav** (`src/layout/nav-config.ts`) but not yet
 wired into the router — each lands with its per-domain sub-plan. The nav filters items by the
@@ -77,7 +79,7 @@ operator's authorities via `visibleNav()`.
 | Nav group | Item | Route | Required permission |
 |-----------|------|-------|---------------------|
 | Overview | Dashboard | `/` | — (always visible) |
-| Banking | Customers | `/customers` | `READ_CUSTOMER` |
+| Banking | Customers | `/customers` ✅ wired | `READ_CUSTOMER` |
 | Banking | Accounts | `/accounts` | `READ_ACCOUNT` |
 | Banking | Deposits | `/deposits` | `READ_ACCOUNT` |
 | Banking | Loans | `/loans` | `READ_LOAN` |
@@ -104,12 +106,33 @@ Mutation errors are toasted globally via the `MutationCache` `onError` in `src/a
 
 | Endpoint | Used by | Notes |
 |----------|---------|-------|
-| `GET /baas/v1/customers` | `useRecentCustomers` | Recent-customers table (Spring `Page`) |
+| `GET /baas/v1/customers` | `useRecentCustomers` | Recent-customers table (Spring `Page`) — dashboard widget |
+| `GET /baas/v1/customers` | `useCustomers` | Paginated list with `kycStatus` and `search` query filters |
+| `POST /baas/v1/customers` | `useCreateCustomer` | Create customer; optional fields (`email`, `phone`, `dateOfBirth`, `gender`, `externalReference`, `bvn`, `nin`) omitted when undefined |
+| `GET /baas/v1/customers/{id}` | `useCustomer` | Customer detail; BVN and NIN returned masked (`bvnMasked`, `ninMasked`) |
+| `PUT /baas/v1/customers/{id}` | `useUpdateCustomer` | Profile update (name, email, phone, DOB, gender); invalidates detail + list |
+| `POST /baas/v1/customers/{id}/{activate&#124;suspend&#124;reactivate&#124;close}` | `useKycTransition` | KYC state-machine transitions; `reason` body field is required (400 on blank) |
+| `GET /baas/v1/customers/{id}/kyc-events` | `useCustomerKycEvents` | KYC history timeline (`fromStatus`, `toStatus`, `reason`, `changedBy`, `changedAt`) |
 | `GET /baas/v1/dashboard/summary` | `useDashboardSummary` | KPI tiles (customers, deposits, KYC-pending, cards). `cardsIssued` may be null → em-dash tile |
 | `GET /baas/v1/operators/me` | PKCE provider (`fetchOperatorAuthorities`) | Authoritative operator permission codes for RBAC (not in the Keycloak token) |
 
 New paths are hand-seeded into `src/api/schema.d.ts` (the committed OpenAPI snapshot) until the next
 `npm run gen:api` against a live engine regenerates it.
+
+### Known follow-ups (Customers track)
+
+- **Customers query-key namespacing review** — `useCustomers` (list page) and the dashboard's
+  `useRecentCustomers` widget both key under `qk.list('customers', …)`. Their argument objects differ
+  (full-list filters vs the recent-widget's size param), so the keys are distinct and there is no live
+  cache collision today; a deliberate review should confirm the namespacing is intentional and consider
+  a dedicated `['customers', 'recent']` key for the dashboard widget to make the separation explicit.
+  (Surfaced FE Task 1.)
+
+- **`CommandModal` reset-on-open** — the shared `CommandModal` does not `form.reset()` when
+  reopened, so the Customers track mounts its create/edit and KYC modals conditionally
+  (`{open && <Modal />}`) to get a fresh form on each open. A Foundation-level fix — resetting the
+  form on the `open` transition inside `CommandModal` — would let always-mounted modals reset too and
+  remove the need for the conditional-mount workaround. (Surfaced FE Tasks 5–6.)
 
 ## Local development
 

@@ -377,9 +377,9 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Persistence** | spring-boot-starter-jdbc + Flyway | `db/migration/fep/V1__authorization_log.sql`; `AuthorizationAuditService` (JdbcTemplate, best-effort — a write failure never alters the ISO 8583 response); stores BIN + last4 only |
 | **Last git commit** | `a9e4cfd` | Session 12 — Stage 5 FEP audit log (DEF-1C-24): datastore + migration + handler wiring; 55 tests passing |
 
-### BaaS Backoffice Portal (`baas-backoffice/`) — FOUNDATION BUILT (Session 14)
+### BaaS Backoffice Portal (`baas-backoffice/`) — FOUNDATION + CUSTOMERS TRACK (Sessions 14–16)
 
-Operations console for bank staff. **Foundation complete** (`57ffbdd`, 69 tests); per-domain screens land via sub-plans. Ops reference: `docs/backoffice-operations.md`. Port 3001.
+Operations console for bank staff. **Foundation complete** (`57ffbdd`, 69 tests); **Customers — first per-domain track ✅ (Session 16, `373ebcd`, 101 unit + 1 Playwright e2e)** on its own PR (`feat/baas-backoffice-customers`); the engine half is in PR #28 (`feat/baas-engine-customer-lifecycle`, 166 tests, unmerged). Remaining per-domain screens land via sub-plans. Ops reference: `docs/backoffice-operations.md`. Port 3001.
 
 | Component | Version | Notes |
 |-----------|---------|-------|
@@ -393,7 +393,7 @@ Operations console for bank staff. **Foundation complete** (`57ffbdd`, 69 tests)
 | **Auth** | `oidc-client-ts` v3 (PKCE) / dev-token | Hybrid, env-selected (`VITE_DEV_AUTH`) |
 | **Test** | Vitest 3 + RTL · Playwright (e2e) | 25 test files, 69 tests |
 | **Node** | 22 | `node:22-alpine` build → `nginx:1.27-alpine` serve |
-| **Last git commit** | `281739a` | Session 15 — dashboard tiles wired + PKCE `/me` authorities (DEF-1C-28/29); 75 tests |
+| **Last git commit** | `373ebcd` | Session 16 — Customers domain track (first per-domain track: list/detail/create/edit, masked-PII profile, KYC state-machine actions + history); 101 unit + 1 Playwright e2e. Engine half in PR #28 (unmerged). |
 
 ### BaaS Developer Portal (`baas-portal/`) — NOT YET BUILT
 
@@ -633,7 +633,7 @@ maps the decision to DE39. Built against a **mocked `CardClient`** — live Card
 | Module | Sub-plan | Status |
 |--------|---------|--------|
 | baas-ncube (CBN format + Ncube) | 1B | ✅ Complete (Session 2) |
-| baas-backoffice (React operations portal) | 1C | 🟡 Foundation ✅ (Session 14) — per-domain screens pending |
+| baas-backoffice (React operations portal) | 1C | 🟡 Foundation ✅ (Session 14) · Customers — first per-domain track ✅ (Session 16, `373ebcd`; engine half in PR #28) — remaining per-domain screens pending |
 | baas-portal (React developer portal) | 1D | ⬜ Not started |
 | Infrastructure (Docker + CI) | 1E | ⬜ Not started |
 | KYC delegation + Ncube live | Phase 2 | ⬜ Not started |
@@ -802,6 +802,8 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | **(Stage 5) FEP Testcontainers fails with docker-java "Status 400" under the FEP classpath** — engine/card Testcontainers work with identical docker-java 3.4.0, but the FEP module's classpath triggers a docker-java ping `400` even with Docker healthy. | FEP tests use **H2 in PostgreSQL mode** (`jdbc:h2:mem:...;MODE=PostgreSQL`) — no Docker dependency; production stays Postgres. The `fep` migration is cross-compatible: app-generated `UUID` id (no `gen_random_uuid()` default) + `TIMESTAMP WITH TIME ZONE` + `DEFAULT CURRENT_TIMESTAMP`. engine/card still verify the real-Postgres Flyway path under Testcontainers. |
 | **(k8s) Inter-service base-URL defaults point at the container port, but every `baas-*` Service fronts pods on port 80** — app defaults are `http://baas-card:8081` / `http://baas-ncube:8082` / `http://baas-engine:8080`, but the ClusterIP Services expose `port: 80` (→ `targetPort: 808x`). Hitting `:808x` connection-refuses against the Service. (Compose is unaffected — there the service name resolves straight to the container port.) | Override every inter-service URL to `:80` in the k8s ConfigMaps: `ENGINE_BASE_URL`/`CARD_BASE_URL`/`NCUBE_BASE_URL = http://baas-<svc>:80`. NetworkPolicy is the opposite — it matches the **pod** port (8080/8081/8082), not the Service port. Don't confuse the two layers. |
 | **(k8s) FEP runs FIXED replicas, NO HPA** — the FEP is an ISO 8583 TCP socket server; terminals hold long-lived connections and a naive CPU HPA scales pods that existing sockets never migrate to, while scale-down severs live financial sessions. | Keep `replicas: 2`, no `HorizontalPodAutoscaler`. Safe for correctness because debit idempotency is enforced at the engine (`card_auth_debit.auth_key` UNIQUE) — two FEP pods can't double-debit. Raw ISO 8583 TCP also needs an L4 `LoadBalancer` (not the L7 Ingress); use `externalTrafficPolicy: Local` to preserve the client source IP for acquirer allow-listing + audit. |
+| **(baas-backoffice) `CommandModal` has no reset-on-open** — the shared `CommandModal` does NOT call `form.reset()` when it reopens, so a closed-then-reopened modal shows the previous submission's field values (stale form). | Conditionally mount the modal — `{open && <Modal/>}` — so React unmounts/remounts it each open and the form initialises fresh. Used by every Customers modal (create, edit, KYC action) (Session 16). A Foundation-level reset-on-open in `CommandModal` would remove this workaround (open follow-up in `docs/backoffice-operations.md`). |
+| **(baas-backoffice) status/date display must go through `src/lib/format.ts`** — `humanizeStatus` / `formatDateTime` are the single source for rendering enum statuses and timestamps (badge, history, filter dropdown). | Never re-inline `replaceAll('_',' ')` or `toLocaleString()` at a call site — import from `src/lib/format.ts` so every screen formats identically (Session 16). |
 
 ---
 
