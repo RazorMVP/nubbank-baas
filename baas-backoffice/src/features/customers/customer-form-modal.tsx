@@ -30,13 +30,13 @@ export function CustomerFormModal({
   };
 
   return (
-    <CommandModal
+    <CommandModal<CustomerFormValues>
       open={open}
       onOpenChange={onOpenChange}
       title={mode === 'create' ? 'New customer' : 'Edit customer'}
       schema={customerFormSchema}
-      defaultValues={base as never}
-      onSubmit={onSubmit as never}
+      defaultValues={base}
+      onSubmit={onSubmit}
     >
       {(form) => (
         <>
@@ -49,13 +49,13 @@ export function CustomerFormModal({
           <FormField label="Email" error={form.formState.errors.email?.message}>
             <Input {...form.register('email')} />
           </FormField>
-          <FormField label="Phone">
+          <FormField label="Phone" error={form.formState.errors.phone?.message}>
             <Input {...form.register('phone')} />
           </FormField>
-          <FormField label="Date of birth">
+          <FormField label="Date of birth" error={form.formState.errors.dateOfBirth?.message}>
             <Input type="date" {...form.register('dateOfBirth')} />
           </FormField>
-          <FormField label="Gender">
+          <FormField label="Gender" error={form.formState.errors.gender?.message}>
             <Input {...form.register('gender')} />
           </FormField>
           {mode === 'create' && (
