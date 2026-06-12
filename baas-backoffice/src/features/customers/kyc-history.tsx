@@ -1,3 +1,4 @@
+import { formatDateTime, humanizeStatus } from '@/lib/format';
 import type { KycEvent } from './use-customers';
 
 export function KycHistory({ events }: { events: KycEvent[] }) {
@@ -12,11 +13,11 @@ export function KycHistory({ events }: { events: KycEvent[] }) {
           className="rounded-[var(--radius-control)] border border-border p-3 text-sm"
         >
           <div className="font-medium">
-            {e.fromStatus} → {e.toStatus}
+            {humanizeStatus(e.fromStatus)} → {humanizeStatus(e.toStatus)}
           </div>
           <div className="text-muted">{e.reason}</div>
           <div className="mt-1 text-xs text-muted">
-            {e.changedBy ?? '—'} · {new Date(e.changedAt).toLocaleString()}
+            {e.changedBy ?? '—'} · {formatDateTime(e.changedAt)}
           </div>
         </li>
       ))}

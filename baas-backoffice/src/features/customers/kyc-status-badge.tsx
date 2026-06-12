@@ -1,4 +1,5 @@
 import { StatusBadge, type StatusVariant } from '@/components/status-badge';
+import { humanizeStatus } from '@/lib/format';
 import type { KycStatus } from './use-customers';
 
 const VARIANT: Record<KycStatus, StatusVariant> = {
@@ -9,5 +10,5 @@ const VARIANT: Record<KycStatus, StatusVariant> = {
 };
 
 export function KycStatusBadge({ status }: { status: KycStatus }) {
-  return <StatusBadge label={status.replaceAll('_', ' ')} variant={VARIANT[status]} />;
+  return <StatusBadge label={humanizeStatus(status)} variant={VARIANT[status]} />;
 }

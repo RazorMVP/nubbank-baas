@@ -35,7 +35,7 @@ describe('KycHistory', () => {
       changedAt: '2026-06-10T10:00:00Z',
     };
     render(<KycHistory events={[event]} />);
-    expect(screen.getByText(/PENDING_KYC → ACTIVE/)).toBeInTheDocument();
+    expect(screen.getByText(/PENDING KYC → ACTIVE/)).toBeInTheDocument();
     expect(screen.getByText('verified')).toBeInTheDocument();
     expect(screen.getByText(/op@x\.com/)).toBeInTheDocument();
   });

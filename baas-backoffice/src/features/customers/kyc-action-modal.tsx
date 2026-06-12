@@ -4,7 +4,7 @@ import { FormField } from '@/components/form-field';
 import { Input } from '@/components/ui/input';
 import type { KycCommand } from './use-customers';
 
-const schema = z.object({ reason: z.string().min(1, 'Reason is required') });
+const schema = z.object({ reason: z.string().trim().min(1, 'Reason is required') });
 
 const LABEL: Record<KycCommand, string> = {
   activate: 'Activate customer',
