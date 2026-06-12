@@ -4,7 +4,9 @@ import { test, expect } from '@playwright/test';
 // Walks open /customers → create a customer → open detail → activate via the KYC
 // modal → see the humanised history transition.
 test('customer lifecycle happy path', async ({ page }) => {
-  const customers: any[] = [];
+  type StubCustomer = { id: string; kycStatus: string; [k: string]: unknown };
+  const customers: StubCustomer[] = [];
+  const idFromPath = (u: string) => u.split('/customers/')[1]?.split(/[/?]/)[0];
   await page.route('**/baas/v1/customers**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
@@ -15,8 +17,9 @@ test('customer lifecycle happy path', async ({ page }) => {
       return route.fulfill({ json: { data: c, meta: null, errors: null } });
     }
     if (url.includes('/activate')) {
-      customers[0].kycStatus = 'ACTIVE';
-      return route.fulfill({ json: { data: customers[0], meta: null, errors: null } });
+      const target = customers.find((c) => c.id === idFromPath(url));
+      if (target) target.kycStatus = 'ACTIVE';
+      return route.fulfill({ json: { data: target, meta: null, errors: null } });
     }
     if (url.includes('/kyc-events')) {
       return route.fulfill({
@@ -36,8 +39,9 @@ test('customer lifecycle happy path', async ({ page }) => {
         },
       });
     }
-    if (url.includes('/customers/c1')) {
-      return route.fulfill({ json: { data: customers[0], meta: null, errors: null } });
+    const id = idFromPath(url);
+    if (id) {
+      return route.fulfill({ json: { data: customers.find((c) => c.id === id), meta: null, errors: null } });
     }
     return route.fulfill({
       json: {
