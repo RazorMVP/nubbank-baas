@@ -101,15 +101,17 @@ export function CustomersList() {
           emptyMessage={query.isLoading ? 'Loading…' : 'No customers'}
         />
       )}
-      <CustomerFormModal
-        open={createOpen}
-        mode="create"
-        onOpenChange={setCreateOpen}
-        onSubmit={async (v) => {
-          await create.mutateAsync(cleanCreate(v));
-          setCreateOpen(false);
-        }}
-      />
+      {createOpen && (
+        <CustomerFormModal
+          open
+          mode="create"
+          onOpenChange={setCreateOpen}
+          onSubmit={async (v) => {
+            await create.mutateAsync(cleanCreate(v));
+            setCreateOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
