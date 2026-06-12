@@ -25,6 +25,8 @@ describe('CustomerFormModal', () => {
   it('omits BVN/NIN in edit mode', () => {
     render(<CustomerFormModal open mode="edit" onOpenChange={() => {}} onSubmit={vi.fn()}
       defaultValues={{ firstName: 'A', lastName: 'B' }} />);
+    expect(screen.queryByLabelText(/external reference/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/bvn/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/nin/i)).not.toBeInTheDocument();
   });
 });
