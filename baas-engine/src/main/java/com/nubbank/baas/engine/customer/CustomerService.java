@@ -6,9 +6,13 @@ import com.nubbank.baas.engine.customer.dto.*;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -16,8 +20,12 @@ import java.util.UUID;
 @Slf4j
 public class CustomerService {
 
+    public enum KycCommand { ACTIVATE, SUSPEND, REACTIVATE, CLOSE }
+
     private final CustomerRepository customerRepo;
+    private final CustomerKycEventRepository eventRepo;
     private final ComplianceService complianceService;
+    private final NameTokenizer nameTokenizer;
 
     @Transactional
     public CustomerResponse create(CreateCustomerRequest req) {
@@ -30,12 +38,15 @@ public class CustomerService {
 
         Customer customer = Customer.builder()
             .externalReference(req.externalReference())
-            .firstNameEncrypted(req.firstName())    // Phase 2: encrypt with Jasypt
+            .firstNameEncrypted(req.firstName())
             .lastNameEncrypted(req.lastName())
-            .emailEncrypted(req.email())
-            .phoneEncrypted(req.phone())
+            .emailEncrypted(blankToNull(req.email()))
+            .phoneEncrypted(blankToNull(req.phone()))
             .bvnEncrypted(req.bvn())
             .ninEncrypted(req.nin())
+            .gender(blankToNull(req.gender()))
+            .dateOfBirth(parseDob(req.dateOfBirth()))
+            .nameSearchTokens(nameTokenizer.tokensForName(req.firstName(), req.lastName()))
             .build();
 
         Customer saved = customerRepo.save(customer);
@@ -51,18 +62,129 @@ public class CustomerService {
     }
 
     @Transactional(readOnly = true)
-    public CustomerResponse getById(UUID id) {
+    public CustomerDetailResponse getById(UUID id) {
         requireContext();
-        return toResponse(customerRepo.findById(id)
+        Customer c = customerRepo.findById(id)
             .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
-                "Customer " + id + " not found")));
+                "Customer " + id + " not found"));
+        return getByIdInternal(c);
+    }
+
+    private CustomerDetailResponse getByIdInternal(Customer c) {
+        return new CustomerDetailResponse(c.getId(), c.getExternalReference(),
+            c.getFirstNameEncrypted(), c.getLastNameEncrypted(), c.getEmailEncrypted(),
+            c.getPhoneEncrypted(), c.getDateOfBirth(), c.getGender(),
+            mask(c.getBvnEncrypted()), mask(c.getNinEncrypted()),
+            c.getKycStatus(), c.getKycLevel(), c.getCreatedAt(), c.getUpdatedAt());
+    }
+
+    @Transactional
+    public CustomerDetailResponse update(UUID id, UpdateCustomerRequest req) {
+        requireContext();
+        Customer c = customerRepo.findById(id)
+            .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
+                "Customer " + id + " not found"));
+        c.setFirstNameEncrypted(req.firstName());
+        c.setLastNameEncrypted(req.lastName());
+        c.setEmailEncrypted(blankToNull(req.email()));
+        c.setPhoneEncrypted(blankToNull(req.phone()));
+        c.setGender(blankToNull(req.gender()));
+        c.setDateOfBirth(parseDob(req.dateOfBirth()));
+        c.setNameSearchTokens(nameTokenizer.tokensForName(req.firstName(), req.lastName()));
+        customerRepo.save(c);
+        return getByIdInternal(c);
+    }
+
+    @Transactional
+    public CustomerDetailResponse transition(UUID id, KycCommand command, String reason) {
+        requireContext();
+        Customer c = customerRepo.findById(id)
+            .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
+                "Customer " + id + " not found"));
+        KycStatus from = c.getKycStatus();
+        KycStatus to = target(from, command);
+        if (to == null) {
+            throw BaasException.conflict("INVALID_KYC_TRANSITION",
+                "Cannot " + command + " a customer in status " + from);
+        }
+        c.setKycStatus(to);
+        customerRepo.save(c);
+        eventRepo.save(CustomerKycEvent.builder()
+            .customerId(id).fromStatus(from.name()).toStatus(to.name())
+            .reason(reason).changedBy(currentPrincipal()).build());
+        return getByIdInternal(c);
+    }
+
+    private static KycStatus target(KycStatus from, KycCommand command) {
+        return switch (command) {
+            case ACTIVATE   -> from == KycStatus.PENDING_KYC ? KycStatus.ACTIVE : null;
+            case SUSPEND    -> from == KycStatus.ACTIVE      ? KycStatus.SUSPENDED : null;
+            case REACTIVATE -> from == KycStatus.SUSPENDED   ? KycStatus.ACTIVE : null;
+            case CLOSE      -> (from == KycStatus.ACTIVE || from == KycStatus.SUSPENDED)
+                                   ? KycStatus.CLOSED : null;
+        };
+    }
+
+    private String currentPrincipal() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return null;
+        Object principal = auth.getPrincipal();
+        return (principal == null || "anonymousUser".equals(principal)) ? null : principal.toString();
     }
 
     @Transactional(readOnly = true)
-    public Page<CustomerResponse> list(int page, int size) {
+    public List<CustomerKycEventResponse> kycEvents(UUID id) {
         requireContext();
-        return customerRepo.findAll(PageRequest.of(page, size, Sort.by("createdAt").descending()))
-            .map(this::toResponse);
+        if (!customerRepo.existsById(id)) {
+            throw BaasException.notFound("CUSTOMER_NOT_FOUND", "Customer " + id + " not found");
+        }
+        return eventRepo.findByCustomerIdOrderByChangedAtDesc(id).stream()
+            .map(e -> new CustomerKycEventResponse(e.getId(), e.getFromStatus(), e.getToStatus(),
+                e.getReason(), e.getChangedBy(), e.getChangedAt()))
+            .toList();
+    }
+
+    /** Show only the last 4 digits, never the full identity value. */
+    private static String mask(String value) {
+        if (value == null || value.isBlank()) return null;
+        String last4 = value.length() <= 4 ? value : value.substring(value.length() - 4);
+        return "•••••••" + last4;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CustomerResponse> list(int page, int size, String kycStatus, String search) {
+        requireContext();
+        boolean hasSearch = search != null && !search.isBlank();
+        boolean hasTokens = false;
+        String tokensLiteral = "{}";
+        String extRef = null;
+        if (hasSearch) {
+            List<String> hashes = new ArrayList<>();
+            for (String w : search.trim().split("\\s+")) {
+                if (w.length() >= 2) hashes.add(nameTokenizer.queryToken(w));
+            }
+            hasTokens = !hashes.isEmpty();
+            tokensLiteral = "{" + String.join(",", hashes) + "}";
+            extRef = "%" + search.trim() + "%";
+        }
+        return customerRepo.search(kycStatus, hasSearch, hasTokens, tokensLiteral, extRef,
+                PageRequest.of(page, size)).map(this::toResponse);
+    }
+
+    /** Optional free-text fields: treat a blank string as absent (store null, not ""). */
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
+    }
+
+    /** Parse an optional ISO-8601 (yyyy-MM-dd) date of birth; a malformed value is a 400, not a 500. */
+    private static java.time.LocalDate parseDob(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(value);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw BaasException.badRequest("INVALID_DATE_OF_BIRTH",
+                "dateOfBirth must be ISO-8601 (yyyy-MM-dd)");
+        }
     }
 
     private void requireContext() {

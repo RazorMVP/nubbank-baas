@@ -384,6 +384,204 @@
   </table>
 </section>
 
+<section id="customers">
+  <h2>Customers <span class="pill">baas-engine · partner-scoped</span></h2>
+  <p>
+    Customer lifecycle management for a partner's end-customers. Every request is automatically scoped to the
+    caller's partner schema. PII fields (BVN, NIN, phone, date of birth) are stored AES-GCM encrypted at rest
+    via <code>EncryptedStringConverter</code>; blind-index columns enable equality/prefix search without
+    decrypting every row. BVN and NIN are <strong>write-once at creation only</strong> and never returned
+    in full (last 4 digits masked).
+  </p>
+  <div class="note"><strong>Identity verification deferred:</strong> Phase 1C captures BVN/NIN and displays them masked, but does <em>not</em> validate them against NIBSS/CBN. Real KYC-level progression driven by identity verification is deferred to Phase 2 (DEF-1C-30).</div>
+
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Auth</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/customers</span></td>
+        <td><code>CREATE_CUSTOMER</code></td>
+        <td>Create a customer. Returns <code>201</code>. Malformed <code>dateOfBirth</code> (not <code>yyyy-MM-dd</code>) → <code>400 INVALID_DATE_OF_BIRTH</code>. BVN and NIN are optional at creation but are immutable afterwards.</td>
+        <td>
+          <strong>Request</strong> <code>CreateCustomerRequest</code>:
+          <pre>{
+  "firstName": "Amara",              // required
+  "lastName": "Okafor",             // required
+  "email": "amara@example.com",     // optional
+  "phone": "+2348012345678",        // optional
+  "dateOfBirth": "1990-05-14",      // optional, yyyy-MM-dd
+  "gender": "FEMALE",               // optional
+  "externalReference": "cust-001",  // optional, max 100 chars
+  "bvn": "12345678901",             // optional; write-once
+  "nin": "98765432100"              // optional; write-once
+}</pre>
+          <strong>Response</strong> <code>CustomerResponse</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "externalReference": "cust-001",
+  "firstName": "Amara",
+  "lastName": "Okafor",
+  "email": "amara@example.com",
+  "kycStatus": "PENDING_KYC",
+  "kycLevel": "TIER_0",
+  "createdAt": "&lt;timestamp&gt;"
+}</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/customers</span></td>
+        <td><code>READ_CUSTOMER</code></td>
+        <td>
+          Paginated customer list. Returns <code>200</code>.
+          <br><br>
+          <strong>Query params:</strong>
+          <ul>
+            <li><code>page</code> — zero-based page index (default <code>0</code>)</li>
+            <li><code>size</code> — page size (default <code>20</code>)</li>
+            <li><code>kycStatus</code> — optional filter: <code>PENDING_KYC</code> | <code>ACTIVE</code> | <code>SUSPENDED</code> | <code>CLOSED</code></li>
+            <li><code>search</code> — optional free-text; matches name prefix via blind index OR <code>externalReference</code> substring</li>
+          </ul>
+        </td>
+        <td>
+          <strong>Response</strong>: Spring <code>Page&lt;CustomerResponse&gt;</code> in the envelope <code>data</code> field. Each item uses the lean <code>CustomerResponse</code> shape (no PII — phone, dateOfBirth, BVN, NIN are omitted):
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "externalReference": "cust-001",
+  "firstName": "Amara",
+  "lastName": "Okafor",
+  "email": "amara@example.com",
+  "kycStatus": "PENDING_KYC",
+  "kycLevel": "TIER_0",
+  "createdAt": "&lt;timestamp&gt;"
+}</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/customers/{id}</span></td>
+        <td><code>READ_CUSTOMER</code></td>
+        <td>Full customer detail. Returns <code>200</code> or <code>404 CUSTOMER_NOT_FOUND</code>. BVN and NIN are returned masked to the last 4 digits only (<code>•••••••1234</code>).</td>
+        <td>
+          <strong>Response</strong> <code>CustomerDetailResponse</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "externalReference": "cust-001",
+  "firstName": "Amara",
+  "lastName": "Okafor",
+  "email": "amara@example.com",
+  "phone": "+2348012345678",
+  "dateOfBirth": "1990-05-14",
+  "gender": "FEMALE",
+  "bvnMasked": "•••••••8901",  // last 4 only
+  "ninMasked": "•••••••2100",  // last 4 only
+  "kycStatus": "ACTIVE",
+  "kycLevel": "TIER_0",
+  "createdAt": "&lt;timestamp&gt;",
+  "updatedAt": "&lt;timestamp&gt;"
+}</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m put">PUT</span><br><span class="path">/baas/v1/customers/{id}</span></td>
+        <td><code>UPDATE_CUSTOMER</code></td>
+        <td>
+          Edit mutable profile fields. Returns <code>200</code>.
+          Immutable fields (<code>externalReference</code>, BVN, NIN) are <strong>not accepted</strong> on this endpoint.
+          <br><br>
+          Errors: <code>404 CUSTOMER_NOT_FOUND</code>; <code>400</code> on blank <code>firstName</code>/<code>lastName</code>, invalid email, or malformed <code>dateOfBirth</code>.
+        </td>
+        <td>
+          <strong>Request</strong> <code>UpdateCustomerRequest</code>:
+          <pre>{
+  "firstName": "Amara",            // required
+  "lastName": "Okafor-Nwosu",     // required
+  "email": "new@example.com",      // optional, must be valid
+  "phone": "+2348099887766",       // optional
+  "dateOfBirth": "1990-05-14",     // optional, yyyy-MM-dd
+  "gender": "FEMALE"               // optional
+}</pre>
+          <strong>Response</strong>: updated <code>CustomerDetailResponse</code> (same shape as GET detail).
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/customers/{id}/activate</span></td>
+        <td><code>UPDATE_CUSTOMER</code></td>
+        <td>KYC transition <code>PENDING_KYC → ACTIVE</code>. Returns <code>200</code>. Illegal transition → <code>409 INVALID_KYC_TRANSITION</code>.</td>
+        <td>
+          <strong>Request</strong> <code>KycTransitionRequest</code>:
+          <pre>{ "reason": "KYC documents verified" }</pre>
+          <strong>Response</strong>: updated <code>CustomerDetailResponse</code> with <code>kycStatus: "ACTIVE"</code>.
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/customers/{id}/suspend</span></td>
+        <td><code>UPDATE_CUSTOMER</code></td>
+        <td>KYC transition <code>ACTIVE → SUSPENDED</code>. Returns <code>200</code>. Illegal transition → <code>409 INVALID_KYC_TRANSITION</code>.</td>
+        <td>
+          <strong>Request</strong>: <code>{ "reason": "Suspicious activity detected" }</code>
+          <br><strong>Response</strong>: updated <code>CustomerDetailResponse</code> with <code>kycStatus: "SUSPENDED"</code>.
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/customers/{id}/reactivate</span></td>
+        <td><code>UPDATE_CUSTOMER</code></td>
+        <td>KYC transition <code>SUSPENDED → ACTIVE</code>. Returns <code>200</code>. Illegal transition → <code>409 INVALID_KYC_TRANSITION</code>.</td>
+        <td>
+          <strong>Request</strong>: <code>{ "reason": "Suspension lifted after review" }</code>
+          <br><strong>Response</strong>: updated <code>CustomerDetailResponse</code> with <code>kycStatus: "ACTIVE"</code>.
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/customers/{id}/close</span></td>
+        <td><code>UPDATE_CUSTOMER</code></td>
+        <td>KYC transition <code>ACTIVE | SUSPENDED → CLOSED</code> (terminal state — irreversible). Returns <code>200</code>. Illegal transition → <code>409 INVALID_KYC_TRANSITION</code>.</td>
+        <td>
+          <strong>Request</strong>: <code>{ "reason": "Customer requested account closure" }</code>
+          <br><strong>Response</strong>: updated <code>CustomerDetailResponse</code> with <code>kycStatus: "CLOSED"</code>.
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/customers/{id}/kyc-events</span></td>
+        <td><code>READ_CUSTOMER</code></td>
+        <td>KYC transition history for the customer, newest-first. Returns <code>200</code> or <code>404 CUSTOMER_NOT_FOUND</code>.</td>
+        <td>
+          <strong>Response</strong>: <code>List&lt;CustomerKycEventResponse&gt;</code>:
+          <pre>[{
+  "id": "&lt;uuid&gt;",
+  "fromStatus": "PENDING_KYC",
+  "toStatus": "ACTIVE",
+  "reason": "KYC documents verified",
+  "changedBy": "operator@partner.com",
+  "changedAt": "&lt;timestamp&gt;"
+}]</pre>
+        </td>
+      </tr>
+
+    </tbody>
+  </table>
+
+  <h3>KYC status state machine</h3>
+  <table>
+    <thead><tr><th>From</th><th>Command</th><th>To</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>PENDING_KYC</code></td><td><code>/activate</code></td><td><code>ACTIVE</code></td><td>KYC documents verified</td></tr>
+      <tr><td><code>ACTIVE</code></td><td><code>/suspend</code></td><td><code>SUSPENDED</code></td><td>Compliance hold or suspicious activity</td></tr>
+      <tr><td><code>SUSPENDED</code></td><td><code>/reactivate</code></td><td><code>ACTIVE</code></td><td>Suspension lifted</td></tr>
+      <tr><td><code>ACTIVE</code></td><td><code>/close</code></td><td><code>CLOSED</code></td><td>Terminal — irreversible</td></tr>
+      <tr><td><code>SUSPENDED</code></td><td><code>/close</code></td><td><code>CLOSED</code></td><td>Terminal — irreversible</td></tr>
+    </tbody>
+  </table>
+  <p>Any other transition (e.g. <code>/activate</code> on an <code>ACTIVE</code> customer, or any command on <code>CLOSED</code>) returns <code>409 INVALID_KYC_TRANSITION</code>.</p>
+</section>
+
 <section id="baas-fep">
     <h2>baas-fep — ISO 8583 Front-End Processor <span class="pill">TCP service</span></h2>
     <p>
@@ -447,7 +645,7 @@
   </section>
 
 <footer>
-  NubBank BaaS · API Reference · Phase 1C — <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
+  NubBank BaaS · API Reference · Phase 1C — Customers API (Customers track, Task 9) + <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
 </footer>
 
 </div>
