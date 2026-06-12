@@ -13,7 +13,7 @@
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
 | `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
-| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`281739a`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). Per-domain tracks (Customers, Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 15 |
+| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`281739a`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). **Customers domain track ✅ (Session 16, `373ebcd`, 101 unit + 1 Playwright e2e):** first per-domain track, on its own PR (`feat/baas-backoffice-customers`) — list/detail/create/edit, masked-PII profile, KYC state-machine actions + history; the engine side ships separately in PR #28. Remaining per-domain tracks (Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 16 |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
 | Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles + GHCR CI for all four services; `infrastructure/docker-compose.yml`; vanilla k8s manifests in `infrastructure/k8s/`). **Session 13: `baas-card` + `baas-fep` added to k8s base (Deployments, Services, NetworkPolicy mesh, PDBs, fep TCP LoadBalancer, partner→card Ingress routing) + FEP datastore env wired in compose.** | Session 13 |
@@ -198,6 +198,69 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 16 — 2026-06-12
+**Customers domain track — the first per-domain track on `baas-backoffice`. ONE session, TWO independently-mergeable PRs (one service per PR): the `baas-engine` KYC lifecycle in PR #28 (`feat/baas-engine-customer-lifecycle`, 166 tests, OPEN) and the `baas-backoffice` Customers console in this frontend PR (`feat/baas-backoffice-customers`, last feature commit `373ebcd`, 101 unit + 1 Playwright e2e). CBN surface unchanged** (operator-facing console + operator-scoped customer lifecycle, not Open Banking).
+
+The backoffice gains its first real domain screen set: a Customers list with KYC filtering, a detail view that exposes masked PII (`bvnMasked`/`ninMasked` only — raw BVN/NIN never leaves the engine), the KYC state machine surfaced as operator actions (activate / suspend / reactivate / close) with an append-only history panel, plus create + edit. The engine half (PR #28) is the `CustomerKycEvent` append-only history, a 16-combination KYC state machine (`CustomerService.transition`), masked read DTOs, and an HMAC-SHA256 prefix blind-index name search (`name_search_tokens TEXT[]` GIN, mirroring `baas-card`'s `PanHasher`).
+
+> **Split into two independently-mergeable PRs** (per § Branch & PR Discipline — one service per PR): the **backend** KYC lifecycle (`baas-engine`: `CustomerKycEvent` + `V5__customer_kyc_events.sql`, `NameTokenizer`, `CustomerService.transition`, masked `CustomerDetailResponse`, `CustomerController`) is PR #28 `feat/baas-engine-customer-lifecycle` (OPEN, mergeable, 166 tests); the **frontend** Customers console + this session ledger are on `feat/baas-backoffice-customers` (last feature commit `373ebcd`). Zero file overlap — mergeable in any order; the frontend degrades gracefully if #28 is not yet deployed. Engine files are referenced here for the unified session snapshot; that code lives in #28.
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-backoffice src/features/customers/use-customers.ts` | NEW read + mutation TanStack Query hooks (list/detail/create/update/KYC-transition); openapi-fetch results unwrapped to real types behind the one accepted `as never` seam |
+| `baas-backoffice src/features/customers/customer-form.ts` | NEW Zod schema for create/edit |
+| `baas-backoffice src/features/customers/customer-form-modal.tsx` | NEW create/edit modal (conditionally mounted for a fresh form each open) |
+| `baas-backoffice src/features/customers/customers-list.tsx` + `kyc-status-badge.tsx` | NEW list screen + KYC status badge |
+| `baas-backoffice src/features/customers/kyc-action-modal.tsx` + `kyc-history.tsx` | NEW KYC state-machine action modal + append-only history panel |
+| `baas-backoffice src/features/customers/customer-detail.tsx` | NEW detail screen — masked-PII profile + KYC actions + history + edit |
+| `baas-backoffice src/lib/format.ts` | NEW shared `humanizeStatus` / `formatDateTime` — single source for status + date display |
+| `baas-backoffice src/app/router.tsx` | Customers routes wired, `READ_CUSTOMER`-guarded via `RequireRoutePermission` |
+| `baas-backoffice e2e/customers.spec.ts` | NEW Playwright e2e covering the Customers flow |
+| `docs/backoffice-operations.md` | Customers routes + RBAC codes consumed + the two follow-ups (query-key namespacing review; `CommandModal` reset-on-open Foundation fix) |
+| **PR #28 — `baas-engine` (referenced, lands separately):** `customer/CustomerKycEvent.java` + `db/migration/tenant/V5__customer_kyc_events.sql` | Append-only KYC history table + `name_search_tokens TEXT[]` GIN index |
+| **PR #28 — `baas-engine`:** `customer/NameTokenizer.java` | HMAC-SHA256 prefix blind-index tokens (mirrors `baas-card` `PanHasher`) |
+| **PR #28 — `baas-engine`:** `customer/CustomerService.java` (`transition`), `CustomerDetailResponse.java` (masked), `CustomerController.java` | 16-combo KYC state machine (atomic status+event write); masked-PII read DTO; create / list+detail / PUT / 4 transition POSTs / GET kyc-events |
+
+#### Key Decisions
+- **Blind-index name search.** Encrypted PII stays non-queryable; search runs over HMAC-SHA256 prefix tokens (length 2–12) in a `name_search_tokens TEXT[]` GIN column matched with Postgres `@>` containment — mirrors `baas-card`'s `PanHasher` so the two services share one pattern.
+- **Masked PII is the only read surface.** The detail read-type exposes ONLY `bvnMasked`/`ninMasked` (`"•••••••"+last4`); raw BVN/NIN is never returned. `CustomerUpdateBody` cannot transmit raw `bvn`/`nin` — they are write-only at create.
+- **KYC state machine mirrored on the frontend as an `ACTIONS` map** (PENDING_KYC→activate; ACTIVE→suspend/close; SUSPENDED→reactivate/close; CLOSED→none). `?? []` is kept as a runtime guard against an out-of-union wire status — `.map` on `undefined` would crash the screen.
+- **`CommandModal` has no `form.reset()` on reopen**, so every Customers modal (create, edit, KYC action) is **conditionally mounted** (`{open && <Modal/>}`) to get a fresh form each open. Captured as a follow-up: a Foundation-level reset-on-open would remove the workaround.
+- **`src/lib/format.ts` (`humanizeStatus`/`formatDateTime`) is the single source** for status + date display across the badge, history, and filter dropdown — no re-inlined `replaceAll('_',' ')` / `toLocaleString()`.
+- **RBAC by `PERMISSIONS.*` constants only** (never string literals): list create → `CREATE_CUSTOMER`; detail actions + edit → `UPDATE_CUSTOMER`; routes → `READ_CUSTOMER`.
+- **Production code cast-free** except the one accepted openapi-fetch `as never` seam in the hooks (results unwrapped to real types at the boundary).
+- **One service per PR** reaffirmed: backend (#28) and frontend (this branch) ship as separate PRs.
+
+#### Build Verification
+- `baas-backoffice`: typecheck clean · **101 unit tests + 1 Playwright e2e** · `vite build` (production) succeeds
+- `baas-engine` (PR #28, referenced): **Tests run: 166, Failures: 0** — BUILD SUCCESS
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.0 | PR #28 |
+| Java | 21 | PR #28 |
+| Nimbus JOSE+JWT | 9.37.3 | PR #28 |
+| Last git commit | PR #28 (in-flight) | Session 16 — Customers KYC lifecycle on `feat/baas-engine-customer-lifecycle` (#28), 166 tests; **not yet merged to `main`** (main unchanged at `b2f1709`) |
+
+**BaaS Backoffice (`baas-backoffice/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| React | 19.x | `373ebcd` |
+| Vite | 6.x | `373ebcd` |
+| TypeScript | 5.x | `373ebcd` |
+| Routing / state | React Router 7 · TanStack Query 5 | `373ebcd` |
+| Test | Vitest + Playwright | `373ebcd` |
+| Last git commit | `373ebcd` | Session 16 — Customers domain track (first per-domain track); 101 unit + 1 e2e |
+
+**BaaS Card (`baas-card/`):** unchanged this session — last commit `d647a4f` (Session 15).
+**BaaS FEP (`baas-fep/`):** unchanged this session — last commit `a9e4cfd` (Session 12).
+
+---
 
 ### Session 15 — 2026-06-10
 **Close DEF-1C-28 + DEF-1C-29 — the two engine-side gaps the backoffice Foundation was waiting on. Vertical slice across `baas-engine` (`b2f1709`), `baas-card` (`d647a4f`), `baas-backoffice` (`281739a`); engine 144 + card 105 + backoffice 75 tests green.**
