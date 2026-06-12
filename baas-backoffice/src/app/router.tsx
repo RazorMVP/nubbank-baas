@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, type RouteObject } from 'react-router-dom';
 import { AppShell } from '@/layout/app-shell';
 import { RequireAuth, RequireRoutePermission } from './guards';
 import { Login } from '@/features/auth/login';
@@ -11,7 +11,7 @@ import { PERMISSIONS } from '@/lib/rbac';
 // Exported so a test can mount these standalone with createMemoryRouter.
 // Absolute paths resolve both on their own and when spread under the pathless
 // AppShell layout route.
-export const customerRoutes = [
+export const customerRoutes: RouteObject[] = [
   {
     path: '/customers',
     element: (
