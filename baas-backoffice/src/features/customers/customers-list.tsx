@@ -7,6 +7,7 @@ import { RequirePermission } from '@/components/require-permission';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { PERMISSIONS } from '@/lib/rbac';
+import { humanizeStatus } from '@/lib/format';
 import {
   useCustomers,
   useCreateCustomer,
@@ -87,7 +88,7 @@ export function CustomersList() {
         >
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s ? s.replaceAll('_', ' ') : 'All statuses'}
+              {s ? humanizeStatus(s) : 'All statuses'}
             </option>
           ))}
         </select>
