@@ -257,25 +257,32 @@ Run through this list in order. Do not skip any item, even for tiny changes.
     - Add any newly discovered gaps
   - Sessions that touched zero Open Banking / compliance files may skip
 
-- [ ] **6. Figma diagrams** — If the service architecture or data flows changed this session, flag which of the 4 FigJam boards needs updating:
+- [ ] **6. Figma architecture/flow diagrams** — If the service architecture or data flows changed this session, flag which of the 4 FigJam boards needs updating:
   - [Service Architecture](https://www.figma.com/board/PRACgc6BXsGVEL7ZhB866A) — new services, data layer changes
   - [Multi-Tenancy Flow](https://www.figma.com/board/TR1AYhx9Pcmd5y5grxMv8v) — schema isolation changes
   - [Partner Provisioning Flow](https://www.figma.com/board/qHD6cSCRTQHPbkmavHtoxw) — onboarding or tier changes
   - [CBN Compliance Roadmap](https://www.figma.com/board/5KpYYAtiukv7G6o3LyjsVr) — compliance status changes
   - Note in `baas-log.md` which boards were regenerated. Regenerate using `generate_diagram` MCP tool.
 
-- [ ] **7. `/baas` skill update** — If a Phase or sub-plan was completed this session:
+- [ ] **7. Figma backoffice module designs (EDITABLE — never a screenshot)** — If ANY `baas-backoffice` frontend screen was built or changed this session, the corresponding screen(s) **MUST** be added or updated in the **[NubBank BaaS — Backoffice](https://www.figma.com/design/gEDnLrLD4UrChcND0yCdZ9/NubBank-BaaS-%E2%80%94-Backoffice?node-id=0-1)** Figma **design** file (fileKey `gEDnLrLD4UrChcND0yCdZ9`) as **proper, natively-editable Figma designs** — real frames + auto-layout + components + selectable text + design-token styles, assembled with the Figma MCP `use_figma` (load the `figma-generate-design` skill first, `figma-use` for the API rules). This is the design counterpart to item 4's `backoffice-operations.md`.
+  - **A pasted screenshot / PNG / image-fill is NOT acceptable** — the design must be editable in Figma (movable frames, selectable text, reusable components) so a designer can iterate. A raster export does **not** satisfy this item.
+  - **One frame per screen and per significant state** — for the Customers module: Customers list, Customer detail, create/edit modal, KYC action modal, empty/error states — grouped under a page/section named for the module.
+  - **Reuse the backoffice design system** (shadcn/Tailwind tokens — same spacing/colour/typography as the running app); instance existing library components rather than redrawing primitives. Match the built UI; do not invent a new visual language.
+  - **Record it** in `baas-log.md` (module frames added/updated + Figma node link). Tick this box only when the editable frames exist in the file above.
+  - Exempt **only** if no `baas-backoffice/src/**` screen/component changed this session.
+
+- [ ] **8. `/baas` skill update** — If a Phase or sub-plan was completed this session:
   - Update `.claude/skills/baas/SKILL.md` — mark phase ✅ in the Phase Build Order table
   - If new critical gotchas were found, add them to the skill's Known Gotchas section
 
-- [ ] **8. Deployment-agnostic check** — If a new service (`baas-card`, `baas-ncube`, `baas-portal`, `baas-backoffice`, `baas-docs`) was added this session, verify before pushing:
+- [ ] **9. Deployment-agnostic check** — If a new service (`baas-card`, `baas-ncube`, `baas-portal`, `baas-backoffice`, `baas-docs`) was added this session, verify before pushing:
   - [ ] `Dockerfile` committed and tested (`docker build` succeeds locally)
   - [ ] `nginx.conf` committed (SPA routing + security headers)
   - [ ] `infrastructure/docker-compose.yml` entry added
   - [ ] CI workflow committed (`.github/workflows/{service}-ci.yml`)
   - [ ] Build uses only standard CLI (`npm run build`, `./mvnw package`) — no Vercel CLI in build step
 
-- [ ] **9. Commit and push**
+- [ ] **10. Commit and push**
 
   ```bash
   git add CLAUDE.md baas-log.md docs/regulatory/
@@ -303,6 +310,8 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | "The tests passed locally, no need to run them again" | Run them immediately before committing — local state can drift |
 | "Vercel already handles the deploy, Dockerfile is redundant" | Vercel is one target. The Dockerfile is the portability contract. Both must exist. |
 | "Figma diagrams are optional" | They are the visual spec shared with stakeholders. Stale diagrams create confusion. |
+| "A screenshot of the screen is enough for Figma" | Gate item 7 requires an **editable** design (frames/components/selectable text), not a raster image — a screenshot can't be iterated on, can't reuse design-system components, and drifts silently. PNG export ≠ done. |
+| "The frontend module works, the Figma can wait" | Every `baas-backoffice` screen built/changed gets its editable Figma frame the **same** session (item 7). "Next session" starts cold and the design debt compounds per module. |
 | "CBN gap analysis was updated last session" | Last session's analysis doesn't cover this session's changes. |
 | "The API docs can wait until we have more endpoints" | One missing endpoint breaks partner integrations silently. Document immediately. |
 | "Only `baas-engine` has docs to update" | Every service has its own doc surface (item 4): `baas-backoffice`→`backoffice-operations.md`, `baas-fep`→`fep-iso8583-reference.md`, card/ncube/engine→`api-reference.html` sections. Touching **any** triggers its update. |
