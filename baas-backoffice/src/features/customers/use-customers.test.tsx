@@ -78,6 +78,14 @@ describe('useKycTransition', () => {
     expect(client.POST).toHaveBeenCalledWith('/baas/v1/customers/{id}/activate',
       { params: { path: { id: 'c1' } }, body: { reason: 'verified' } });
   });
+
+  it('POSTs the suspend command path', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 'c1', kycStatus: 'SUSPENDED' }));
+    const { result } = renderHook(() => useKycTransition('c1'), { wrapper: Wrapper });
+    await result.current.mutateAsync({ command: 'suspend', reason: 'fraud flag' });
+    expect(client.POST).toHaveBeenCalledWith('/baas/v1/customers/{id}/suspend',
+      { params: { path: { id: 'c1' } }, body: { reason: 'fraud flag' } });
+  });
 });
 
 describe('useCreateCustomer', () => {

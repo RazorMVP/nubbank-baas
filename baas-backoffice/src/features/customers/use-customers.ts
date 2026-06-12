@@ -134,6 +134,9 @@ export function useKycTransition(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ command, reason }: { command: KycCommand; reason: string }) => {
+      // Path built from the KycCommand union — all four commands share the same shape
+      // (path param + { reason } body). The backend requires a non-blank reason on every
+      // transition (400 otherwise), so `reason` is intentionally required, not optional.
       const result = await client.POST(`/baas/v1/customers/{id}/${command}` as never,
         { params: { path: { id } }, body: { reason } } as never);
       return unwrapResult<CustomerDetail>(result);
