@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -28,6 +29,13 @@ public class AccountController {
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<AccountDetailResponse>> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(accountService.getById(id)));
+    }
+
+    @PreAuthorize("hasAuthority('READ_ACCOUNT')")
+    @GetMapping("/{id}/status-events")
+    public ResponseEntity<ApiResponse<List<AccountStatusEventResponse>>> statusEvents(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(accountService.statusEvents(id)));
     }
 
     @PostMapping("/{id}/deposit")

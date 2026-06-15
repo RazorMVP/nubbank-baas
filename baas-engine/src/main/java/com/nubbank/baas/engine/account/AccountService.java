@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -82,6 +83,18 @@ public class AccountService {
             .accountId(id).fromStatus(from.name()).toStatus(to.name())
             .reason(reason).changedBy(currentPrincipal()).build());
         return toDetail(account);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AccountStatusEventResponse> statusEvents(UUID id) {
+        requireContext();
+        if (!accountRepo.existsById(id)) {
+            throw BaasException.notFound("ACCOUNT_NOT_FOUND", "Account " + id + " not found");
+        }
+        return statusEventRepo.findByAccountIdOrderByChangedAtAsc(id).stream()
+            .map(e -> new AccountStatusEventResponse(e.getId(), e.getFromStatus(), e.getToStatus(),
+                e.getReason(), e.getChangedBy(), e.getChangedAt()))
+            .toList();
     }
 
     /**
