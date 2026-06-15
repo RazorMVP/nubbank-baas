@@ -582,6 +582,231 @@
   <p>Any other transition (e.g. <code>/activate</code> on an <code>ACTIVE</code> customer, or any command on <code>CLOSED</code>) returns <code>409 INVALID_KYC_TRANSITION</code>.</p>
 </section>
 
+<section id="accounts">
+  <h2>Accounts <span class="pill">baas-engine · partner-scoped</span></h2>
+  <p>
+    Deposit-account lifecycle and money movement for a partner's end-customers. Every request is automatically
+    scoped to the caller's partner schema. Account numbers are assigned from the partner's virtual-account range.
+    A new account opens directly in <code>ACTIVE</code> status (there is no separate approval step). Monetary
+    amounts are major-unit <code>BigDecimal</code>; <code>currencyCode</code> defaults to <code>NGN</code> when omitted.
+    Every credit and debit writes one immutable <code>Transaction</code> row carrying the post-movement
+    <code>runningBalance</code>.
+  </p>
+  <div class="note"><strong>Money gating by status:</strong> a <code>FROZEN</code> account still accepts <em>credits</em> (deposits) but rejects <em>debits</em> (withdrawals). A <code>CLOSED</code> account rejects both. The status gate is checked before any balance-floor check on a withdrawal.</div>
+
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Auth</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/accounts</span></td>
+        <td><code>CREATE_ACCOUNT</code></td>
+        <td>
+          Open an account for an existing customer. Returns <code>201</code> with the full
+          <code>AccountDetailResponse</code>. Unknown <code>customerId</code> → <code>404 CUSTOMER_NOT_FOUND</code>.
+          An optional <code>openingDeposit</code> (must be <code>&ge; 0</code>; a negative value → <code>400</code>) is applied atomically with account
+          creation — a positive deposit writes one <code>CREDIT</code> transaction with reference
+          <code>OPENING_DEPOSIT</code>.
+        </td>
+        <td>
+          <strong>Request</strong> <code>OpenAccountRequest</code>:
+          <pre>{
+  "customerId": "&lt;uuid&gt;",         // required
+  "accountTypeLabel": "Savings",   // optional, free-text label
+  "accountName": "Amara Okafor",   // optional, defaults to customer name
+  "currencyCode": "NGN",           // optional, 3-letter ISO; defaults to NGN
+  "minimumBalance": 0,             // optional, defaults to 0
+  "openingDeposit": 5000.00        // optional, &ge; 0; one OPENING_DEPOSIT credit
+}</pre>
+          <strong>Response</strong> <code>AccountDetailResponse</code> (same shape as GET detail, below).
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/accounts</span></td>
+        <td><code>READ_ACCOUNT</code></td>
+        <td>
+          Paginated account list. Returns <code>200</code>.
+          <br><br>
+          <strong>Query params:</strong>
+          <ul>
+            <li><code>page</code> — zero-based page index (default <code>0</code>)</li>
+            <li><code>size</code> — page size (default <code>20</code>)</li>
+            <li><code>status</code> — optional filter: <code>ACTIVE</code> | <code>FROZEN</code> | <code>CLOSED</code>. An unknown value → <code>400 INVALID_STATUS</code></li>
+            <li><code>search</code> — optional account-number <strong>prefix</strong> match (case-insensitive)</li>
+          </ul>
+        </td>
+        <td>
+          <strong>Response</strong>: Spring <code>Page&lt;AccountSummaryResponse&gt;</code> in the envelope <code>data</code> field. Each item uses the lean summary shape:
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "accountNumber": "0123456789",
+  "customerId": "&lt;uuid&gt;",
+  "customerName": "Amara Okafor",
+  "accountTypeLabel": "Savings",
+  "status": "ACTIVE",
+  "balance": 5000.00,
+  "currencyCode": "NGN"
+}</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/accounts/{id}</span></td>
+        <td><code>READ_ACCOUNT</code></td>
+        <td>Full account detail. Returns <code>200</code> or <code>404 ACCOUNT_NOT_FOUND</code>.</td>
+        <td>
+          <strong>Response</strong> <code>AccountDetailResponse</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "accountNumber": "0123456789",
+  "customerId": "&lt;uuid&gt;",
+  "customerName": "Amara Okafor",
+  "accountTypeLabel": "Savings",
+  "status": "ACTIVE",
+  "balance": 5000.00,
+  "availableBalance": 5000.00,
+  "currencyCode": "NGN",
+  "minimumBalance": 0,
+  "allowOverdraft": false,
+  "overdraftLimit": null,
+  "openedAt": "&lt;timestamp&gt;"
+}</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/accounts/{id}/transactions</span></td>
+        <td><code>READ_ACCOUNT</code></td>
+        <td>
+          Paginated transaction ledger for the account, <strong>newest-first</strong>. Returns <code>200</code> or
+          <code>404 ACCOUNT_NOT_FOUND</code>.
+          <br><br>
+          <strong>Query params:</strong> <code>page</code> (default <code>0</code>), <code>size</code> (default <code>20</code>).
+        </td>
+        <td>
+          <strong>Response</strong>: Spring <code>Page&lt;TransactionResponse&gt;</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "accountId": "&lt;uuid&gt;",
+  "transactionType": "CREDIT",  // CREDIT | DEBIT
+  "amount": 5000.00,
+  "runningBalance": 5000.00,
+  "currencyCode": "NGN",
+  "reference": "OPENING_DEPOSIT",
+  "createdAt": "&lt;timestamp&gt;"
+}</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/accounts/{id}/status-events</span></td>
+        <td><code>READ_ACCOUNT</code></td>
+        <td>Append-only lifecycle history (freeze / unfreeze / close), <strong>oldest-first</strong>. Returns <code>200</code> or <code>404 ACCOUNT_NOT_FOUND</code>.</td>
+        <td>
+          <strong>Response</strong>: <code>List&lt;AccountStatusEventResponse&gt;</code>:
+          <pre>[{
+  "id": "&lt;uuid&gt;",
+  "fromStatus": "ACTIVE",
+  "toStatus": "FROZEN",
+  "reason": "Compliance hold",
+  "changedBy": "operator@partner.com",
+  "changedAt": "&lt;timestamp&gt;"
+}]</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/accounts/{id}/deposit</span></td>
+        <td><code>DEPOSIT</code></td>
+        <td>
+          Credit the account. Returns <code>200</code>. <code>amount</code> must be <code>&gt; 0</code> (else <code>400</code>).
+          A <code>CLOSED</code> account → <code>409 ACCOUNT_NOT_ACCEPTING_CREDITS</code> (a <code>FROZEN</code> account
+          still accepts credits). Unknown id → <code>404 ACCOUNT_NOT_FOUND</code>.
+        </td>
+        <td>
+          <strong>Request</strong> <code>TransactionRequest</code>:
+          <pre>{
+  "amount": 2500.00,            // required, &gt; 0
+  "reference": "SALARY-APR",    // optional
+  "description": "Salary"       // optional
+}</pre>
+          <strong>Response</strong>: <code>TransactionResponse</code> (CREDIT; same shape as the ledger row above).
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/accounts/{id}/withdraw</span></td>
+        <td><code>WITHDRAW</code></td>
+        <td>
+          Debit the account. Returns <code>200</code>. <code>amount</code> must be <code>&gt; 0</code> (else <code>400</code>).
+          A non-<code>ACTIVE</code> account (<code>FROZEN</code> or <code>CLOSED</code>) → <code>409 ACCOUNT_NOT_ACCEPTING_DEBITS</code>
+          (the status gate is checked first). A debit that would breach the balance floor (the
+          <code>minimumBalance</code>, or the negated <code>overdraftLimit</code> when overdraft is allowed) →
+          <code>400 INSUFFICIENT_BALANCE</code>. Unknown id → <code>404 ACCOUNT_NOT_FOUND</code>.
+        </td>
+        <td>
+          <strong>Request</strong>: <code>TransactionRequest</code> (same shape as deposit).
+          <br><strong>Response</strong>: <code>TransactionResponse</code> (DEBIT).
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/accounts/{id}/freeze</span></td>
+        <td><code>UPDATE_ACCOUNT</code></td>
+        <td>Lifecycle transition <code>ACTIVE → FROZEN</code>. Returns <code>200</code>. Any other source status → <code>400 INVALID_ACCOUNT_TRANSITION</code>. Unknown id → <code>404 ACCOUNT_NOT_FOUND</code>.</td>
+        <td>
+          <strong>Request</strong> <code>AccountTransitionRequest</code>:
+          <pre>{ "reason": "Compliance hold" }</pre>
+          <strong>Response</strong>: updated <code>AccountDetailResponse</code> with <code>status: "FROZEN"</code>.
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/accounts/{id}/unfreeze</span></td>
+        <td><code>UPDATE_ACCOUNT</code></td>
+        <td>Lifecycle transition <code>FROZEN → ACTIVE</code>. Returns <code>200</code>. Any other source status → <code>400 INVALID_ACCOUNT_TRANSITION</code>.</td>
+        <td>
+          <strong>Request</strong>: <code>{ "reason": "Hold lifted after review" }</code>
+          <br><strong>Response</strong>: updated <code>AccountDetailResponse</code> with <code>status: "ACTIVE"</code>.
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/accounts/{id}/close</span></td>
+        <td><code>UPDATE_ACCOUNT</code></td>
+        <td>
+          Lifecycle transition <code>ACTIVE → CLOSED</code> (terminal — irreversible). Returns <code>200</code>.
+          Closing from <code>FROZEN</code> is illegal — unfreeze first — and returns
+          <code>400 INVALID_ACCOUNT_TRANSITION</code>. Closing a non-zero-balance account →
+          <code>409 ACCOUNT_BALANCE_NONZERO</code>.
+        </td>
+        <td>
+          <strong>Request</strong>: <code>{ "reason": "Customer requested closure" }</code>
+          <br><strong>Response</strong>: updated <code>AccountDetailResponse</code> with <code>status: "CLOSED"</code>.
+        </td>
+      </tr>
+
+    </tbody>
+  </table>
+
+  <h3>Account lifecycle state machine</h3>
+  <table>
+    <thead><tr><th>From</th><th>Command</th><th>To</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>ACTIVE</code></td><td><code>/freeze</code></td><td><code>FROZEN</code></td><td>Compliance / legal hold; still accepts credits</td></tr>
+      <tr><td><code>FROZEN</code></td><td><code>/unfreeze</code></td><td><code>ACTIVE</code></td><td>Hold lifted</td></tr>
+      <tr><td><code>ACTIVE</code></td><td><code>/close</code></td><td><code>CLOSED</code></td><td>Terminal — irreversible; balance must be zero</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Any other edge is illegal and returns <code>400 INVALID_ACCOUNT_TRANSITION</code> — in particular
+    <code>/close</code> on a <code>FROZEN</code> account (it must be unfrozen first) and any command on a
+    <code>CLOSED</code> account. Closing an <code>ACTIVE</code> account whose balance is non-zero returns
+    <code>409 ACCOUNT_BALANCE_NONZERO</code>.
+  </p>
+</section>
+
 <section id="baas-fep">
     <h2>baas-fep — ISO 8583 Front-End Processor <span class="pill">TCP service</span></h2>
     <p>
@@ -645,7 +870,7 @@
   </section>
 
 <footer>
-  NubBank BaaS · API Reference · Phase 1C — Customers API (Customers track, Task 9) + <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
+  NubBank BaaS · API Reference · Phase 1C — Customers API (Customers track, Task 9) + Accounts API (Accounts track, Task 11) + <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
 </footer>
 
 </div>
