@@ -26,6 +26,16 @@ public class AccountController {
     }
 
     @PreAuthorize("hasAuthority('READ_ACCOUNT')")
+    @GetMapping
+    public ResponseEntity<ApiResponse<Page<AccountSummaryResponse>>> list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String search) {
+        return ResponseEntity.ok(ApiResponse.ok(accountService.list(page, size, status, search)));
+    }
+
+    @PreAuthorize("hasAuthority('READ_ACCOUNT')")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<AccountDetailResponse>> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(accountService.getById(id)));

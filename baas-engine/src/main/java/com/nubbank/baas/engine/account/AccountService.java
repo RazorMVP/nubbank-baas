@@ -60,6 +60,25 @@ public class AccountService {
         return toDetail(findOrThrow(id));
     }
 
+    @Transactional(readOnly = true)
+    public Page<AccountSummaryResponse> list(int page, int size, String status, String search) {
+        requireContext();
+        AccountStatus statusFilter = (status == null || status.isBlank())
+            ? null : AccountStatus.valueOf(status.trim().toUpperCase(java.util.Locale.ROOT));
+        String searchPattern = (search == null || search.isBlank())
+            ? null : search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+        return accountRepo.search(statusFilter, searchPattern, PageRequest.of(page, size))
+            .map(this::toSummary);
+    }
+
+    private AccountSummaryResponse toSummary(Account a) {
+        Customer c = a.getCustomer();
+        String customerName = (c.getFirstNameEncrypted() + " " + c.getLastNameEncrypted()).trim();
+        return new AccountSummaryResponse(a.getId(), a.getAccountNumber(),
+            c.getId(), customerName, a.getAccountTypeLabel(), a.getStatus(),
+            a.getBalance(), a.getCurrencyCode());
+    }
+
     @Transactional
     public AccountDetailResponse transition(UUID id, AccountCommand command, String reason) {
         requireContext();
