@@ -72,7 +72,7 @@ public class AccountService {
                 "Cannot " + command + " an account in status " + from);
         }
         if (command == AccountCommand.CLOSE
-                && account.getBalance().compareTo(java.math.BigDecimal.ZERO) != 0) {
+                && account.getBalance().compareTo(BigDecimal.ZERO) != 0) {
             throw BaasException.conflict("ACCOUNT_BALANCE_NONZERO",
                 "Account balance must be zero to close (current: " + account.getBalance() + ")");
         }

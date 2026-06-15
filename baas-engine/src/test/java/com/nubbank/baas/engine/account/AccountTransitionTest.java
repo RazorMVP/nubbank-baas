@@ -68,6 +68,13 @@ class AccountTransitionTest extends AbstractIntegrationTest {
             HttpMethod.POST, new HttpEntity<>(Map.of("reason", "legal hold"), auth()), Map.class);
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Map<?,?>) r.getBody().get("data")).get("status")).isEqualTo("FROZEN");
+
+        // a status-event row must be written for the freeze
+        List<AccountStatusEvent> events = statusEventRepoInTenant(id);
+        assertThat(events).hasSize(1);
+        assertThat(events.get(0).getFromStatus()).isEqualTo("ACTIVE");
+        assertThat(events.get(0).getToStatus()).isEqualTo("FROZEN");
+        assertThat(events.get(0).getReason()).isEqualTo("legal hold");
     }
 
     @Test
@@ -79,6 +86,14 @@ class AccountTransitionTest extends AbstractIntegrationTest {
             HttpMethod.POST, new HttpEntity<>(Map.of("reason", "released"), auth()), Map.class);
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Map<?,?>) r.getBody().get("data")).get("status")).isEqualTo("ACTIVE");
+
+        // two events: ACTIVE→FROZEN (freeze), then FROZEN→ACTIVE (unfreeze)
+        List<AccountStatusEvent> events = statusEventRepoInTenant(id);
+        assertThat(events).hasSize(2);
+        AccountStatusEvent unfreezeEvent = events.get(events.size() - 1);
+        assertThat(unfreezeEvent.getFromStatus()).isEqualTo("FROZEN");
+        assertThat(unfreezeEvent.getToStatus()).isEqualTo("ACTIVE");
+        assertThat(unfreezeEvent.getReason()).isEqualTo("released");
     }
 
     @Test
