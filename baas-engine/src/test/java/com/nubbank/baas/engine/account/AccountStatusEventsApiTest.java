@@ -9,6 +9,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import java.util.*;
+import java.util.HashMap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AccountStatusEventsApiTest extends AbstractIntegrationTest {
@@ -51,7 +52,7 @@ class AccountStatusEventsApiTest extends AbstractIntegrationTest {
 
     /** Open an account via the API and return its id. */
     private UUID openAccount(Map<String, Object> body) {
-        Map<String, Object> withCustomer = new java.util.HashMap<>(body);
+        Map<String, Object> withCustomer = new HashMap<>(body);
         withCustomer.putIfAbsent("customerId", customerId.toString());
         ResponseEntity<Map> r = restTemplate.exchange("/baas/v1/accounts", HttpMethod.POST,
             new HttpEntity<>(withCustomer, auth()), Map.class);
@@ -76,10 +77,26 @@ class AccountStatusEventsApiTest extends AbstractIntegrationTest {
         assertThat(events.get(0).get("toStatus")).isEqualTo("FROZEN");
         assertThat(events.get(0).get("reason")).isEqualTo("legal hold");
         assertThat(events.get(1).get("toStatus")).isEqualTo("ACTIVE");
+        // changedBy is written by the authenticated principal — must be non-null and not the string "null"
+        assertThat(events.get(0).get("changedBy")).isNotNull().asString().isNotEqualTo("null");
+    }
+
+    @Test
+    void statusEvents_emptyForNewAccount() {
+        UUID id = openAccount(Map.of("accountTypeLabel", "Savings"));
+
+        @SuppressWarnings("rawtypes")
+        ResponseEntity<Map> r = restTemplate.exchange("/baas/v1/accounts/" + id + "/status-events",
+            HttpMethod.GET, new HttpEntity<>(auth()), Map.class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        List<Map<String,Object>> events = (List<Map<String,Object>>) r.getBody().get("data");
+        assertThat(events).isEmpty();
     }
 
     @Test
     void statusEvents_unknownAccount_404() {
+        @SuppressWarnings("rawtypes")
         ResponseEntity<Map> r = restTemplate.exchange(
             "/baas/v1/accounts/" + UUID.randomUUID() + "/status-events",
             HttpMethod.GET, new HttpEntity<>(auth()), Map.class);

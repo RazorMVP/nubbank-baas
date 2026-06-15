@@ -91,6 +91,7 @@ public class AccountService {
         if (!accountRepo.existsById(id)) {
             throw BaasException.notFound("ACCOUNT_NOT_FOUND", "Account " + id + " not found");
         }
+        // oldest-first: the backoffice renders an ascending audit timeline
         return statusEventRepo.findByAccountIdOrderByChangedAtAsc(id).stream()
             .map(e -> new AccountStatusEventResponse(e.getId(), e.getFromStatus(), e.getToStatus(),
                 e.getReason(), e.getChangedBy(), e.getChangedAt()))
