@@ -88,8 +88,9 @@ class AccountListTest extends AbstractIntegrationTest {
         restTemplate.exchange("/baas/v1/accounts/" + b.get("id") + "/freeze", HttpMethod.POST,
             new HttpEntity<>(Map.of("reason", "hold"), auth()), Map.class);
 
-        assertThat(listContent("?status=ACTIVE")).hasSize(1);
-        assertThat(listContent("?status=ACTIVE").get(0).get("id")).isEqualTo(a.get("id"));
+        var activeContent = listContent("?status=ACTIVE");
+        assertThat(activeContent).hasSize(1);
+        assertThat(activeContent.get(0).get("id")).isEqualTo(a.get("id"));
         assertThat(listContent("?status=FROZEN")).hasSize(1);
         assertThat(listContent("?status=FROZEN").get(0).get("id")).isEqualTo(b.get("id"));
     }
@@ -143,5 +144,15 @@ class AccountListTest extends AbstractIntegrationTest {
         openAccountFull("Savings");
         assertThat(listContent("?page=0&size=2")).hasSize(2);
         assertThat(listContent("?page=1&size=2")).hasSize(1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void list_invalidStatus_returns400() {
+        ResponseEntity<Map> r = restTemplate.exchange("/baas/v1/accounts?status=BOGUS",
+            HttpMethod.GET, new HttpEntity<>(auth()), Map.class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        List<Map<String, Object>> errors = (List<Map<String, Object>>) r.getBody().get("errors");
+        assertThat(errors.get(0).get("code")).isEqualTo("INVALID_STATUS");
     }
 }

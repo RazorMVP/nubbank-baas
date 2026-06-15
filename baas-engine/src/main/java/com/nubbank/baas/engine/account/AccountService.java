@@ -14,7 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -63,10 +66,16 @@ public class AccountService {
     @Transactional(readOnly = true)
     public Page<AccountSummaryResponse> list(int page, int size, String status, String search) {
         requireContext();
-        AccountStatus statusFilter = (status == null || status.isBlank())
-            ? null : AccountStatus.valueOf(status.trim().toUpperCase(java.util.Locale.ROOT));
+        AccountStatus statusFilter = null;
+        if (status != null && !status.isBlank()) {
+            try {
+                statusFilter = AccountStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                throw BaasException.badRequest("INVALID_STATUS", "Unknown account status: " + status);
+            }
+        }
         String searchPattern = (search == null || search.isBlank())
-            ? null : search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+            ? null : search.trim().toLowerCase(Locale.ROOT) + "%";
         return accountRepo.search(statusFilter, searchPattern, PageRequest.of(page, size))
             .map(this::toSummary);
     }
@@ -313,9 +322,9 @@ public class AccountService {
     }
 
     private static String customerName(Customer c) {
-        return java.util.stream.Stream.of(c.getFirstNameEncrypted(), c.getLastNameEncrypted())
+        return Stream.of(c.getFirstNameEncrypted(), c.getLastNameEncrypted())
             .filter(s -> s != null && !s.isBlank())
-            .collect(java.util.stream.Collectors.joining(" "));
+            .collect(Collectors.joining(" "));
     }
 
     private TransactionResponse toTxResponse(Transaction t) {
