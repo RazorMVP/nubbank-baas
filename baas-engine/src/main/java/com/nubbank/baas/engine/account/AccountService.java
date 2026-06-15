@@ -319,12 +319,6 @@ public class AccountService {
             throw BaasException.unauthorized("MISSING_AUTH", "Authorization required");
     }
 
-    private AccountResponse toResponse(Account a) {
-        return new AccountResponse(a.getId(), a.getCustomer().getId(),
-            a.getAccountNumber(), a.getAccountTypeLabel(), a.getStatus(),
-            a.getBalance(), a.getAvailableBalance(), a.getCurrencyCode(), a.getCreatedAt());
-    }
-
     private AccountDetailResponse toDetail(Account a) {
         Customer c = a.getCustomer();
         return new AccountDetailResponse(a.getId(), a.getAccountNumber(),
