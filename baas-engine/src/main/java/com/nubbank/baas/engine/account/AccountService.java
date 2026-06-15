@@ -187,9 +187,10 @@ public class AccountService {
         Account account = accountRepo.findByIdForUpdate(accountId)
             .orElseThrow(() -> BaasException.notFound("ACCOUNT_NOT_FOUND", "Account not found"));
 
+        // status gate first: a non-ACTIVE account is rejected (409) before any balance-floor check
         if (account.getStatus() != AccountStatus.ACTIVE) {
             throw BaasException.conflict("ACCOUNT_NOT_ACCEPTING_DEBITS",
-                "Account must be ACTIVE for debits (status: " + account.getStatus() + ")");
+                "Account must be ACTIVE for debits");
         }
 
         BigDecimal floor = account.isAllowOverdraft() && account.getOverdraftLimit() != null

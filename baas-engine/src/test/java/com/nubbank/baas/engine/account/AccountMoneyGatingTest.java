@@ -102,6 +102,20 @@ class AccountMoneyGatingTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void withdraw_onClosedAccount_409() {
+        UUID id = openAccount(Map.of("accountTypeLabel", "Savings"));
+        restTemplate.exchange("/baas/v1/accounts/" + id + "/close", HttpMethod.POST,
+            new HttpEntity<>(Map.of("reason", "customer request"), auth()), Map.class);
+
+        ResponseEntity<Map> r = restTemplate.exchange("/baas/v1/accounts/" + id + "/withdraw",
+            HttpMethod.POST, new HttpEntity<>(Map.of("amount", 50.00), auth()), Map.class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        @SuppressWarnings("unchecked")
+        List<Map<String,Object>> errors = (List<Map<String,Object>>) r.getBody().get("errors");
+        assertThat(errors.get(0).get("code")).isEqualTo("ACCOUNT_NOT_ACCEPTING_DEBITS");
+    }
+
+    @Test
     void withdraw_onActiveAccount_stillEnforcesBalanceFloor_400() {
         UUID id = openAccount(Map.of("accountTypeLabel", "Savings"));
         // ACTIVE, zero balance — debit beyond the floor is INSUFFICIENT_BALANCE (the gate passes first).
