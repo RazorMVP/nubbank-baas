@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { AccountsList } from './accounts-list';
+import { formatMoney } from '@/lib/format';
 import { ApiClientProvider } from '@/api/context';
 import { AuthContextProvider } from '@/auth/context';
 import { createDevAuthProvider } from '@/auth/dev-provider';
@@ -34,11 +35,12 @@ const ROW = { id: 'a1', accountNumber: '0123456789', customerId: 'c1',
   balance: 2500, currencyCode: 'NGN' };
 
 describe('AccountsList', () => {
-  it('renders account rows (number link + customer name)', async () => {
+  it('renders account rows (number link + customer name + formatted balance)', async () => {
     const Wrapper = wrap(pageOf([ROW]));
     render(<AccountsList />, { wrapper: Wrapper });
     expect(await screen.findByRole('link', { name: '0123456789' })).toBeInTheDocument();
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.getByText(formatMoney(ROW.balance, ROW.currencyCode))).toBeInTheDocument();
   });
 
   it('shows the Open account button when permitted', async () => {

@@ -7,7 +7,7 @@ import { RequirePermission } from '@/components/require-permission';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { PERMISSIONS } from '@/lib/rbac';
-import { humanizeStatus } from '@/lib/format';
+import { humanizeStatus, formatMoney } from '@/lib/format';
 import { useAccounts, useOpenAccount, type AccountRow, type AccountStatus } from './use-accounts';
 import { AccountStatusBadge } from './account-status-badge';
 import { OpenAccountModal } from './open-account-modal';
@@ -38,14 +38,14 @@ const columns = [
   col.display({
     id: 'balance',
     header: 'Balance',
-    cell: (ctx) => `${ctx.row.original.currencyCode} ${ctx.row.original.balance}`,
+    cell: (ctx) => formatMoney(ctx.row.original.balance, ctx.row.original.currencyCode),
   }),
 ];
 
 export function AccountsList() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<AccountStatus | ''>('');
-  const [openOpen, setOpenOpen] = useState(false);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
   const open = useOpenAccount();
 
   const query = useAccounts({
@@ -61,7 +61,7 @@ export function AccountsList() {
         title="Accounts"
         action={
           <RequirePermission code={PERMISSIONS.CREATE_ACCOUNT}>
-            <Button onClick={() => setOpenOpen(true)}>Open account</Button>
+            <Button onClick={() => setAccountModalOpen(true)}>Open account</Button>
           </RequirePermission>
         }
       />
@@ -94,15 +94,15 @@ export function AccountsList() {
           emptyMessage={query.isLoading ? 'Loading…' : 'No accounts'}
         />
       )}
-      {openOpen && (
+      {accountModalOpen && (
         <OpenAccountModal
           open
-          onOpenChange={setOpenOpen}
+          onOpenChange={setAccountModalOpen}
           // OpenAccountModal maps its form values to an OpenAccountBody internally (toBody),
           // so onSubmit receives a ready OpenAccountBody — pass it straight to the mutation.
           onSubmit={async (body) => {
             await open.mutateAsync(body);
-            setOpenOpen(false);
+            setAccountModalOpen(false);
           }}
         />
       )}
