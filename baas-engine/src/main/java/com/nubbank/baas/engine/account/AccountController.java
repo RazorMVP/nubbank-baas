@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
@@ -23,8 +24,9 @@ public class AccountController {
             .body(ApiResponse.ok(accountService.open(req)));
     }
 
+    @PreAuthorize("hasAuthority('READ_ACCOUNT')")
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<AccountResponse>> getById(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<AccountDetailResponse>> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(accountService.getById(id)));
     }
 

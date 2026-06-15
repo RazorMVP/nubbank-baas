@@ -52,9 +52,9 @@ public class AccountService {
     }
 
     @Transactional(readOnly = true)
-    public AccountResponse getById(UUID id) {
+    public AccountDetailResponse getById(UUID id) {
         requireContext();
-        return toResponse(findOrThrow(id));
+        return toDetail(findOrThrow(id));
     }
 
     @Transactional
@@ -221,6 +221,16 @@ public class AccountService {
         return new AccountResponse(a.getId(), a.getCustomer().getId(),
             a.getAccountNumber(), a.getAccountTypeLabel(), a.getStatus(),
             a.getBalance(), a.getAvailableBalance(), a.getCurrencyCode(), a.getCreatedAt());
+    }
+
+    private AccountDetailResponse toDetail(Account a) {
+        Customer c = a.getCustomer();
+        String customerName = (c.getFirstNameEncrypted() + " " + c.getLastNameEncrypted()).trim();
+        return new AccountDetailResponse(a.getId(), a.getAccountNumber(),
+            c.getId(), customerName, a.getAccountTypeLabel(), a.getStatus(),
+            a.getBalance(), a.getAvailableBalance(), a.getCurrencyCode(),
+            a.getMinimumBalance(), a.isAllowOverdraft(), a.getOverdraftLimit(),
+            a.getCreatedAt());
     }
 
     private TransactionResponse toTxResponse(Transaction t) {
