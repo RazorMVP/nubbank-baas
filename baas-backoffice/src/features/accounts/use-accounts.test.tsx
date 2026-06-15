@@ -119,3 +119,60 @@ describe('useAccountTransactions', () => {
       { params: { path: { id: 'a1' }, query: { page: 0, size: 20 } } });
   });
 });
+
+import {
+  useOpenAccount,
+  useDeposit,
+  useWithdraw,
+  useAccountTransition,
+} from './use-accounts';
+
+describe('useOpenAccount', () => {
+  it('POSTs the open body', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 'a1', status: 'ACTIVE' }));
+    const { result } = renderHook(() => useOpenAccount(), { wrapper: Wrapper });
+    await result.current.mutateAsync({ customerId: 'c1', accountTypeLabel: 'Savings',
+      currencyCode: 'NGN', openingDeposit: 2500 });
+    expect(client.POST).toHaveBeenCalledWith('/baas/v1/accounts',
+      { body: { customerId: 'c1', accountTypeLabel: 'Savings', currencyCode: 'NGN',
+        openingDeposit: 2500 } });
+  });
+});
+
+describe('useDeposit', () => {
+  it('POSTs the deposit body to the deposit path', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 't1', transactionType: 'CREDIT' }));
+    const { result } = renderHook(() => useDeposit('a1'), { wrapper: Wrapper });
+    await result.current.mutateAsync({ amount: 500, reference: 'cash-in' });
+    expect(client.POST).toHaveBeenCalledWith('/baas/v1/accounts/{id}/deposit',
+      { params: { path: { id: 'a1' } }, body: { amount: 500, reference: 'cash-in' } });
+  });
+});
+
+describe('useWithdraw', () => {
+  it('POSTs the withdraw body to the withdraw path', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 't2', transactionType: 'DEBIT' }));
+    const { result } = renderHook(() => useWithdraw('a1'), { wrapper: Wrapper });
+    await result.current.mutateAsync({ amount: 100 });
+    expect(client.POST).toHaveBeenCalledWith('/baas/v1/accounts/{id}/withdraw',
+      { params: { path: { id: 'a1' } }, body: { amount: 100 } });
+  });
+});
+
+describe('useAccountTransition', () => {
+  it('POSTs the freeze command path with a reason', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 'a1', status: 'FROZEN' }));
+    const { result } = renderHook(() => useAccountTransition('a1'), { wrapper: Wrapper });
+    await result.current.mutateAsync({ command: 'freeze', reason: 'legal hold' });
+    expect(client.POST).toHaveBeenCalledWith('/baas/v1/accounts/{id}/freeze',
+      { params: { path: { id: 'a1' } }, body: { reason: 'legal hold' } });
+  });
+
+  it('POSTs the close command path', async () => {
+    const { Wrapper, client } = makeWrapper(ok({ id: 'a1', status: 'CLOSED' }));
+    const { result } = renderHook(() => useAccountTransition('a1'), { wrapper: Wrapper });
+    await result.current.mutateAsync({ command: 'close', reason: 'customer request' });
+    expect(client.POST).toHaveBeenCalledWith('/baas/v1/accounts/{id}/close',
+      { params: { path: { id: 'a1' } }, body: { reason: 'customer request' } });
+  });
+});

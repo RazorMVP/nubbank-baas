@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApiClient } from '@/api/context';
 import { qk } from '@/api/query';
 import { unwrapResult, extractPage, type Page, type NormalizedPage } from '@/api/envelope';
@@ -114,4 +114,88 @@ export function useAccountTransactions(id: string, page = 0, size = 20) {
       return extractPage(unwrapResult<Page<AccountTransaction>>(result));
     },
   });
+}
+
+// ─── Mutation hooks ────────────────────────────────────────────────────────
+
+// Mirrors backend OpenAccountRequest. accountName/minimumBalance are accepted by the
+// backend but the open-account modal (spec §10 YAGNI) only sends the four fields below.
+export interface OpenAccountBody {
+  customerId: string;
+  accountTypeLabel: string;
+  currencyCode?: string;
+  openingDeposit?: number;
+}
+
+export function useOpenAccount() {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: OpenAccountBody) => {
+      const result = await client.POST('/baas/v1/accounts', { body } as never);
+      return unwrapResult<AccountDetail>(result);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['accounts', 'list'] }),
+  });
+}
+
+// Mirrors backend TransactionRequest. reference/description are optional.
+export interface MoneyBody {
+  amount: number;
+  reference?: string;
+  description?: string;
+}
+
+export function useDeposit(id: string) {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: MoneyBody) => {
+      const result = await client.POST('/baas/v1/accounts/{id}/deposit',
+        { params: { path: { id } }, body } as never);
+      return unwrapResult<AccountTransaction>(result);
+    },
+    onSuccess: () => invalidateAccount(qc, id),
+  });
+}
+
+export function useWithdraw(id: string) {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: MoneyBody) => {
+      const result = await client.POST('/baas/v1/accounts/{id}/withdraw',
+        { params: { path: { id } }, body } as never);
+      return unwrapResult<AccountTransaction>(result);
+    },
+    onSuccess: () => invalidateAccount(qc, id),
+  });
+}
+
+export type AccountCommand = 'freeze' | 'unfreeze' | 'close';
+
+export function useAccountTransition(id: string) {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ command, reason }: { command: AccountCommand; reason: string }) => {
+      // Path built from the AccountCommand union — all three commands share the same shape
+      // (path param + { reason } body). The backend requires a non-blank reason on every
+      // transition (400 otherwise), so `reason` is intentionally required, not optional.
+      const result = await client.POST(`/baas/v1/accounts/{id}/${command}` as never,
+        { params: { path: { id } }, body: { reason } } as never);
+      return unwrapResult<AccountDetail>(result);
+    },
+    onSuccess: () => invalidateAccount(qc, id),
+  });
+}
+
+// Money + lifecycle mutations all change the same account's detail, ledger, status
+// timeline, and its row in the list — invalidate all four so the UI refetches.
+function invalidateAccount(
+  qc: ReturnType<typeof useQueryClient>,
+  id: string,
+): void {
+  qc.invalidateQueries({ queryKey: qk.detail('accounts', id) });
+  qc.invalidateQueries({ queryKey: ['accounts', 'list'] });
 }
