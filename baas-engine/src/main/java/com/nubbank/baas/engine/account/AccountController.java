@@ -18,8 +18,9 @@ public class AccountController {
 
     private final AccountService accountService;
 
+    @PreAuthorize("hasAuthority('CREATE_ACCOUNT')")
     @PostMapping
-    public ResponseEntity<ApiResponse<AccountResponse>> open(
+    public ResponseEntity<ApiResponse<AccountDetailResponse>> open(
             @Valid @RequestBody OpenAccountRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.ok(accountService.open(req)));

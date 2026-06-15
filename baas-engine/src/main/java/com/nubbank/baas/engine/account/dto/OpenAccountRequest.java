@@ -10,5 +10,6 @@ public record OpenAccountRequest(
     String accountName,
     @Pattern(regexp = "[A-Z]{3}", message = "currencyCode must be 3-letter ISO code")
     String currencyCode,
-    BigDecimal minimumBalance
+    BigDecimal minimumBalance,
+    @PositiveOrZero(message = "openingDeposit must be zero or greater") BigDecimal openingDeposit
 ) {}

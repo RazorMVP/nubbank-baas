@@ -32,7 +32,7 @@ public class AccountService {
     private final AccountStatusEventRepository statusEventRepo;
 
     @Transactional
-    public AccountResponse open(OpenAccountRequest req) {
+    public AccountDetailResponse open(OpenAccountRequest req) {
         requireContext();
         Customer customer = customerRepo.findById(req.customerId())
             .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
@@ -40,6 +40,8 @@ public class AccountService {
 
         String schema = PartnerContext.get().schemaName();
         String accountNumber = virtualAccountService.assignNext(schema);
+
+        BigDecimal opening = req.openingDeposit() != null ? req.openingDeposit() : BigDecimal.ZERO;
 
         Account account = Account.builder()
             .customer(customer)
@@ -49,12 +51,23 @@ public class AccountService {
                 : customer.getFirstNameEncrypted() + " " + customer.getLastNameEncrypted())
             .currencyCode(req.currencyCode() != null ? req.currencyCode() : "NGN")
             .minimumBalance(req.minimumBalance() != null ? req.minimumBalance() : BigDecimal.ZERO)
+            .balance(opening)
+            .availableBalance(opening)
             .build();
 
         Account saved = accountRepo.save(account);
+
+        if (opening.compareTo(BigDecimal.ZERO) > 0) {
+            txRepo.save(Transaction.builder()
+                .account(saved).transactionType(TransactionType.CREDIT)
+                .amount(opening).runningBalance(saved.getBalance())
+                .currencyCode(saved.getCurrencyCode())
+                .reference("OPENING_DEPOSIT").description("Opening deposit").build());
+        }
+
         eventPublisher.publishEvent(new AccountOpenedEvent(
             saved.getId(), customer.getId(), saved.getAccountNumber(), schema));
-        return toResponse(saved);
+        return toDetail(saved);
     }
 
     @Transactional(readOnly = true)
