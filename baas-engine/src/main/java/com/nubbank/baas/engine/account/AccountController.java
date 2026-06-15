@@ -49,4 +49,28 @@ public class AccountController {
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.ok(accountService.getTransactions(id, page, size)));
     }
+
+    @PreAuthorize("hasAuthority('UPDATE_ACCOUNT')")
+    @PostMapping("/{id}/freeze")
+    public ResponseEntity<ApiResponse<AccountDetailResponse>> freeze(
+            @PathVariable UUID id, @Valid @RequestBody AccountTransitionRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            accountService.transition(id, AccountCommand.FREEZE, req.reason())));
+    }
+
+    @PreAuthorize("hasAuthority('UPDATE_ACCOUNT')")
+    @PostMapping("/{id}/unfreeze")
+    public ResponseEntity<ApiResponse<AccountDetailResponse>> unfreeze(
+            @PathVariable UUID id, @Valid @RequestBody AccountTransitionRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            accountService.transition(id, AccountCommand.UNFREEZE, req.reason())));
+    }
+
+    @PreAuthorize("hasAuthority('UPDATE_ACCOUNT')")
+    @PostMapping("/{id}/close")
+    public ResponseEntity<ApiResponse<AccountDetailResponse>> close(
+            @PathVariable UUID id, @Valid @RequestBody AccountTransitionRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            accountService.transition(id, AccountCommand.CLOSE, req.reason())));
+    }
 }

@@ -9,6 +9,7 @@ import com.nubbank.baas.engine.virtualaccount.VirtualAccountService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.*;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -24,6 +25,7 @@ public class AccountService {
     private final VirtualAccountService virtualAccountService;
     private final ApplicationEventPublisher eventPublisher;
     private final CardAuthDebitRepository cardAuthDebitRepo;
+    private final AccountStatusEventRepository statusEventRepo;
 
     @Transactional
     public AccountResponse open(OpenAccountRequest req) {
@@ -55,6 +57,52 @@ public class AccountService {
     public AccountDetailResponse getById(UUID id) {
         requireContext();
         return toDetail(findOrThrow(id));
+    }
+
+    @Transactional
+    public AccountDetailResponse transition(UUID id, AccountCommand command, String reason) {
+        requireContext();
+        Account account = accountRepo.findByIdForUpdate(id)
+            .orElseThrow(() -> BaasException.notFound("ACCOUNT_NOT_FOUND",
+                "Account " + id + " not found"));
+        AccountStatus from = account.getStatus();
+        AccountStatus to = target(from, command);
+        if (to == null) {
+            throw BaasException.badRequest("INVALID_ACCOUNT_TRANSITION",
+                "Cannot " + command + " an account in status " + from);
+        }
+        if (command == AccountCommand.CLOSE
+                && account.getBalance().compareTo(java.math.BigDecimal.ZERO) != 0) {
+            throw BaasException.conflict("ACCOUNT_BALANCE_NONZERO",
+                "Account balance must be zero to close (current: " + account.getBalance() + ")");
+        }
+        account.setStatus(to);
+        accountRepo.save(account);
+        statusEventRepo.save(AccountStatusEvent.builder()
+            .accountId(id).fromStatus(from.name()).toStatus(to.name())
+            .reason(reason).changedBy(currentPrincipal()).build());
+        return toDetail(account);
+    }
+
+    /**
+     * Lifecycle target state, or null if (from, command) is not a legal edge.
+     * Close is reachable from ACTIVE only — a FROZEN account must be unfrozen first
+     * (legal-hold realism). The zero-balance guard for CLOSE is enforced separately in
+     * transition(), so a CLOSE from ACTIVE returns CLOSED here regardless of balance.
+     */
+    private static AccountStatus target(AccountStatus from, AccountCommand command) {
+        return switch (command) {
+            case FREEZE   -> from == AccountStatus.ACTIVE ? AccountStatus.FROZEN : null;
+            case UNFREEZE -> from == AccountStatus.FROZEN ? AccountStatus.ACTIVE : null;
+            case CLOSE    -> from == AccountStatus.ACTIVE ? AccountStatus.CLOSED : null;
+        };
+    }
+
+    private String currentPrincipal() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return null;
+        Object principal = auth.getPrincipal();
+        return (principal == null || "anonymousUser".equals(principal)) ? null : principal.toString();
     }
 
     @Transactional
