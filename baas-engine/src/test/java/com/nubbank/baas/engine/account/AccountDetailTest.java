@@ -88,4 +88,35 @@ class AccountDetailTest extends AbstractIntegrationTest {
             HttpMethod.GET, new HttpEntity<>(auth()), Map.class);
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
+
+    @Test
+    void detail_blankLastName_customerNameIsFirstNameOnly() {
+        // Persist a customer whose last name is blank (empty string) — schema forbids SQL null
+        PartnerContext.set(new PartnerContext(orgId.toString(), schemaName,
+            "SANDBOX", "SANDBOX", "TEST", null));
+        UUID firstOnlyCustomerId = customerRepo.save(
+            Customer.builder().firstNameEncrypted("Ada").lastNameEncrypted("").build()).getId();
+        PartnerContext.clear();
+
+        // Open an account for that customer
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("customerId", firstOnlyCustomerId.toString());
+        body.put("accountTypeLabel", "Savings");
+        body.put("currencyCode", "NGN");
+        ResponseEntity<Map> openResp = restTemplate.exchange("/baas/v1/accounts", HttpMethod.POST,
+            new HttpEntity<>(body, auth()), Map.class);
+        UUID accountId = UUID.fromString(
+            (String) ((Map<?, ?>) openResp.getBody().get("data")).get("id"));
+
+        // Fetch detail — customerName must be "Ada", never "Ada null" or "null Ada"
+        ResponseEntity<Map> r = restTemplate.exchange("/baas/v1/accounts/" + accountId,
+            HttpMethod.GET, new HttpEntity<>(auth()), Map.class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getBody().get("data");
+
+        String customerName = (String) data.get("customerName");
+        assertThat(customerName).isEqualTo("Ada");
+        assertThat(customerName).doesNotContain("null");
+    }
 }

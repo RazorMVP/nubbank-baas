@@ -225,7 +225,9 @@ public class AccountService {
 
     private AccountDetailResponse toDetail(Account a) {
         Customer c = a.getCustomer();
-        String customerName = (c.getFirstNameEncrypted() + " " + c.getLastNameEncrypted()).trim();
+        String customerName = java.util.stream.Stream.of(c.getFirstNameEncrypted(), c.getLastNameEncrypted())
+            .filter(s -> s != null && !s.isBlank())
+            .collect(java.util.stream.Collectors.joining(" "));
         return new AccountDetailResponse(a.getId(), a.getAccountNumber(),
             c.getId(), customerName, a.getAccountTypeLabel(), a.getStatus(),
             a.getBalance(), a.getAvailableBalance(), a.getCurrencyCode(),
