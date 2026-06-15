@@ -32,7 +32,7 @@ export interface AccountDetail {
   currencyCode: string;
   minimumBalance: number;
   allowOverdraft: boolean;
-  overdraftLimit: number;
+  overdraftLimit: number | null;
   openedAt: string;
 }
 

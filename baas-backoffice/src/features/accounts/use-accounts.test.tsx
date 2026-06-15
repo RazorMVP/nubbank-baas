@@ -62,6 +62,7 @@ describe('useAccounts', () => {
     });
     const { result } = renderHook(() => useAccounts({ page: 0, size: 20 }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.items).toHaveLength(0);
     expect(client.GET).toHaveBeenCalledWith('/baas/v1/accounts',
       { params: { query: { page: 0, size: 20 } } });
   });
