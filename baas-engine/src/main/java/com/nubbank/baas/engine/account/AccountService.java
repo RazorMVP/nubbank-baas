@@ -165,9 +165,9 @@ public class AccountService {
         Account account = accountRepo.findByIdForUpdate(accountId)
             .orElseThrow(() -> BaasException.notFound("ACCOUNT_NOT_FOUND", "Account not found"));
 
-        if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw BaasException.badRequest("ACCOUNT_NOT_ACTIVE",
-                "Account must be ACTIVE to accept deposits");
+        if (account.getStatus() == AccountStatus.CLOSED) {
+            throw BaasException.conflict("ACCOUNT_NOT_ACCEPTING_CREDITS",
+                "A CLOSED account cannot accept credits");
         }
 
         account.setBalance(account.getBalance().add(req.amount()));
@@ -188,8 +188,8 @@ public class AccountService {
             .orElseThrow(() -> BaasException.notFound("ACCOUNT_NOT_FOUND", "Account not found"));
 
         if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw BaasException.badRequest("ACCOUNT_NOT_ACTIVE",
-                "Account must be ACTIVE for withdrawals");
+            throw BaasException.conflict("ACCOUNT_NOT_ACCEPTING_DEBITS",
+                "Account must be ACTIVE for debits (status: " + account.getStatus() + ")");
         }
 
         BigDecimal floor = account.isAllowOverdraft() && account.getOverdraftLimit() != null

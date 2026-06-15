@@ -49,18 +49,21 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.ok(accountService.statusEvents(id)));
     }
 
+    @PreAuthorize("hasAuthority('DEPOSIT')")
     @PostMapping("/{id}/deposit")
     public ResponseEntity<ApiResponse<TransactionResponse>> deposit(
             @PathVariable UUID id, @Valid @RequestBody TransactionRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(accountService.deposit(id, req)));
     }
 
+    @PreAuthorize("hasAuthority('WITHDRAW')")
     @PostMapping("/{id}/withdraw")
     public ResponseEntity<ApiResponse<TransactionResponse>> withdraw(
             @PathVariable UUID id, @Valid @RequestBody TransactionRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(accountService.withdraw(id, req)));
     }
 
+    @PreAuthorize("hasAuthority('READ_ACCOUNT')")
     @GetMapping("/{id}/transactions")
     public ResponseEntity<ApiResponse<Page<TransactionResponse>>> transactions(
             @PathVariable UUID id,
