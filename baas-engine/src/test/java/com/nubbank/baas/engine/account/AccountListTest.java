@@ -109,6 +109,34 @@ class AccountListTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void list_blankLastName_customerNameIsFirstNameOnly() {
+        // Persist a customer with a blank last name — no "null" substring must appear
+        PartnerContext.set(new PartnerContext(
+            // re-derive orgId from the jwt claim; easier to re-fetch the org
+            orgRepo.findBySchemaName(schemaName).get().getId().toString(),
+            schemaName, "SANDBOX", "SANDBOX", "TEST", null));
+        UUID soloCustomerId = customerRepo.save(
+            Customer.builder().firstNameEncrypted("Solo").lastNameEncrypted("").build()).getId();
+        PartnerContext.clear();
+
+        // Open an account for that customer via the API
+        restTemplate.exchange("/baas/v1/accounts", HttpMethod.POST,
+            new HttpEntity<>(Map.of("customerId", soloCustomerId.toString(),
+                "accountTypeLabel", "Savings"), auth()), Map.class);
+
+        // Fetch the list and find the Solo customer's row
+        List<Map<String, Object>> content = listContent("");
+        Map<String, Object> soloRow = content.stream()
+            .filter(r -> soloCustomerId.toString().equals(r.get("customerId").toString()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Solo customer's account not found in list"));
+
+        String name = (String) soloRow.get("customerName");
+        assertThat(name).isEqualTo("Solo");
+        assertThat(name).doesNotContain("null");
+    }
+
+    @Test
     void list_paginates() {
         openAccountFull("Savings");
         openAccountFull("Current");

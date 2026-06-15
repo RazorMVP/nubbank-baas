@@ -73,9 +73,8 @@ public class AccountService {
 
     private AccountSummaryResponse toSummary(Account a) {
         Customer c = a.getCustomer();
-        String customerName = (c.getFirstNameEncrypted() + " " + c.getLastNameEncrypted()).trim();
         return new AccountSummaryResponse(a.getId(), a.getAccountNumber(),
-            c.getId(), customerName, a.getAccountTypeLabel(), a.getStatus(),
+            c.getId(), customerName(c), a.getAccountTypeLabel(), a.getStatus(),
             a.getBalance(), a.getCurrencyCode());
     }
 
@@ -306,14 +305,17 @@ public class AccountService {
 
     private AccountDetailResponse toDetail(Account a) {
         Customer c = a.getCustomer();
-        String customerName = java.util.stream.Stream.of(c.getFirstNameEncrypted(), c.getLastNameEncrypted())
-            .filter(s -> s != null && !s.isBlank())
-            .collect(java.util.stream.Collectors.joining(" "));
         return new AccountDetailResponse(a.getId(), a.getAccountNumber(),
-            c.getId(), customerName, a.getAccountTypeLabel(), a.getStatus(),
+            c.getId(), customerName(c), a.getAccountTypeLabel(), a.getStatus(),
             a.getBalance(), a.getAvailableBalance(), a.getCurrencyCode(),
             a.getMinimumBalance(), a.isAllowOverdraft(), a.getOverdraftLimit(),
             a.getCreatedAt());
+    }
+
+    private static String customerName(Customer c) {
+        return java.util.stream.Stream.of(c.getFirstNameEncrypted(), c.getLastNameEncrypted())
+            .filter(s -> s != null && !s.isBlank())
+            .collect(java.util.stream.Collectors.joining(" "));
     }
 
     private TransactionResponse toTxResponse(Transaction t) {
