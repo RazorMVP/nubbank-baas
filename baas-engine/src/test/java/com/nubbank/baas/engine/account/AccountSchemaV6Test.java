@@ -16,7 +16,7 @@ class AccountSchemaV6Test extends AbstractIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
 
     @Test
-    void v6_addsStatusEventsTableAndUpdateAccountPermission() {
+    void addsAccountStatusEventsTableAndUpdateAccountPermission() {
         String schema = "partner_" + UUID.randomUUID().toString().replace("-", "");
         PartnerOrganization org = orgRepo.save(PartnerOrganization.builder()
             .name("V6").status(PartnerStatus.SANDBOX).tier(PartnerTier.SANDBOX)
@@ -40,5 +40,14 @@ class AccountSchemaV6Test extends AbstractIntegrationTest {
             + "WHERE r.name = 'PARTNER_ADMIN' AND p.code = 'UPDATE_ACCOUNT'",
             Integer.class);
         assertThat(grant).isEqualTo(1);
+
+        // ACCOUNT_OFFICER must also hold the new permission (V6 grants it to both roles).
+        Integer grantOfficer = jdbc.queryForObject(
+            "SELECT count(*) FROM " + schema + ".role_permissions rp "
+            + "JOIN " + schema + ".roles r ON r.id = rp.role_id "
+            + "JOIN " + schema + ".permissions p ON p.id = rp.permission_id "
+            + "WHERE r.name = 'ACCOUNT_OFFICER' AND p.code = 'UPDATE_ACCOUNT'",
+            Integer.class);
+        assertThat(grantOfficer).isEqualTo(1);
     }
 }
