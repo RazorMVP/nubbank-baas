@@ -13,6 +13,9 @@ export const openAccountSchema = z.object({
   // changes the input type (unknown) vs output type (number) and breaks
   // input === output. We validate it parses to a number >= 0 here, then convert
   // to a number at the API-body boundary in onSubmit.
+  // .optional() allows undefined (field omitted); .or(z.literal('')) allows the
+  // empty-string an untyped <input type="number"> emits; .refine enforces ≥ 0 only
+  // when a non-empty value is present.
   openingDeposit: z
     .string()
     .optional()

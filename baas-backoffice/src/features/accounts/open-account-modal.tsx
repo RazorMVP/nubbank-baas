@@ -53,12 +53,18 @@ export function OpenAccountModal({
             onPick={(c) => form.setValue('customerId', c.id, { shouldValidate: true })}
           />
           <FormField label="Account type" error={form.formState.errors.accountTypeLabel?.message}>
-            <select {...form.register('accountTypeLabel')}>
+            <select
+              className="flex h-9 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-sm text-[var(--color-ink)] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-primary)] focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+              {...form.register('accountTypeLabel')}
+            >
               {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </FormField>
           <FormField label="Currency" error={form.formState.errors.currencyCode?.message}>
-            <select {...form.register('currencyCode')}>
+            <select
+              className="flex h-9 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-sm text-[var(--color-ink)] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-primary)] focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+              {...form.register('currencyCode')}
+            >
               {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </FormField>
