@@ -55,7 +55,7 @@ export function MoneyModal({
       {(form) => (
         <>
           <FormField label="Amount" error={form.formState.errors.amount?.message}>
-            <Input type="number" step="0.01" {...form.register('amount')} />
+            <Input type="number" step="0.01" min="0.01" {...form.register('amount')} />
           </FormField>
           <FormField label="Reference (optional)">
             <Input {...form.register('reference')} />
