@@ -10,7 +10,8 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     env: {
       VITE_DEV_AUTH: 'true',
-      VITE_DEV_AUTHORITIES: 'READ_CUSTOMER,CREATE_CUSTOMER,UPDATE_CUSTOMER',
+      VITE_DEV_AUTHORITIES:
+        'READ_CUSTOMER,CREATE_CUSTOMER,UPDATE_CUSTOMER,READ_ACCOUNT,CREATE_ACCOUNT,UPDATE_ACCOUNT,DEPOSIT,WITHDRAW',
       VITE_API_BASE_URL: 'http://localhost:8080',
     },
   },
