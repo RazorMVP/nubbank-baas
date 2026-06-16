@@ -75,6 +75,89 @@ export interface paths {
       };
     };
   };
+  '/baas/v1/accounts': {
+    get: {
+      parameters: { query?: { page?: number; size?: number; status?: string; search?: string } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+    post: {
+      requestBody: { content: { 'application/json': unknown } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/accounts/{id}': {
+    get: {
+      parameters: { path: { id: string } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/accounts/{id}/status-events': {
+    get: {
+      parameters: { path: { id: string } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/accounts/{id}/transactions': {
+    get: {
+      parameters: { path: { id: string }; query?: { page?: number; size?: number } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/accounts/{id}/deposit': {
+    post: {
+      parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/accounts/{id}/withdraw': {
+    post: {
+      parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/accounts/{id}/freeze': {
+    post: {
+      parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/accounts/{id}/unfreeze': {
+    post: {
+      parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
+  '/baas/v1/accounts/{id}/close': {
+    post: {
+      parameters: { path: { id: string } };
+      requestBody: { content: { 'application/json': unknown } };
+      responses: {
+        200: { content: { 'application/json': unknown } };
+      };
+    };
+  };
   '/baas/v1/dashboard/summary': {
     get: {
       responses: {

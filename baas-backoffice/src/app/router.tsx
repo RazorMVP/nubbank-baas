@@ -6,6 +6,8 @@ import { AuthCallback } from '@/features/auth/callback';
 import { Dashboard } from '@/features/dashboard/dashboard';
 import { CustomersList } from '@/features/customers/customers-list';
 import { CustomerDetail } from '@/features/customers/customer-detail';
+import { AccountsList } from '@/features/accounts/accounts-list';
+import { AccountDetail } from '@/features/accounts/account-detail';
 import { PERMISSIONS } from '@/lib/rbac';
 
 // Exported so a test can mount these standalone with createMemoryRouter.
@@ -30,6 +32,25 @@ export const customerRoutes: RouteObject[] = [
   },
 ];
 
+export const accountRoutes: RouteObject[] = [
+  {
+    path: '/accounts',
+    element: (
+      <RequireRoutePermission code={PERMISSIONS.READ_ACCOUNT}>
+        <AccountsList />
+      </RequireRoutePermission>
+    ),
+  },
+  {
+    path: '/accounts/:id',
+    element: (
+      <RequireRoutePermission code={PERMISSIONS.READ_ACCOUNT}>
+        <AccountDetail />
+      </RequireRoutePermission>
+    ),
+  },
+];
+
 export const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
   { path: '/auth/callback', element: <AuthCallback /> },
@@ -38,7 +59,7 @@ export const router = createBrowserRouter([
     children: [
       {
         element: <AppShell />,
-        children: [{ index: true, element: <Dashboard /> }, ...customerRoutes],
+        children: [{ index: true, element: <Dashboard /> }, ...customerRoutes, ...accountRoutes],
       },
     ],
   },

@@ -386,9 +386,9 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **Persistence** | spring-boot-starter-jdbc + Flyway | `db/migration/fep/V1__authorization_log.sql`; `AuthorizationAuditService` (JdbcTemplate, best-effort — a write failure never alters the ISO 8583 response); stores BIN + last4 only |
 | **Last git commit** | `a9e4cfd` | Session 12 — Stage 5 FEP audit log (DEF-1C-24): datastore + migration + handler wiring; 55 tests passing |
 
-### BaaS Backoffice Portal (`baas-backoffice/`) — FOUNDATION + CUSTOMERS TRACK (Sessions 14–16)
+### BaaS Backoffice Portal (`baas-backoffice/`) — FOUNDATION + CUSTOMERS + ACCOUNTS TRACKS (Sessions 14–17)
 
-Operations console for bank staff. **Foundation complete** (`57ffbdd`, 69 tests); **Customers — first per-domain track ✅ (Session 16, `373ebcd`, 101 unit + 1 Playwright e2e)** on its own PR (`feat/baas-backoffice-customers`); the engine half is in PR #28 (`feat/baas-engine-customer-lifecycle`, 166 tests, unmerged). Remaining per-domain screens land via sub-plans. Ops reference: `docs/backoffice-operations.md`. Port 3001.
+Operations console for bank staff. **Foundation complete** (`57ffbdd`, 69 tests); **Customers — first per-domain track ✅ (Session 16, `373ebcd`, 101 unit + 1 Playwright e2e)** on its own PR (`feat/baas-backoffice-customers`, engine half in PR #28); **Accounts — second per-domain track ✅ (Session 17, `513ff73`, 139 unit + 1 Playwright e2e)** on its own PR (`feat/baas-backoffice-accounts`, PR #34) — list/detail/open, lifecycle (freeze/unfreeze/close), money modal, status-history, transaction ledger; the engine Accounts lifecycle + money gating is in PR #33 (`feat/baas-engine-accounts-lifecycle`, 199 tests, unmerged). Remaining per-domain screens land via sub-plans. Ops reference: `docs/backoffice-operations.md`. Port 3001.
 
 | Component | Version | Notes |
 |-----------|---------|-------|
@@ -400,9 +400,9 @@ Operations console for bank staff. **Foundation complete** (`57ffbdd`, 69 tests)
 | **UI** | shadcn/ui (Radix + Tailwind, copied-in) · TanStack Table 8 | `src/components/ui/` |
 | **API client** | `openapi-fetch` + `openapi-typescript` | Auth middleware; `unwrapResult` envelope error seam |
 | **Auth** | `oidc-client-ts` v3 (PKCE) / dev-token | Hybrid, env-selected (`VITE_DEV_AUTH`) |
-| **Test** | Vitest 3 + RTL · Playwright (e2e) | 25 test files, 69 tests |
+| **Test** | Vitest 3 + RTL · Playwright (e2e) | 139 unit tests + 1 Playwright e2e (Session 17) |
 | **Node** | 22 | `node:22-alpine` build → `nginx:1.27-alpine` serve |
-| **Last git commit** | `373ebcd` | Session 16 — Customers domain track (first per-domain track: list/detail/create/edit, masked-PII profile, KYC state-machine actions + history); 101 unit + 1 Playwright e2e. Engine half in PR #28 (unmerged). |
+| **Last git commit** | `513ff73` | Session 17 — Accounts domain track (second per-domain track: list/detail/open, lifecycle freeze/unfreeze/close, money modal, status-history, transaction ledger); 139 unit + 1 Playwright e2e. Engine half in PR #33 (unmerged). |
 
 ### BaaS Developer Portal (`baas-portal/`) — NOT YET BUILT
 
@@ -642,7 +642,7 @@ maps the decision to DE39. Built against a **mocked `CardClient`** — live Card
 | Module | Sub-plan | Status |
 |--------|---------|--------|
 | baas-ncube (CBN format + Ncube) | 1B | ✅ Complete (Session 2) |
-| baas-backoffice (React operations portal) | 1C | 🟡 Foundation ✅ (Session 14) · Customers — first per-domain track ✅ (Session 16, `373ebcd`; engine half in PR #28) — remaining per-domain screens pending |
+| baas-backoffice (React operations portal) | 1C | 🟡 Foundation ✅ (Session 14) · Customers — first per-domain track ✅ (Session 16, `373ebcd`; engine half in PR #28) · Accounts — second per-domain track ✅ (Session 17, `513ff73`, PR #34; engine half in PR #33) — remaining per-domain screens pending |
 | baas-portal (React developer portal) | 1D | ⬜ Not started |
 | Infrastructure (Docker + CI) | 1E | ⬜ Not started |
 | KYC delegation + Ncube live | Phase 2 | ⬜ Not started |
@@ -813,6 +813,11 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | **(k8s) FEP runs FIXED replicas, NO HPA** — the FEP is an ISO 8583 TCP socket server; terminals hold long-lived connections and a naive CPU HPA scales pods that existing sockets never migrate to, while scale-down severs live financial sessions. | Keep `replicas: 2`, no `HorizontalPodAutoscaler`. Safe for correctness because debit idempotency is enforced at the engine (`card_auth_debit.auth_key` UNIQUE) — two FEP pods can't double-debit. Raw ISO 8583 TCP also needs an L4 `LoadBalancer` (not the L7 Ingress); use `externalTrafficPolicy: Local` to preserve the client source IP for acquirer allow-listing + audit. |
 | **(baas-backoffice) `CommandModal` has no reset-on-open** — the shared `CommandModal` does NOT call `form.reset()` when it reopens, so a closed-then-reopened modal shows the previous submission's field values (stale form). | Conditionally mount the modal — `{open && <Modal/>}` — so React unmounts/remounts it each open and the form initialises fresh. Used by every Customers modal (create, edit, KYC action) (Session 16). A Foundation-level reset-on-open in `CommandModal` would remove this workaround (open follow-up in `docs/backoffice-operations.md`). |
 | **(baas-backoffice) status/date display must go through `src/lib/format.ts`** — `humanizeStatus` / `formatDateTime` are the single source for rendering enum statuses and timestamps (badge, history, filter dropdown). | Never re-inline `replaceAll('_',' ')` or `toLocaleString()` at a call site — import from `src/lib/format.ts` so every screen formats identically (Session 16). |
+| **(baas-backoffice) money display must go through `formatMoney` in `src/lib/format.ts`** — balances/amounts are **major-unit decimals** (do NOT divide by 100). | Import `formatMoney(amount, currencyCode)` — never re-inline `Intl.NumberFormat`; reused by accounts list/detail/ledger (Session 17). |
+| **(baas-backoffice) `CommandModal<T>` generic requires Zod input-type === output-type** — `.default()` and `z.coerce.number()` make Zod's input ≠ output, which breaks `schema: ZodType<T>` (a type error at the modal call site). | Model optional/number fields as `z.string().optional().or(z.literal('')).refine(...)` and coerce at a `toBody` boundary; supply defaults via RHF `defaultValues`, never `.default()` (Session 17). |
+| **(baas-backoffice) `FormField` clones its single child to inject `id`** — it wraps exactly ONE labellable element. Putting sibling content (e.g. a results list) inside it makes `getByLabelText` / `<label htmlFor>` target a non-labellable wrapper. | Wrap exactly one `<Input>` (or other labellable element) per `FormField`; render sibling content (customer-picker results) OUTSIDE the `FormField` (Session 17). |
+| **(baas-backoffice) `noValidate` is set on `CommandModal`'s `<form>`** — RHF/Zod own all modal validation; native HTML5 `required`/`type=number` validation was pre-empting Zod errors. | Don't rely on native HTML5 form validation inside a `CommandModal`; let the Zod schema be the single validation authority (Session 17). |
+| **(baas-engine) Account money mutations are PESSIMISTIC_WRITE-locked + atomic** — `transition` / `deposit` / `withdraw` / `open` load the account via `findByIdForUpdate`; the status change + history-event write (or the balance update + initial `Transaction`) commit in a single `@Transactional`. | Always take the pessimistic lock before mutating balance or status, and write the `AccountStatusEvent` (or the opening `Transaction`) in the same transaction — never split the read and the write across transactions (Session 17). |
 
 ---
 

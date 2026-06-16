@@ -59,8 +59,13 @@ Authority codes from the engine's V2 migration (no `ROLE_` prefix; match
 string literals at call sites. `hasPermission(authorities, code)` returns `true` when `code` is
 `undefined` (always-visible items).
 
-`READ_CUSTOMER · CREATE_CUSTOMER · UPDATE_CUSTOMER · READ_ACCOUNT · CREATE_ACCOUNT · DEPOSIT ·
-WITHDRAW · READ_LOAN · CREATE_LOAN · APPROVE_LOAN · DISBURSE_LOAN · INITIATE_PAYMENT · RUN_REPORT`
+`READ_CUSTOMER · CREATE_CUSTOMER · UPDATE_CUSTOMER · READ_ACCOUNT · CREATE_ACCOUNT · UPDATE_ACCOUNT ·
+DEPOSIT · WITHDRAW · READ_LOAN · CREATE_LOAN · APPROVE_LOAN · DISBURSE_LOAN · INITIATE_PAYMENT ·
+RUN_REPORT`
+
+`UPDATE_ACCOUNT` is **new** — it is not in the engine's V2 migration; it is seeded by the Accounts
+backend track's `V6` migration, which lands in the **companion backend PR (PR A, pending merge)** — not
+yet in this frontend branch's engine source. It gates the lifecycle transitions (freeze / unfreeze / close).
 
 ## Routes
 
@@ -71,6 +76,8 @@ WITHDRAW · READ_LOAN · CREATE_LOAN · APPROVE_LOAN · DISBURSE_LOAN · INITIAT
 | `/` (index) | `Dashboard` | `RequireAuth` → `AppShell` | ✅ live |
 | `/customers` | `CustomersList` | `RequireAuth` → `AppShell` → `RequireRoutePermission(READ_CUSTOMER)` | ✅ live |
 | `/customers/:id` | `CustomerDetail` | `RequireAuth` → `AppShell` → `RequireRoutePermission(READ_CUSTOMER)` | ✅ live |
+| `/accounts` | `AccountsList` | `RequireAuth` → `AppShell` → `RequireRoutePermission(READ_ACCOUNT)` | ✅ live |
+| `/accounts/:id` | `AccountDetail` | `RequireAuth` → `AppShell` → `RequireRoutePermission(READ_ACCOUNT)` | ✅ live |
 
 Domain routes below are **scaffolded in the sidebar nav** (`src/layout/nav-config.ts`) but not yet
 wired into the router — each lands with its per-domain sub-plan. The nav filters items by the
@@ -80,7 +87,7 @@ operator's authorities via `visibleNav()`.
 |-----------|------|-------|---------------------|
 | Overview | Dashboard | `/` | — (always visible) |
 | Banking | Customers | `/customers` ✅ wired | `READ_CUSTOMER` |
-| Banking | Accounts | `/accounts` | `READ_ACCOUNT` |
+| Banking | Accounts | `/accounts` ✅ wired | `READ_ACCOUNT` |
 | Banking | Deposits | `/deposits` | `READ_ACCOUNT` |
 | Banking | Loans | `/loans` | `READ_LOAN` |
 | Banking | Payments | `/payments` | `INITIATE_PAYMENT` |
@@ -113,6 +120,13 @@ Mutation errors are toasted globally via the `MutationCache` `onError` in `src/a
 | `PUT /baas/v1/customers/{id}` | `useUpdateCustomer` | Profile update (name, email, phone, DOB, gender); invalidates detail + list |
 | `POST /baas/v1/customers/{id}/{activate&#124;suspend&#124;reactivate&#124;close}` | `useKycTransition` | KYC state-machine transitions; `reason` body field is required (400 on blank) |
 | `GET /baas/v1/customers/{id}/kyc-events` | `useCustomerKycEvents` | KYC history timeline (`fromStatus`, `toStatus`, `reason`, `changedBy`, `changedAt`) |
+| `GET /baas/v1/accounts` | `useAccounts` | Paginated list with `status` (ACTIVE&#124;FROZEN&#124;CLOSED) and `search` (account-number prefix) filters |
+| `POST /baas/v1/accounts` | `useOpenAccount` | Open account against a customer; optional `openingDeposit` (≥ 0) writes one CREDIT transaction |
+| `GET /baas/v1/accounts/{id}` | `useAccount` | Account detail (balance, availableBalance, minimumBalance, overdraft, openedAt) |
+| `POST /baas/v1/accounts/{id}/{deposit&#124;withdraw}` | `useDeposit`/`useWithdraw` | Money movement; deposit allowed on ACTIVE+FROZEN, withdraw on ACTIVE only |
+| `POST /baas/v1/accounts/{id}/{freeze&#124;unfreeze&#124;close}` | `useAccountTransition` | Lifecycle state machine; `reason` body required (400 on blank); gated by `UPDATE_ACCOUNT` |
+| `GET /baas/v1/accounts/{id}/status-events` | `useAccountStatusEvents` | Append-only lifecycle history (`fromStatus`, `toStatus`, `reason`, `changedBy`, `changedAt`) |
+| `GET /baas/v1/accounts/{id}/transactions` | `useAccountTransactions` | Paginated CREDIT/DEBIT ledger (`amount`, `runningBalance`, `reference`, `createdAt`) |
 | `GET /baas/v1/dashboard/summary` | `useDashboardSummary` | KPI tiles (customers, deposits, KYC-pending, cards). `cardsIssued` may be null → em-dash tile |
 | `GET /baas/v1/operators/me` | PKCE provider (`fetchOperatorAuthorities`) | Authoritative operator permission codes for RBAC (not in the Keycloak token) |
 
@@ -133,6 +147,38 @@ New paths are hand-seeded into `src/api/schema.d.ts` (the committed OpenAPI snap
   (`{open && <Modal />}`) to get a fresh form on each open. A Foundation-level fix — resetting the
   form on the `open` transition inside `CommandModal` — would let always-mounted modals reset too and
   remove the need for the conditional-mount workaround. (Surfaced FE Tasks 5–6.)
+
+### Known follow-ups (Accounts track)
+
+- **Accounts query-key namespacing review** — `useAccounts` (list page) keys under
+  `qk.list('accounts', …)`, distinct from every `qk.list('customers', …)` key, so there is no
+  cross-feature cache collision today (different list domain). A deliberate review should confirm
+  this stays true if a future dashboard adds an accounts widget; consider a dedicated
+  `['accounts', 'recent']` key for any such widget to keep the separation explicit. (Surfaced FE Task 1–2.)
+
+- **Shared `formatMoney` helper** — the Accounts track added `formatMoney(amount, currencyCode)` to
+  `src/lib/format.ts` (used by the accounts list, detail, and ledger to render balances and
+  transaction amounts consistently). Future money-rendering features should reuse this helper rather
+  than re-deriving `Intl.NumberFormat` per call site. (Surfaced FE Tasks 1–6.)
+
+- **`noValidate` on the shared `CommandModal` `<form>`** — a Foundation change made during the
+  Accounts track: the `CommandModal` `<form>` now sets `noValidate`, so React Hook Form + Zod own all
+  validation across every modal (the browser's native HTML5 constraint validation no longer competes
+  with — or pre-empts — RHF's error surfacing). Future modal authors get RHF/Zod-only validation for
+  free; do not re-add native `required`/`pattern`-driven validation expecting the browser to enforce
+  it. (Surfaced during the Accounts track Foundation work.)
+
+- **Transaction-ledger pagination UI** — `useAccountTransactions` supports `page`/`size`, but the
+  account detail page renders only page 0 (newest 20) with no next/prev controls, so an account with
+  > 20 transactions silently shows just the most recent page. Functionally fine for the MVP (newest
+  transactions first); wiring the existing `page`/`size` params to pagination controls is a UX
+  follow-up. (Surfaced FE final track review.)
+
+- **Per-section error states on detail sub-queries** — the ledger and status-history sub-queries
+  (`useAccountTransactions`, `useAccountStatusEvents`) fall back to an empty list on error, so a
+  transient fetch failure is indistinguishable from a genuinely empty ledger/history (only
+  `useAccount` gates the page render). This mirrors `customer-detail.tsx`'s quiet-fallback pattern; a
+  dedicated per-section error row is a follow-up. (Surfaced FE final track review.)
 
 ## Local development
 

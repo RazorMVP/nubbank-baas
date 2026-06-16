@@ -13,7 +13,7 @@
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
 | `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
-| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`281739a`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). **Customers domain track ✅ (Session 16, `373ebcd`, 101 unit + 1 Playwright e2e):** first per-domain track, on its own PR (`feat/baas-backoffice-customers`) — list/detail/create/edit, masked-PII profile, KYC state-machine actions + history; the engine side ships separately in PR #28. Remaining per-domain tracks (Accounts, Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 16 |
+| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`281739a`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). **Customers domain track ✅ (Session 16, `373ebcd`, 101 unit + 1 Playwright e2e):** first per-domain track, on its own PR (`feat/baas-backoffice-customers`) — list/detail/create/edit, masked-PII profile, KYC state-machine actions + history; the engine side ships separately in PR #28. **Accounts domain track ✅ (Session 17, PR #34 `513ff73`, 139 unit + 1 Playwright e2e):** second per-domain track, on its own PR (`feat/baas-backoffice-accounts`) — list/detail/open, lifecycle (freeze/unfreeze/close), money modal (deposit/withdraw), status-history timeline, transaction ledger; the engine Accounts lifecycle + money gating ships separately in PR #33 (`feat/baas-engine-accounts-lifecycle`, 199 tests). Remaining per-domain tracks (Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 17 |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
 | Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles + GHCR CI for all four services; `infrastructure/docker-compose.yml`; vanilla k8s manifests in `infrastructure/k8s/`). **Session 13: `baas-card` + `baas-fep` added to k8s base (Deployments, Services, NetworkPolicy mesh, PDBs, fep TCP LoadBalancer, partner→card Ingress routing) + FEP datastore env wired in compose.** | Session 13 |
@@ -198,6 +198,84 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 17 — 2026-06-16
+**Accounts domain track — the second per-domain track on `baas-backoffice` (after Customers). ONE session, TWO independently-mergeable PRs (one service per PR): the `baas-engine` Accounts lifecycle + money gating in PR #33 (`feat/baas-engine-accounts-lifecycle`, 199 tests, OPEN) and the `baas-backoffice` Accounts console in this frontend PR #34 (`feat/baas-backoffice-accounts`, last feature commit `513ff73`, 139 unit + 1 Playwright e2e). CBN surface unchanged** (operator-facing console + operator-scoped account lifecycle, not Open Banking).
+
+The backoffice gains its second real domain screen set, built on top of the existing Account/Transaction spine: an Accounts list with status filtering + account-number search, a detail page that is the §6 action map (per-status buttons gated by **both** permission and status, close-only-when-balance-0), an open-account modal with a debounced customer picker, a money modal (deposit/withdraw), an action modal (freeze/unfreeze/close), an oldest-first status-history timeline, and a colour-coded transaction ledger. The engine half (PR #33) adds the lifecycle state machine (`AccountService.transition` — FREEZE/UNFREEZE/CLOSE with reason + append-only `AccountStatusEvent` history), close guards (needs-zero-balance + close-only-from-ACTIVE), legal-hold money gating (deposit posts on ACTIVE+FROZEN; only CLOSED blocks credits; withdraw ACTIVE-only), a list endpoint (`JOIN FETCH` + explicit countQuery, status filter, account-number ILIKE search), detail + status-events endpoints, an optional atomic opening deposit (initial CREDIT `OPENING_DEPOSIT`), and `@PreAuthorize` on all 10 endpoints + the new `UPDATE_ACCOUNT` permission seeded in V6 (granted PARTNER_ADMIN + ACCOUNT_OFFICER).
+
+> **Split into two independently-mergeable PRs** (per § Branch & PR Discipline — one service per PR): the **backend** Accounts lifecycle + money gating (`baas-engine`: `AccountService.transition`, `AccountStatusEvent` + `V6__account_status_events.sql` + `UPDATE_ACCOUNT` permission seed, list/detail/status-events endpoints, money-gating guards, `@PreAuthorize` on 10 endpoints) is PR #33 `feat/baas-engine-accounts-lifecycle` (OPEN, mergeable, 199 tests); the **frontend** Accounts console + this session ledger are on `feat/baas-backoffice-accounts` (PR #34, last feature commit `513ff73`). Zero file overlap — mergeable in any order; the frontend degrades gracefully if #33 is not yet deployed. Engine files are referenced here for the unified session snapshot; that code lives in #33.
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-backoffice src/features/accounts/use-accounts.ts` | NEW read + mutation TanStack Query hooks (list/detail/open/transition/deposit/withdraw + status-events + transactions) |
+| `baas-backoffice src/features/accounts/open-account-modal.tsx` | NEW open-account modal with a debounced customer picker (results rendered OUTSIDE the FormField) |
+| `baas-backoffice src/features/accounts/accounts-list.tsx` + `account-status-badge.tsx` | NEW list screen + account status badge |
+| `baas-backoffice src/features/accounts/money-modal.tsx` + `account-action-modal.tsx` | NEW money modal (deposit/withdraw) + lifecycle action modal (freeze/unfreeze/close) |
+| `baas-backoffice src/features/accounts/account-status-history.tsx` + `transaction-ledger.tsx` | NEW oldest-first status-history timeline + colour-coded CREDIT/DEBIT ledger |
+| `baas-backoffice src/features/accounts/account-detail.tsx` | NEW detail screen — §6 action map: per-status buttons gated by **both** permission and status; close-only-when-balance-0; `?? []` guard |
+| `baas-backoffice src/lib/format.ts` | **Foundation change:** added shared `formatMoney(amount, currencyCode)` — single money-formatting helper (major-unit decimals, no /100); reused by list/detail/ledger |
+| `baas-backoffice src/components/command-modal.tsx` | **Foundation change:** added `noValidate` to the shared `<form>` so RHF/Zod own all modal validation (native HTML5 validation was pre-empting Zod errors) |
+| `baas-backoffice src/app/router.tsx` | Accounts routes wired (`/accounts` + `/accounts/:id`), `READ_ACCOUNT`-guarded via `RequireRoutePermission` |
+| `baas-backoffice src/lib/rbac.ts` | `UPDATE_ACCOUNT` permission constant added |
+| `baas-backoffice e2e/accounts.spec.ts` | NEW Playwright e2e: open → deposit → freeze → withdraw-blocked → unfreeze → close (against an evolving stub) |
+| `docs/backoffice-operations.md` | Accounts routes + RBAC codes consumed (`UPDATE_ACCOUNT`) + endpoints-consumed table; FE follow-ups (ledger pagination UI, per-section error states, query-key namespacing review) |
+| **PR #33 — `baas-engine` (referenced, lands separately):** `account/AccountStatusEvent.java` + `db/migration/tenant/V6__account_status_events.sql` | Append-only account-status history table + `UPDATE_ACCOUNT` permission seed (granted PARTNER_ADMIN + ACCOUNT_OFFICER) |
+| **PR #33 — `baas-engine`:** `account/AccountService.java` (`transition`/`deposit`/`withdraw`/`open`), `AccountController.java` | Lifecycle state machine (atomic status+event write), close guards, legal-hold money gating, list/detail/status-events endpoints, optional atomic opening deposit, `@PreAuthorize` on 10 endpoints |
+
+#### Key Decisions
+- **Money mutations are pessimistic-locked + atomic.** `transition`/`deposit`/`withdraw`/`open` all load the account via `findByIdForUpdate` (PESSIMISTIC_WRITE); the status change + history-event write (or the balance update + initial `Transaction`) commit in a single `@Transactional`.
+- **Legal-hold money gating, not a blanket block.** Deposit posts on ACTIVE **and** FROZEN — only CLOSED blocks credits → 409 `ACCOUNT_NOT_ACCEPTING_CREDITS`; withdraw is ACTIVE-only → 409 `ACCOUNT_NOT_ACCEPTING_DEBITS`. Close needs a zero balance (409 `ACCOUNT_BALANCE_NONZERO`) and is reachable only from ACTIVE (400 `INVALID_ACCOUNT_TRANSITION`); bad list status → 400 `INVALID_STATUS`.
+- **`CommandModal` generic needs Zod input-type === output-type.** `.default()` / `z.coerce.number()` make Zod's input ≠ output and break `CommandModal<T>`'s `schema: ZodType<T>`. Optional/number fields are modelled as `z.string().optional().or(z.literal('')).refine(...)` and coerced at a `toBody` boundary; defaults are supplied via RHF `defaultValues`, never `.default()`.
+- **`FormField` clones its single child to inject `id`.** Wrap exactly ONE labellable element (an `<Input>`) per `FormField`; sibling content (the customer-picker results list) is rendered OUTSIDE the `FormField`, or `getByLabelText` / `<label htmlFor>` targets a non-labellable wrapper.
+- **Shared `formatMoney` is the single money-formatting helper** (`src/lib/format.ts`) — balances/amounts are major-unit decimals (do NOT divide by 100); never re-inline `Intl.NumberFormat`. Joins `humanizeStatus`/`formatDateTime` as the single source for display formatting.
+- **`account_status_events` history is rendered oldest-first** (ascending) — deliberately the opposite of `customer_kyc_events` (newest-first, Session 16).
+- **`noValidate` on `CommandModal`** — RHF/Zod own all modal validation across every modal; native HTML5 validation was pre-empting Zod errors. Verified benign, full suite green.
+- **RBAC by `PERMISSIONS.*` constants only** (never string literals): list/detail actions → `UPDATE_ACCOUNT`; routes → `READ_ACCOUNT`. Detail buttons gate on **both** permission and current status.
+- **One service per PR** reaffirmed: backend (#33) and frontend (#34) ship as separate PRs.
+- **Deferred items added on the BACKEND branch (PR #33):** DEF-1C-32 (customer-name search in accounts list — needs an encrypted-name blind index) + DEF-1C-33 (harmonise invalid-lifecycle-transition HTTP status: Accounts 400 vs Customers 409). Not re-added to `docs/deferred-items.md` on this frontend branch.
+
+#### Build Verification
+- `baas-backoffice` (PR #34): typecheck clean · **139 unit tests + 1 Playwright e2e** · `vite build` (production) succeeds
+- `baas-engine` (PR #33, referenced): **Tests run: 199, Failures: 0** — BUILD SUCCESS
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| Spring Boot | 3.5.0 | PR #33 |
+| Java | 21 | PR #33 |
+| Nimbus JOSE+JWT | 9.37.3 | PR #33 |
+| Last git commit | PR #33 (in-flight) | Session 17 — Accounts lifecycle + money gating on `feat/baas-engine-accounts-lifecycle` (#33), 199 tests; **not yet merged to `main`** (main unchanged at `b2f1709`) |
+
+**BaaS Backoffice (`baas-backoffice/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| React | 19.x | `513ff73` |
+| Vite | 6.x | `513ff73` |
+| TypeScript | 5.x | `513ff73` |
+| Routing / state | React Router 7 · TanStack Query 5 | `513ff73` |
+| Test | Vitest + Playwright | `513ff73` |
+| Last git commit | `513ff73` | Session 17 — Accounts domain track (second per-domain track); 139 unit + 1 Playwright e2e. Engine half in PR #33 (unmerged). |
+
+**BaaS Card (`baas-card/`):** unchanged this session — last commit `d647a4f` (Session 15).
+**BaaS FEP (`baas-fep/`):** unchanged this session — last commit `a9e4cfd` (Session 12).
+
+#### Figma designs (SESSION COMPLETION GATE item 7)
+
+Editable **Accounts — As Built** frames added to the [NubBank BaaS — Backoffice](https://www.figma.com/design/gEDnLrLD4UrChcND0yCdZ9/NubBank-BaaS-%E2%80%94-Backoffice) Figma design file (`gEDnLrLD4UrChcND0yCdZ9`), grouped in section **"Accounts — As Built (shipped UI · Session 17)"** — 5 editable frames (List, Detail, Open account, Money (Deposit/Withdraw), Action (Freeze/Close)), built on the NubBank Tokens + shell (cloned from the Customers As-Built frames and converted). Real frames, auto-layout, selectable text — not screenshots; the canonical design target frames are preserved untouched (reconciliation option B).
+
+| As-Built frame | Mirrors |
+|---|---|
+| Accounts — As Built · List | Account-number / customer / status / balance columns, search + status filter, ACTIVE/FROZEN/CLOSED badges |
+| Accounts — As Built · Detail | §6 action map — per-status buttons, status-history timeline, transaction ledger |
+| Accounts — As Built · Open account | Debounced customer picker, product/currency, optional opening deposit, Save |
+| Accounts — As Built · Money | Deposit/Withdraw amount + reason + Confirm |
+| Accounts — As Built · Action | Freeze/Close reason textarea + transition note + Confirm |
+
+---
 
 ### Session 16 — 2026-06-12
 **Customers domain track — the first per-domain track on `baas-backoffice`. ONE session, TWO independently-mergeable PRs (one service per PR): the `baas-engine` KYC lifecycle in PR #28 (`feat/baas-engine-customer-lifecycle`, 166 tests, OPEN) and the `baas-backoffice` Customers console in this frontend PR (`feat/baas-backoffice-customers`, last feature commit `373ebcd`, 101 unit + 1 Playwright e2e). CBN surface unchanged** (operator-facing console + operator-scoped customer lifecycle, not Open Banking).
