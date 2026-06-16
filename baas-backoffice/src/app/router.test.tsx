@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ApiClientProvider } from '@/api/context';
 import { AuthContextProvider } from '@/auth/context';
 import { createDevAuthProvider } from '@/auth/dev-provider';
-import { customerRoutes } from './router';
+import { customerRoutes, accountRoutes } from './router';
 
 // `as never` is the accepted seam for the openapi-fetch client in tests —
 // mirrors customers-list.test.tsx / use-customers.test.tsx.
@@ -44,6 +44,42 @@ describe('router — customer routes', () => {
     const client = { GET: vi.fn(async () => emptyPage()), POST: vi.fn() } as never;
     const auth = createDevAuthProvider({ token: 't', authorities: [], user: null });
     const router = createMemoryRouter(customerRoutes, { initialEntries: ['/customers'] });
+    render(
+      <AuthContextProvider provider={auth}>
+        <ApiClientProvider client={client}>
+          <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </AuthContextProvider>,
+    );
+    await waitFor(() => expect(screen.getByText(/not permitted/i)).toBeInTheDocument());
+  });
+});
+
+describe('router — account routes', () => {
+  it('accounts route renders the list when authorised', async () => {
+    const client = { GET: vi.fn(async () => emptyPage()), POST: vi.fn() } as never;
+    const auth = createDevAuthProvider({ token: 't', authorities: ['READ_ACCOUNT'], user: null });
+    const router = createMemoryRouter(accountRoutes, { initialEntries: ['/accounts'] });
+    render(
+      <AuthContextProvider provider={auth}>
+        <ApiClientProvider client={client}>
+          <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </AuthContextProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /accounts/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('blocks the accounts route without READ_ACCOUNT (no blank screen, no crash)', async () => {
+    const client = { GET: vi.fn(async () => emptyPage()), POST: vi.fn() } as never;
+    const auth = createDevAuthProvider({ token: 't', authorities: [], user: null });
+    const router = createMemoryRouter(accountRoutes, { initialEntries: ['/accounts'] });
     render(
       <AuthContextProvider provider={auth}>
         <ApiClientProvider client={client}>

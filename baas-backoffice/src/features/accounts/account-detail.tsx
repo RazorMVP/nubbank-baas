@@ -21,11 +21,7 @@ import { AccountStatusHistory } from './account-status-history';
 import { MoneyModal, type MoneyMode } from './money-modal';
 import { TransactionLedger } from './transaction-ledger';
 
-// `UPDATE_ACCOUNT` is the engine code that gates every lifecycle transition (spec §3.3).
-// It is not yet in PERMISSIONS (Task 9 adds it), so we reference the literal here — both
-// hasPermission and RequirePermission accept a plain string. PERMISSIONS is imported for
-// DEPOSIT/WITHDRAW which already exist.
-const UPDATE_ACCOUNT = 'UPDATE_ACCOUNT';
+// `PERMISSIONS.UPDATE_ACCOUNT` is the engine code that gates every lifecycle transition (spec §3.3).
 
 // Lifecycle commands available from each status — mirrors the engine state machine (spec §6):
 // ACTIVE → freeze, close (close is additionally gated on a zero balance, see canClose);
@@ -89,7 +85,7 @@ export function AccountDetail() {
           {canWithdraw && (
             <Button variant="outline" onClick={() => setMoney('withdraw')}>Withdraw</Button>
           )}
-          <RequirePermission code={UPDATE_ACCOUNT}>
+          <RequirePermission code={PERMISSIONS.UPDATE_ACCOUNT}>
             {lifecycle.map((cmd) => (
               <Button key={cmd} variant="outline" onClick={() => setAction(cmd)}>
                 {capitalize(cmd)}
