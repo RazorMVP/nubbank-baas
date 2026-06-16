@@ -168,6 +168,18 @@ New paths are hand-seeded into `src/api/schema.d.ts` (the committed OpenAPI snap
   free; do not re-add native `required`/`pattern`-driven validation expecting the browser to enforce
   it. (Surfaced during the Accounts track Foundation work.)
 
+- **Transaction-ledger pagination UI** — `useAccountTransactions` supports `page`/`size`, but the
+  account detail page renders only page 0 (newest 20) with no next/prev controls, so an account with
+  > 20 transactions silently shows just the most recent page. Functionally fine for the MVP (newest
+  transactions first); wiring the existing `page`/`size` params to pagination controls is a UX
+  follow-up. (Surfaced FE final track review.)
+
+- **Per-section error states on detail sub-queries** — the ledger and status-history sub-queries
+  (`useAccountTransactions`, `useAccountStatusEvents`) fall back to an empty list on error, so a
+  transient fetch failure is indistinguishable from a genuinely empty ledger/history (only
+  `useAccount` gates the page render). This mirrors `customer-detail.tsx`'s quiet-fallback pattern; a
+  dedicated per-section error row is a follow-up. (Surfaced FE final track review.)
+
 ## Local development
 
 ```bash
