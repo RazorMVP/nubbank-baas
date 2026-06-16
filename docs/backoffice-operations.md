@@ -64,7 +64,8 @@ DEPOSIT · WITHDRAW · READ_LOAN · CREATE_LOAN · APPROVE_LOAN · DISBURSE_LOAN
 RUN_REPORT`
 
 `UPDATE_ACCOUNT` is **new** — it is not in the engine's V2 migration; it is seeded by the Accounts
-backend track's `V6` migration (PR A) and gates the lifecycle transitions (freeze / unfreeze / close).
+backend track's `V6` migration, which lands in the **companion backend PR (PR A, pending merge)** — not
+yet in this frontend branch's engine source. It gates the lifecycle transitions (freeze / unfreeze / close).
 
 ## Routes
 
