@@ -1,13 +1,28 @@
 import { createColumnHelper } from '@tanstack/react-table';
 import { DataTable } from '@/components/data-table';
-import { formatDateTime, formatMoney } from '@/lib/format';
+import { StatusBadge, type StatusVariant } from '@/components/status-badge';
+import { formatDateTime, formatMoney, humanizeStatus } from '@/lib/format';
 import type { AccountTransaction } from './use-accounts';
+
+type TransactionType = AccountTransaction['transactionType'];
+
+const TRANSACTION_VARIANT: Record<TransactionType, StatusVariant> = {
+  CREDIT: 'success',
+  DEBIT: 'neutral',
+};
 
 const col = createColumnHelper<AccountTransaction>();
 // All display() columns so every TValue is unknown (same reasoning as accounts-list.tsx) —
 // a typed accessor would make the helper array heterogeneous in TValue.
 const columns = [
-  col.display({ id: 'type', header: 'Type', cell: (ctx) => ctx.row.original.transactionType }),
+  col.display({
+    id: 'type',
+    header: 'Type',
+    cell: (ctx) => {
+      const type = ctx.row.original.transactionType;
+      return <StatusBadge label={humanizeStatus(type)} variant={TRANSACTION_VARIANT[type]} />;
+    },
+  }),
   // Amount + running balance go through the shared formatMoney helper (Task 4) — never
   // re-inline currency formatting here.
   col.display({
