@@ -9,10 +9,15 @@ import com.nubbank.baas.engine.virtualaccount.VirtualAccountService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.*;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -24,9 +29,10 @@ public class AccountService {
     private final VirtualAccountService virtualAccountService;
     private final ApplicationEventPublisher eventPublisher;
     private final CardAuthDebitRepository cardAuthDebitRepo;
+    private final AccountStatusEventRepository statusEventRepo;
 
     @Transactional
-    public AccountResponse open(OpenAccountRequest req) {
+    public AccountDetailResponse open(OpenAccountRequest req) {
         requireContext();
         Customer customer = customerRepo.findById(req.customerId())
             .orElseThrow(() -> BaasException.notFound("CUSTOMER_NOT_FOUND",
@@ -34,6 +40,8 @@ public class AccountService {
 
         String schema = PartnerContext.get().schemaName();
         String accountNumber = virtualAccountService.assignNext(schema);
+
+        BigDecimal opening = req.openingDeposit() != null ? req.openingDeposit() : BigDecimal.ZERO;
 
         Account account = Account.builder()
             .customer(customer)
@@ -43,18 +51,112 @@ public class AccountService {
                 : customer.getFirstNameEncrypted() + " " + customer.getLastNameEncrypted())
             .currencyCode(req.currencyCode() != null ? req.currencyCode() : "NGN")
             .minimumBalance(req.minimumBalance() != null ? req.minimumBalance() : BigDecimal.ZERO)
+            .balance(opening)
+            .availableBalance(opening)
             .build();
 
         Account saved = accountRepo.save(account);
+
+        if (opening.compareTo(BigDecimal.ZERO) > 0) {
+            txRepo.save(Transaction.builder()
+                .account(saved).transactionType(TransactionType.CREDIT)
+                .amount(opening).runningBalance(saved.getBalance())
+                .currencyCode(saved.getCurrencyCode())
+                .reference("OPENING_DEPOSIT").description("Opening deposit").build());
+        }
+
         eventPublisher.publishEvent(new AccountOpenedEvent(
             saved.getId(), customer.getId(), saved.getAccountNumber(), schema));
-        return toResponse(saved);
+        return toDetail(saved);
     }
 
     @Transactional(readOnly = true)
-    public AccountResponse getById(UUID id) {
+    public AccountDetailResponse getById(UUID id) {
         requireContext();
-        return toResponse(findOrThrow(id));
+        return toDetail(findOrThrow(id));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AccountSummaryResponse> list(int page, int size, String status, String search) {
+        requireContext();
+        AccountStatus statusFilter = null;
+        if (status != null && !status.isBlank()) {
+            try {
+                statusFilter = AccountStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                throw BaasException.badRequest("INVALID_STATUS", "Unknown account status: " + status);
+            }
+        }
+        String searchPattern = (search == null || search.isBlank())
+            ? null : search.trim().toLowerCase(Locale.ROOT) + "%";
+        return accountRepo.search(statusFilter, searchPattern, PageRequest.of(page, size))
+            .map(this::toSummary);
+    }
+
+    private AccountSummaryResponse toSummary(Account a) {
+        Customer c = a.getCustomer();
+        return new AccountSummaryResponse(a.getId(), a.getAccountNumber(),
+            c.getId(), customerName(c), a.getAccountTypeLabel(), a.getStatus(),
+            a.getBalance(), a.getCurrencyCode());
+    }
+
+    @Transactional
+    public AccountDetailResponse transition(UUID id, AccountCommand command, String reason) {
+        requireContext();
+        Account account = accountRepo.findByIdForUpdate(id)
+            .orElseThrow(() -> BaasException.notFound("ACCOUNT_NOT_FOUND",
+                "Account " + id + " not found"));
+        AccountStatus from = account.getStatus();
+        AccountStatus to = target(from, command);
+        if (to == null) {
+            throw BaasException.badRequest("INVALID_ACCOUNT_TRANSITION",
+                "Cannot " + command + " an account in status " + from);
+        }
+        if (command == AccountCommand.CLOSE
+                && account.getBalance().compareTo(BigDecimal.ZERO) != 0) {
+            throw BaasException.conflict("ACCOUNT_BALANCE_NONZERO",
+                "Account balance must be zero to close (current: " + account.getBalance() + ")");
+        }
+        account.setStatus(to);
+        accountRepo.save(account);
+        statusEventRepo.save(AccountStatusEvent.builder()
+            .accountId(id).fromStatus(from.name()).toStatus(to.name())
+            .reason(reason).changedBy(currentPrincipal()).build());
+        return toDetail(account);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AccountStatusEventResponse> statusEvents(UUID id) {
+        requireContext();
+        if (!accountRepo.existsById(id)) {
+            throw BaasException.notFound("ACCOUNT_NOT_FOUND", "Account " + id + " not found");
+        }
+        // oldest-first: the backoffice renders an ascending audit timeline
+        return statusEventRepo.findByAccountIdOrderByChangedAtAsc(id).stream()
+            .map(e -> new AccountStatusEventResponse(e.getId(), e.getFromStatus(), e.getToStatus(),
+                e.getReason(), e.getChangedBy(), e.getChangedAt()))
+            .toList();
+    }
+
+    /**
+     * Lifecycle target state, or null if (from, command) is not a legal edge.
+     * Close is reachable from ACTIVE only — a FROZEN account must be unfrozen first
+     * (legal-hold realism). The zero-balance guard for CLOSE is enforced separately in
+     * transition(), so a CLOSE from ACTIVE returns CLOSED here regardless of balance.
+     */
+    private static AccountStatus target(AccountStatus from, AccountCommand command) {
+        return switch (command) {
+            case FREEZE   -> from == AccountStatus.ACTIVE ? AccountStatus.FROZEN : null;
+            case UNFREEZE -> from == AccountStatus.FROZEN ? AccountStatus.ACTIVE : null;
+            case CLOSE    -> from == AccountStatus.ACTIVE ? AccountStatus.CLOSED : null;
+        };
+    }
+
+    private String currentPrincipal() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return null;
+        Object principal = auth.getPrincipal();
+        return (principal == null || "anonymousUser".equals(principal)) ? null : principal.toString();
     }
 
     @Transactional
@@ -63,9 +165,9 @@ public class AccountService {
         Account account = accountRepo.findByIdForUpdate(accountId)
             .orElseThrow(() -> BaasException.notFound("ACCOUNT_NOT_FOUND", "Account not found"));
 
-        if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw BaasException.badRequest("ACCOUNT_NOT_ACTIVE",
-                "Account must be ACTIVE to accept deposits");
+        if (account.getStatus() == AccountStatus.CLOSED) {
+            throw BaasException.conflict("ACCOUNT_NOT_ACCEPTING_CREDITS",
+                "A CLOSED account cannot accept credits");
         }
 
         account.setBalance(account.getBalance().add(req.amount()));
@@ -85,9 +187,10 @@ public class AccountService {
         Account account = accountRepo.findByIdForUpdate(accountId)
             .orElseThrow(() -> BaasException.notFound("ACCOUNT_NOT_FOUND", "Account not found"));
 
+        // status gate first: a non-ACTIVE account is rejected (409) before any balance-floor check
         if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw BaasException.badRequest("ACCOUNT_NOT_ACTIVE",
-                "Account must be ACTIVE for withdrawals");
+            throw BaasException.conflict("ACCOUNT_NOT_ACCEPTING_DEBITS",
+                "Account must be ACTIVE for debits");
         }
 
         BigDecimal floor = account.isAllowOverdraft() && account.getOverdraftLimit() != null
@@ -217,10 +320,19 @@ public class AccountService {
             throw BaasException.unauthorized("MISSING_AUTH", "Authorization required");
     }
 
-    private AccountResponse toResponse(Account a) {
-        return new AccountResponse(a.getId(), a.getCustomer().getId(),
-            a.getAccountNumber(), a.getAccountTypeLabel(), a.getStatus(),
-            a.getBalance(), a.getAvailableBalance(), a.getCurrencyCode(), a.getCreatedAt());
+    private AccountDetailResponse toDetail(Account a) {
+        Customer c = a.getCustomer();
+        return new AccountDetailResponse(a.getId(), a.getAccountNumber(),
+            c.getId(), customerName(c), a.getAccountTypeLabel(), a.getStatus(),
+            a.getBalance(), a.getAvailableBalance(), a.getCurrencyCode(),
+            a.getMinimumBalance(), a.isAllowOverdraft(), a.getOverdraftLimit(),
+            a.getCreatedAt());
+    }
+
+    private static String customerName(Customer c) {
+        return Stream.of(c.getFirstNameEncrypted(), c.getLastNameEncrypted())
+            .filter(s -> s != null && !s.isBlank())
+            .collect(Collectors.joining(" "));
     }
 
     private TransactionResponse toTxResponse(Transaction t) {

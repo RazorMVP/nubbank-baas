@@ -2,17 +2,15 @@ package com.nubbank.baas.engine.account.dto;
 
 import com.nubbank.baas.engine.account.AccountStatus;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.UUID;
 
-public record AccountResponse(
+public record AccountSummaryResponse(
     UUID id,
-    UUID customerId,
     String accountNumber,
+    UUID customerId,
+    String customerName,
     String accountTypeLabel,
     AccountStatus status,
     BigDecimal balance,
-    BigDecimal availableBalance,
-    String currencyCode,
-    Instant createdAt
+    String currencyCode
 ) {}
