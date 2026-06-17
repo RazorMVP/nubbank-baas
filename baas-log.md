@@ -13,7 +13,7 @@
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
 | `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
-| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`281739a`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). **Customers domain track ✅ (Session 16, `373ebcd`, 101 unit + 1 Playwright e2e):** first per-domain track, on its own PR (`feat/baas-backoffice-customers`) — list/detail/create/edit, masked-PII profile, KYC state-machine actions + history; the engine side ships separately in PR #28. **Accounts domain track ✅ (Session 17, PR #34 `513ff73`, 139 unit + 1 Playwright e2e):** second per-domain track, on its own PR (`feat/baas-backoffice-accounts`) — list/detail/open, lifecycle (freeze/unfreeze/close), money modal (deposit/withdraw), status-history timeline, transaction ledger; the engine Accounts lifecycle + money gating ships separately in PR #33 (`feat/baas-engine-accounts-lifecycle`, 199 tests). Remaining per-domain tracks (Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. | Session 17 |
+| `baas-backoffice` — React | 🟡 In progress — **Foundation ✅ (Session 14, `57ffbdd`):** React 19 + Vite 6 app skeleton (api client + envelope seam, hybrid dev/PKCE auth, RBAC gating, app shell, route guards, CI + Docker + k8s). **Session 15 (`281739a`, 75 tests):** dashboard tiles wired to live aggregate + PKCE authorities from `/operators/me` (DEF-1C-28/29). **Customers domain track ✅ (Session 16, `373ebcd`, 101 unit + 1 Playwright e2e):** first per-domain track, on its own PR (`feat/baas-backoffice-customers`) — list/detail/create/edit, masked-PII profile, KYC state-machine actions + history; the engine side ships separately in PR #28. **Accounts domain track ✅ (Session 17, PR #34 `513ff73`, 139 unit + 1 Playwright e2e):** second per-domain track, on its own PR (`feat/baas-backoffice-accounts`) — list/detail/open, lifecycle (freeze/unfreeze/close), money modal (deposit/withdraw), status-history timeline, transaction ledger; the engine Accounts lifecycle + money gating ships separately in PR #33 (`feat/baas-engine-accounts-lifecycle`, 199 tests). Remaining per-domain tracks (Loans, Payments, Teller, Charges, Accounting, Reports, Compliance, Offices/Staff, Roles, Audit) pending. **Session 18:** `UPDATE_ACCOUNT` added to `.env.example` dev authorities (PR #35, merged) + committed Vite dev proxy & `docs/backoffice-local-dev.md` for running against a local engine (PR #36, open); Accounts UI verified end-to-end against a live local engine. | Session 18 |
 | `baas-portal` — React | ⬜ Not started — Phase 1D | — |
 | `baas-docs` — Docusaurus | ⬜ Not started | — |
 | Infrastructure (Docker + K8s + CI) | ✅ Complete — Phase 1E (Dockerfiles + GHCR CI for all four services; `infrastructure/docker-compose.yml`; vanilla k8s manifests in `infrastructure/k8s/`). **Session 13: `baas-card` + `baas-fep` added to k8s base (Deployments, Services, NetworkPolicy mesh, PDBs, fep TCP LoadBalancer, partner→card Ingress routing) + FEP datastore env wired in compose.** | Session 13 |
@@ -198,6 +198,54 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 18 — 2026-06-17
+**Local-review + dev-experience session for the Accounts track. No `baas-engine` Java changed (the engine was only *run*, not modified). Two small frontend/devex PRs: `UPDATE_ACCOUNT` added to `.env.example` dev authorities (PR #35, MERGED `e96407e`) and a committed Vite dev proxy + `docs/backoffice-local-dev.md` for running the backoffice against a local engine (PR #36, OPEN). The Accounts console was stood up and verified end-to-end against a live local engine. CBN surface unchanged.**
+
+The user asked to review the shipped Accounts UI for real rather than trust the Figma frames. Doing so surfaced two genuine local-dev gaps (neither affects production): (1) the Accounts track added `UPDATE_ACCOUNT` to `src/lib/rbac.ts` and `playwright.config.ts` but **not** `.env.example`, so a developer running the documented `cp .env.example .env` workflow got a dev-auth operator without `UPDATE_ACCOUNT` — silently hiding the freeze/unfreeze/close buttons (which gate on that permission). Fixed in PR #35. (2) Running the backoffice against a local engine fails two ways — the engine has **no CORS** config in 1C (cross-origin browser calls blocked) and **no `dev-token` bypass** (the placeholder token is not a valid JWT → 401). Fixed in PR #36 with a committed same-origin Vite dev proxy + a real-partner-JWT runbook.
+
+To verify, a full isolated local stack was stood up alongside (not touching) the CoreBanking `cba-*` docker stack that owns `:5432`/`:8080`/`:6379`: nubbank Postgres on `:5442`, Redis on `:6390`, and `baas-engine` via `./mvnw spring-boot:run` (Homebrew **Java 21**) on `:8090`. Registered a partner → got its HMAC partner JWT → polled async tenant-schema provisioning → seeded 2 customers + 3 accounts (one funded for the freeze/withdraw demo, one zero-balance for the close demo). The backoffice was then pointed at the engine via the dev proxy (`VITE_API_BASE_URL=''` + `VITE_ENGINE_ORIGIN` + the partner JWT in `VITE_DEV_TOKEN`) and driven in a real browser (Playwright): the list rendered all 3 accounts with correct money formatting, and the detail page proved the §6 action map — **Freeze renders only because the operator now holds `UPDATE_ACCOUNT`**, and **Close shows only on the zero-balance account** (hidden on the funded one). The user then exercised close/withdraw/open live (data mutations persisted to the engine). Environment torn down afterward at the user's request.
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-backoffice/.env.example` | **PR #35 (merged):** add `UPDATE_ACCOUNT` to `VITE_DEV_AUTHORITIES`. **PR #36 (open):** `VITE_API_BASE_URL` now empty by default (relative → dev proxy engages); add `VITE_ENGINE_ORIGIN`; note that a local engine needs a real partner JWT in `VITE_DEV_TOKEN` |
+| `baas-backoffice/vite.config.ts` | **PR #36 (open):** function form + `loadEnv`; `server.proxy` `/baas` → `VITE_ENGINE_ORIGIN` (default `http://localhost:8080`). Dev-only; never affects `vite build` |
+| `docs/backoffice-local-dev.md` | **PR #36 (open):** NEW end-to-end runbook — Postgres/Redis, engine boot env, partner register, seed, backoffice env, proxy/CORS + `dev-token` rationale |
+| `CLAUDE.md` | Confirmed Platform Versions backoffice block → Session 18; 3 new Known Gotchas (no-CORS/no-dev-token-bypass local-dev proxy, dev-authority three-file sync, nubbank-vs-CoreBanking port isolation) |
+| `baas-log.md` | This entry |
+
+#### Key Decisions
+- **Dev authorities live in THREE files that must stay in sync** — `src/lib/rbac.ts` (`PERMISSIONS`), `playwright.config.ts` (e2e), and `.env.example` (local `npm run dev`). A UI-gating permission must be added to all three; the Accounts track missed `.env.example`, hiding lifecycle buttons locally (PR #35).
+- **Local-against-engine is a same-origin dev proxy, not an engine CORS change** — the engine has no CORS in 1C; adding a `server.proxy` in `vite.config.ts` (browser → Vite same-origin → `/baas/**` → engine) is the idiomatic, frontend-only fix. `VITE_API_BASE_URL` empty by default makes requests relative so the proxy engages; absolute (prod/Vercel) bypasses it. e2e is unaffected — specs stub via Playwright `page.route` (origin-agnostic) and set their own base URL.
+- **The engine has no `dev-token` bypass** — the dev-auth provider's token must be a real partner JWT (`POST /baas/v1/auth/register`); its `schema_name` claim is what routes the tenant. Injected via `VITE_DEV_TOKEN`. First-party `PARTNER_ADMIN` JWTs get full tenant authority in 1C, so all account commands pass `@PreAuthorize`.
+- **Local infra must avoid the CoreBanking docker ports** — `:5432`/`:8080`/`:6379` are owned by the `cba-*` stack; nubbank ran on `:5442`/`:8090`/`:6390`. Engine boot has no datasource/secret defaults (fails fast): `ENCRYPTION_KEY` is SHA-256-derived (any length), `JWT_SECRET` needs ≥32 chars (HS256), the rate limiter fails-open without Redis.
+- **One service per PR / small PRs** — the env-sync fix (#35) and the dev-proxy + doc (#36) are separate, each frontend-only.
+
+#### Build Verification
+- **Zero `baas-engine` Java files touched** this session (engine only *run*) → engine build-verify legitimately skipped per the gate.
+- `baas-backoffice`: `npm run typecheck` clean · **139/139 unit tests pass** (re-verified after the `vite.config.ts` function-form refactor) · committed proxy verified forwarding `:3001/baas` → live engine.
+
+#### Confirmed Platform Versions
+
+**BaaS Backoffice (`baas-backoffice/`):**
+| Component | Version | Git ref |
+|-----------|---------|---------|
+| React | 19.x | `e96407e` (PR #35, merged) |
+| Vite | 6.x | `e96407e` + PR #36 (dev proxy, open) |
+| TypeScript | 5.x | `e96407e` |
+| Routing / state | React Router 7 · TanStack Query 5 | `e96407e` |
+| Test | Vitest + Playwright | 139 unit tests pass |
+| Last git commit | `e96407e` | Session 18 — `UPDATE_ACCOUNT` in `.env.example` (PR #35, merged); dev proxy + local-engine doc (PR #36, open) |
+
+**BaaS Engine (`baas-engine/`):** unchanged this session — last commit `f3c5122` (Session 17 Accounts backend, PR #33, now merged to `main`).
+**BaaS Card (`baas-card/`):** unchanged — last commit `d647a4f` (Session 15).
+**BaaS FEP (`baas-fep/`):** unchanged — last commit `a9e4cfd` (Session 12).
+
+#### Figma designs (SESSION COMPLETION GATE item 7)
+No new or changed `baas-backoffice/src/**` screen this session — the Accounts UI was *reviewed/run*, not modified (the only code changes are `.env.example`, `vite.config.ts`, and a doc). Item 7 is exempt (the Accounts As-Built frames from Session 17 remain current).
+
+---
 
 ### Session 17 — 2026-06-16
 **Accounts domain track — the second per-domain track on `baas-backoffice` (after Customers). ONE session, TWO independently-mergeable PRs (one service per PR): the `baas-engine` Accounts lifecycle + money gating in PR #33 (`feat/baas-engine-accounts-lifecycle`, 199 tests, OPEN) and the `baas-backoffice` Accounts console in this frontend PR #34 (`feat/baas-backoffice-accounts`, last feature commit `513ff73`, 139 unit + 1 Playwright e2e). CBN surface unchanged** (operator-facing console + operator-scoped account lifecycle, not Open Banking).
