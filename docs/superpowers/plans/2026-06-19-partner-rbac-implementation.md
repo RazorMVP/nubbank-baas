@@ -93,8 +93,8 @@ class V7MigrationTest extends AbstractIntegrationTest {
         // new MANAGE_* permissions
         Integer managePerms = jdbc.queryForObject(
             "select count(*) from " + schema + ".permissions " +
-            "where code in ('MANAGE_PARTNER_USERS','MANAGE_ROLES')", Integer.class);
-        assertThat(managePerms).isEqualTo(2);
+            "where code in ('MANAGE_PARTNER_USERS','MANAGE_ROLES','MANAGE_API_KEYS')", Integer.class);
+        assertThat(managePerms).isEqualTo(3);
 
         // PARTNER_MAKER can CREATE_ACCOUNT but not READ-only; PARTNER_VIEWER is read-only
         Integer makerCreate = jdbc.queryForObject(
@@ -132,7 +132,8 @@ DELETE FROM role_permissions
 -- New management permissions.
 INSERT INTO permissions (grouping, code, entity_name, action_name) VALUES
   ('admin', 'MANAGE_PARTNER_USERS', 'PARTNER_USER', 'MANAGE'),
-  ('admin', 'MANAGE_ROLES',         'ROLE',         'MANAGE');
+  ('admin', 'MANAGE_ROLES',         'ROLE',         'MANAGE'),
+  ('admin', 'MANAGE_API_KEYS',      'API_KEY',      'MANAGE');
 
 -- Built-in PARTNER-scoped roles. PARTNER_APPROVER's APPROVE_* grants are added by the
 -- maker-checker migration (Spec B); here it is read-only until then.
@@ -504,6 +505,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `tenant/PartnerContextFilter.java`
 - Create test: `baas-engine/src/test/java/com/nubbank/baas/engine/tenant/PartnerAuthorityIntegrationTest.java`
 
+> ⚠️ **Deploy ordering — Tasks 5 and 6 are ONE atomic unit.** This task removes blanket full authority; Task 6's backfill is what grandfathers existing principals into explicit full so nothing breaks. **Never ship Task 5 without Task 6 in the same release**, and the blocking-startup backfill (Task 6) must run before traffic. Until Task 6 lands, existing first-party integrations will be denied.
+
 - [ ] **Step 1: Write the failing test** (a partner JWT with no grants must be denied; with VIEWER it can read but not create)
 
 ```java
@@ -602,10 +605,10 @@ In `resolveApiKey(...)`, set the key id as the principal so the resolver can rea
 Run: `./mvnw test -Dtest=PartnerAuthorityIntegrationTest`
 Expected: PASS.
 
-- [ ] **Step 5: Run the broader suite to catch regressions** (operator + API-key auth paths)
+- [ ] **Step 5: Run the FULL suite to catch regressions** — removing blanket-full will fail any test that silently relied on it.
 
-Run: `./mvnw test -Dtest=*Authority* -Dtest=PartnerContext*Test`
-Expected: PASS. (If existing API-key tests assumed full authority, they will now require explicit `["*"]` scopes — fix those keys in the test fixtures to `["*"]`, matching the grandfather rule.)
+Run: `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./mvnw test`
+Expected: PASS. Any existing test whose API key assumed full authority now needs explicit `["*"]` scopes (the grandfather value); any test JWT user that assumed full authority now needs a role assigned. Fix those fixtures — do NOT reintroduce a blanket-full fallback to make them pass. (This is also why Tasks 5 + 6 ship together: Task 6's backfill is the production equivalent of these fixture fixes.)
 
 - [ ] **Step 6: Commit**
 
@@ -1329,7 +1332,7 @@ public class PartnerApiKeyService {
 }
 ```
 
-- [ ] **Step 5: Controller** (`partner/key/PartnerApiKeyController.java`) — gated `MANAGE_PARTNER_USERS` (admin).
+- [ ] **Step 5: Controller** (`partner/key/PartnerApiKeyController.java`) — gated `MANAGE_API_KEYS` (admin). Minting machine credentials is its own capability, distinct from user management; `PARTNER_ADMIN` holds it dynamically, and an org can mint a "user-manager who cannot issue keys" by composing a custom role without `MANAGE_API_KEYS`.
 
 ```java
 package com.nubbank.baas.engine.partner.key;
@@ -1345,7 +1348,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/baas/v1/partner-api-keys")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('MANAGE_PARTNER_USERS')")
+@PreAuthorize("hasAuthority('MANAGE_API_KEYS')")
 public class PartnerApiKeyController {
     private final PartnerApiKeyService service;
 
@@ -1383,7 +1386,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 Run: from `baas-engine/`, `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./mvnw test`
 Expected: BUILD SUCCESS, 0 failures. Fix any fixtures that assumed first-party blanket authority (give their API keys `["*"]` scopes or assign their JWT users a role).
 
-- [ ] **Step 2: Update docs** — add `/baas/v1/partner-users`, `/baas/v1/partner-api-keys`, role-scoping, and the new `MANAGE_PARTNER_USERS`/`MANAGE_ROLES` codes to `docs/api-reference.html` + `docs/backoffice-operations.md`; flip DEF-1C-15 to ✅ in `docs/deferred-items.md`.
+- [ ] **Step 2: Update docs** — add `/baas/v1/partner-users`, `/baas/v1/partner-api-keys`, role-scoping, and the new `MANAGE_PARTNER_USERS`/`MANAGE_ROLES`/`MANAGE_API_KEYS` codes to `docs/api-reference.html` + `docs/backoffice-operations.md`; flip DEF-1C-15 to ✅ in `docs/deferred-items.md`.
 
 - [ ] **Step 3: Commit**
 

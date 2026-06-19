@@ -80,8 +80,9 @@ Existing operator roles are migrated to `role_scope='OPERATOR'` (or `SHARED` if 
 ### 4.3 New seeded permissions (tenant `permissions`)
 - `MANAGE_PARTNER_USERS` — gates partner-user management endpoints.
 - `MANAGE_ROLES` — gates role CRUD.
+- `MANAGE_API_KEYS` — gates API-key issuance, distinct from user management (minting machine credentials is its own, arguably more sensitive, capability — a long-lived programmatic credential that can move money).
 
-Both are in the `PARTNER_ADMIN` dynamic-full set automatically (they are in `findAllCodes()`).
+All are in the `PARTNER_ADMIN` dynamic-full set automatically (they are in `findAllCodes()`).
 
 ### 4.4 `partner_api_keys` (public) — reuse existing `scopes` JSONB
 No new column. The existing `scopes JSONB` (currently defaults to `"[]"`) becomes the key's granted permission set:
@@ -123,8 +124,9 @@ All endpoints are **org-scoped to the caller's tenant** (PartnerContext). Other-
 
 (The existing operator-facing `RoleController` is extended/scoped by `role_scope`; partners never see `OPERATOR` roles.)
 
-### 5.3 API-key issuance (existing endpoint, extended)
-The key-issuance request gains a required scope: a `roleId` (snapshotted) **or** explicit `scopes[]`. Existing keys are grandfathered (§7).
+### 5.3 API-key issuance — gated `@PreAuthorize("hasAuthority('MANAGE_API_KEYS')")`
+
+The key-issuance request gains a required scope: a `roleId` (snapshotted) **or** explicit `scopes[]`. Existing keys are grandfathered (§7). Gated by its own `MANAGE_API_KEYS` (not `MANAGE_PARTNER_USERS`), so an org can grant key-minting independently of user administration.
 
 ---
 
