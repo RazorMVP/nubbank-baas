@@ -56,23 +56,19 @@ public class PartnerContextFilter extends OncePerRequestFilter {
         if (ctx == null) return;
 
         List<String> codes;
-        if ("OPERATOR_JWT".equals(ctx.authMode())) {
-            UUID operatorId;
-            try {
-                operatorId = UUID.fromString(ctx.userId());
-            } catch (IllegalArgumentException ex) {
-                // Operator subject is not a UUID — cannot map to user_roles. Fail closed:
-                // leave the SecurityContext empty so AuthEnforcementFilter returns 401.
-                log.warn("Operator JWT subject is not a valid UUID — denying request");
-                return;
+        switch (ctx.authMode()) {
+            case "OPERATOR_JWT" -> {
+                UUID operatorId;
+                try { operatorId = UUID.fromString(ctx.userId()); }
+                catch (IllegalArgumentException ex) {
+                    log.warn("Operator JWT subject is not a valid UUID — denying request");
+                    return;
+                }
+                codes = authorityResolver.operatorAuthorities(operatorId);
             }
-            codes = authorityResolver.operatorAuthorities(operatorId);
-        } else {
-            // First-party credentials (API_KEY, JWT) get full tenant authority.
-            // NOTE: any future authMode added here falls through to FULL authority by default —
-            // when introducing a new authMode, decide explicitly whether it belongs here or
-            // needs its own RBAC-scoped branch (see DEF-1C-15).
-            codes = authorityResolver.fullTenantAuthorities();
+            case "JWT" -> codes = authorityResolver.partnerUserAuthorities(UUID.fromString(ctx.userId()));
+            case "API_KEY" -> codes = authorityResolver.apiKeyAuthorities(UUID.fromString(ctx.userId()));
+            default -> { return; } // unknown authMode → deny (no blanket-full fallback)
         }
 
         List<GrantedAuthority> authorities = codes.stream()
@@ -105,7 +101,7 @@ public class PartnerContextFilter extends OncePerRequestFilter {
                     key.getTier().name(),
                     key.getEnvironment().name(),
                     "API_KEY",
-                    null
+                    key.getId().toString()
                 );
                 PartnerContext.set(ctx);
                 // Update last_used_at — the repository method is @Transactional
