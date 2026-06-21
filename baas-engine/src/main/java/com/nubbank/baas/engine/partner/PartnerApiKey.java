@@ -2,6 +2,8 @@ package com.nubbank.baas.engine.partner;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -27,6 +29,7 @@ public class PartnerApiKey {
     @Column(length = 100)
     private String name;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private String scopes;
 

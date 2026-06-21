@@ -1,10 +1,14 @@
 package com.nubbank.baas.engine.auth;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nubbank.baas.engine.partner.PartnerApiKeyRepository;
 import com.nubbank.baas.engine.role.PermissionRepository;
 import com.nubbank.baas.engine.role.UserRoleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,6 +22,8 @@ public class AuthorityResolver {
 
     private final UserRoleRepository userRoleRepo;
     private final PermissionRepository permissionRepo;
+    private final PartnerApiKeyRepository apiKeyRepo;
+    private final ObjectMapper objectMapper;
 
     /** Keycloak operator: only the permission codes granted via user_roles. */
     @Transactional(readOnly = true)
@@ -29,5 +35,31 @@ public class AuthorityResolver {
     @Transactional(readOnly = true)
     public List<String> fullTenantAuthorities() {
         return permissionRepo.findAllCodes();
+    }
+
+    /** Partner user: PARTNER_ADMIN (superuser) → dynamic full; otherwise union of assigned roles' codes. */
+    @Transactional(readOnly = true)
+    public List<String> partnerUserAuthorities(UUID partnerUserId) {
+        if (userRoleRepo.existsSuperuserRoleByUserId(partnerUserId)) {
+            return permissionRepo.findAllCodes();
+        }
+        return userRoleRepo.findPermissionCodesByUserId(partnerUserId);
+    }
+
+    /** API key: scopes ["*"] → dynamic full; explicit codes → those codes; [] → deny (empty). */
+    @Transactional(readOnly = true)
+    public List<String> apiKeyAuthorities(UUID apiKeyId) {
+        return apiKeyRepo.findById(apiKeyId).map(k -> {
+            List<String> scopes;
+            try {
+                scopes = objectMapper.readValue(
+                    k.getScopes() == null ? "[]" : k.getScopes(),
+                    new TypeReference<List<String>>() {});
+            } catch (Exception ex) {
+                return Collections.<String>emptyList();
+            }
+            if (scopes.contains("*")) return permissionRepo.findAllCodes();
+            return scopes;
+        }).orElseGet(Collections::emptyList);
     }
 }
