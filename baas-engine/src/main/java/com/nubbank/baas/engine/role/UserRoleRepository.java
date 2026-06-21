@@ -15,4 +15,16 @@ public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> 
     @org.springframework.data.jpa.repository.Query(
         "select r.name from UserRole ur join ur.role r where ur.userId = :userId")
     java.util.List<String> findRoleNamesByUserId(java.util.UUID userId);
+
+    @org.springframework.data.jpa.repository.Query(
+        "select count(ur) > 0 from UserRole ur join ur.role r where ur.userId = :userId and r.superuser = true")
+    boolean existsSuperuserRoleByUserId(java.util.UUID userId);
+
+    @org.springframework.data.jpa.repository.Query(
+        "select count(distinct ur.userId) from UserRole ur join ur.role r where r.name = :roleName")
+    long countDistinctUsersWithRole(String roleName);
+
+    @org.springframework.data.jpa.repository.Query(
+        "select ur.userId from UserRole ur join ur.role r where r.name = :roleName")
+    java.util.List<java.util.UUID> findUserIdsByRoleName(String roleName);
 }
