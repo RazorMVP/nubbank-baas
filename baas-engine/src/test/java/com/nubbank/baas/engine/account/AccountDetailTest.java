@@ -1,7 +1,6 @@
 package com.nubbank.baas.engine.account;
 
 import com.nubbank.baas.engine.AbstractIntegrationTest;
-import com.nubbank.baas.engine.auth.PartnerJwtService;
 import com.nubbank.baas.engine.customer.*;
 import com.nubbank.baas.engine.partner.*;
 import com.nubbank.baas.engine.tenant.*;
@@ -13,7 +12,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AccountDetailTest extends AbstractIntegrationTest {
 
-    @Autowired private PartnerJwtService jwtService;
     @Autowired private PartnerOrganizationRepository orgRepo;
     @Autowired private TenantProvisioningService provisioningService;
     @Autowired private CustomerRepository customerRepo;
@@ -40,8 +38,7 @@ class AccountDetailTest extends AbstractIntegrationTest {
             .firstNameEncrypted("Ada").lastNameEncrypted("Lovelace").build()).getId();
         PartnerContext.clear();
 
-        jwt = jwtService.issue(UUID.randomUUID().toString(), "detail@partner.com", "PARTNER_ADMIN",
-            org.getId().toString(), "Acct Detail Test", schemaName, "SANDBOX", "SANDBOX");
+        jwt = adminJwt(org, schemaName);
     }
 
     private HttpHeaders auth() {
