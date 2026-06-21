@@ -1,7 +1,6 @@
 package com.nubbank.baas.engine.customer;
 
 import com.nubbank.baas.engine.AbstractIntegrationTest;
-import com.nubbank.baas.engine.auth.PartnerJwtService;
 import com.nubbank.baas.engine.partner.*;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import com.nubbank.baas.engine.tenant.TenantProvisioningService;
@@ -12,7 +11,6 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class CustomerKycTransitionTest extends AbstractIntegrationTest {
-    @Autowired private PartnerJwtService jwtService;
     @Autowired private PartnerOrganizationRepository orgRepo;
     @Autowired private TenantProvisioningService provisioningService;
     @Autowired private CustomerKycEventRepository eventRepo;
@@ -25,8 +23,7 @@ class CustomerKycTransitionTest extends AbstractIntegrationTest {
             .environment(PartnerEnvironment.SANDBOX).schemaName(schemaName)
             .contactEmail("kyc@partner.com").build());
         orgId = org.getId(); provisioningService.provision(org.getId(), schemaName);
-        jwt = jwtService.issue(UUID.randomUUID().toString(), "kyc@partner.com", "PARTNER_ADMIN",
-            org.getId().toString(), "Kyc", schemaName, "SANDBOX", "SANDBOX");
+        jwt = adminJwt(org, schemaName);
     }
     private HttpHeaders auth() { HttpHeaders h = new HttpHeaders(); h.setBearerAuth(jwt);
         h.setContentType(MediaType.APPLICATION_JSON); return h; }
