@@ -1,8 +1,12 @@
 package com.nubbank.baas.engine.tenant;
 
+import com.nubbank.baas.engine.partner.PartnerOrganizationRepository;
+import com.nubbank.baas.engine.partner.rbac.PartnerRbacReconciler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.core.Flyway;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -21,6 +25,10 @@ public class TenantProvisioningService {
     private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
     private final CardProvisioningClient cardProvisioningClient;
+    private final PartnerOrganizationRepository orgRepo;
+
+    // @Lazy breaks the construction cycle: PartnerRbacReconciler depends on this service.
+    @Lazy @Autowired private PartnerRbacReconciler reconciler;
 
     /**
      * Provision a new partner schema synchronously.
@@ -42,8 +50,8 @@ public class TenantProvisioningService {
         try {
             createSchema(schemaName);
             createSchema(sandboxSchema);
-            runTenantMigrations(schemaName);
-            runTenantMigrations(sandboxSchema);
+            migrateTenant(schemaName);
+            migrateTenant(sandboxSchema);
 
             // DEF-1C-22: provision card schema objects into the SAME partner schema. A failure
             // here propagates to the catch below, so a partner is never left half-provisioned.
@@ -55,6 +63,9 @@ public class TenantProvisioningService {
                 partnerId, schemaName, Timestamp.from(Instant.now()));
 
             log.info("Schema {} provisioned successfully", schemaName);
+
+            // Grant RBAC to any users already registered for this org (e.g. the registering admin).
+            orgRepo.findById(partnerId).ifPresent(reconciler::reconcileOrg);
 
         } catch (Exception ex) {
             log.error("Failed to provision schema {}: {}", schemaName, ex.getMessage(), ex);
@@ -86,7 +97,7 @@ public class TenantProvisioningService {
         }
     }
 
-    private void runTenantMigrations(String schemaName) {
+    public void migrateTenant(String schemaName) {
         Flyway tenantFlyway = Flyway.configure()
             .dataSource(dataSource)
             .schemas(schemaName)
