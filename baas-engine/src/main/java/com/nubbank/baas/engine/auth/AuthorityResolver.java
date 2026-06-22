@@ -25,9 +25,12 @@ public class AuthorityResolver {
     private final PartnerApiKeyRepository apiKeyRepo;
     private final ObjectMapper objectMapper;
 
-    /** Keycloak operator: only the permission codes granted via user_roles. */
+    /** Keycloak operator: superuser → full authority; otherwise only the granted permission codes. */
     @Transactional(readOnly = true)
     public List<String> operatorAuthorities(UUID userId) {
+        if (userRoleRepo.existsSuperuserRoleByUserId(userId)) {
+            return permissionRepo.findAllCodes();
+        }
         return userRoleRepo.findPermissionCodesByUserId(userId);
     }
 
