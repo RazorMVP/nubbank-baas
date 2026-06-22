@@ -5,6 +5,7 @@ import com.nubbank.baas.engine.role.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
@@ -12,6 +13,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/baas/v1/roles")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('MANAGE_ROLES')")
 public class RoleController {
 
     private final RoleService service;

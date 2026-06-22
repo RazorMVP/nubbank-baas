@@ -19,19 +19,25 @@ public class RoleService {
     @Transactional
     public Role createRole(RoleRequest req) {
         requireContext();
-        return roleRepo.save(Role.builder().name(req.name()).description(req.description()).build());
+        Role r = Role.builder().name(req.name()).description(req.description())
+            .builtIn(false).roleScope(PartnerRoles.SCOPE_PARTNER).superuser(false).build();
+        return roleRepo.save(r);
     }
 
     @Transactional(readOnly = true)
-    public List<Role> listRoles() { requireContext(); return roleRepo.findAll(); }
+    public List<Role> listRoles() {
+        requireContext();
+        return roleRepo.findByRoleScopeIn(List.of(PartnerRoles.SCOPE_PARTNER, PartnerRoles.SCOPE_SHARED));
+    }
 
     @Transactional
     public Role updateRole(UUID id, RoleRequest req) {
         requireContext();
-        Role role = roleRepo.findById(id)
+        Role r = roleRepo.findById(id)
             .orElseThrow(() -> BaasException.notFound("ROLE_NOT_FOUND", "Role not found"));
-        role.setName(req.name()); role.setDescription(req.description());
-        return roleRepo.save(role);
+        if (r.isBuiltIn()) throw BaasException.conflict("BUILT_IN_ROLE", "Built-in roles cannot be edited");
+        r.setName(req.name()); r.setDescription(req.description());
+        return roleRepo.save(r);
     }
 
     @Transactional
@@ -63,10 +69,10 @@ public class RoleService {
     @Transactional
     public void deleteRole(UUID id) {
         requireContext();
-        Role role = roleRepo.findById(id)
+        Role r = roleRepo.findById(id)
             .orElseThrow(() -> BaasException.notFound("ROLE_NOT_FOUND", "Role not found"));
-        role.setDisabled(true);
-        roleRepo.save(role);
+        if (r.isBuiltIn()) throw BaasException.conflict("BUILT_IN_ROLE", "Built-in roles cannot be deleted");
+        roleRepo.deleteById(id);
     }
 
     private void requireContext() {
