@@ -52,7 +52,9 @@ class SecurityBoundariesTest extends AbstractIntegrationTest {
 
     private String newJwt(UUID orgId) {
         PartnerOrganization org = orgRepo.findById(orgId).orElseThrow();
-        return jwtService.issue(UUID.randomUUID().toString(), org.getContactEmail(),
+        UUID userId = UUID.randomUUID();
+        grantAdmin(org.getSchemaName(), userId);
+        return jwtService.issue(userId.toString(), org.getContactEmail(),
             "PARTNER_ADMIN", orgId.toString(), org.getName(),
             org.getSchemaName(), "SANDBOX", "SANDBOX");
     }

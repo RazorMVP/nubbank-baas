@@ -40,7 +40,11 @@ class OperatorMeControllerTest extends AbstractIntegrationTest {
         orgId = org.getId();
         provisioningService.provision(org.getId(), schemaName);
 
-        operatorSub = UUID.randomUUID().toString();
+        UUID operatorId = UUID.randomUUID();
+        operatorSub = operatorId.toString();
+        // Grant the subject PARTNER_ADMIN (superuser marker) so the partner JWT resolves to
+        // full tenant authority — the role-driven equivalent of the old blanket-full grant.
+        grantAdmin(schemaName, operatorId);
         jwt = jwtService.issue(operatorSub, "me@partner.com", "PARTNER_ADMIN",
             org.getId().toString(), "Me Test Partner", schemaName, "SANDBOX", "SANDBOX");
     }
@@ -68,8 +72,9 @@ class OperatorMeControllerTest extends AbstractIntegrationTest {
 
         @SuppressWarnings("unchecked")
         List<String> roles = (List<String>) data.get("roles");
-        // No user_roles rows for a first-party JWT subject — roles is present but empty.
-        assertThat(roles).isEmpty();
+        // The subject holds the PARTNER_ADMIN superuser marker (granted in setup), so its
+        // user_roles row surfaces here — and that marker is what grants the full authority above.
+        assertThat(roles).containsExactly("PARTNER_ADMIN");
     }
 
     @Test

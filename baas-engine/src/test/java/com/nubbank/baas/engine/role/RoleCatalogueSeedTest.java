@@ -16,7 +16,7 @@ class RoleCatalogueSeedTest extends AbstractIntegrationTest {
     @Autowired PermissionRepository permRepo;
 
     @Test
-    void provisionSeeds30Roles() {
+    void provisionSeedsRoleCatalogue() {
         String schema = "partner_" + UUID.randomUUID().toString().replace("-", "");
         PartnerOrganization org = orgRepo.save(PartnerOrganization.builder()
             .name("Seed Co").status(PartnerStatus.BASIC).tier(PartnerTier.BASIC)
@@ -34,7 +34,9 @@ class RoleCatalogueSeedTest extends AbstractIntegrationTest {
                 "ACCOUNT_OFFICER","KYC_OFFICER","LOAN_OFFICER","CREDIT_ANALYST","CREDIT_APPROVER",
                 "COLLECTIONS_OFFICER","LOAN_OPERATIONS_OFFICER","PAYMENTS_OFFICER","REMITTANCE_OFFICER","TREASURY_OFFICER",
                 "CARD_OPERATIONS_OFFICER","RECONCILIATION_OFFICER","COMPLIANCE_OFFICER","AML_ANALYST","FRAUD_ANALYST",
-                "RISK_OFFICER","FINANCE_OFFICER","FINANCIAL_CONTROLLER","INTERNAL_AUDITOR","AUDITOR_READONLY");
+                "RISK_OFFICER","FINANCE_OFFICER","FINANCIAL_CONTROLLER","INTERNAL_AUDITOR","AUDITOR_READONLY",
+                // V7 partner-rbac migration seeds three built-in PARTNER-scoped roles.
+                "PARTNER_MAKER","PARTNER_APPROVER","PARTNER_VIEWER");
             Role teller = roleRepo.findAll().stream()
                 .filter(r -> r.getName().equals("TELLER")).findFirst().orElseThrow();
             assertThat(teller.getPermissions()).extracting("code").contains("READ_ACCOUNT","DEPOSIT","WITHDRAW");
