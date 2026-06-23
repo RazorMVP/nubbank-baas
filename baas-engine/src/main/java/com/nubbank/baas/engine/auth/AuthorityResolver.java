@@ -34,12 +34,6 @@ public class AuthorityResolver {
         return userRoleRepo.findPermissionCodesByUserId(userId);
     }
 
-    /** First-party partner credential (API key / HMAC login): full authority over its own tenant. */
-    @Transactional(readOnly = true)
-    public List<String> fullTenantAuthorities() {
-        return permissionRepo.findAllCodes();
-    }
-
     /** Partner user: PARTNER_ADMIN (superuser) → dynamic full; otherwise union of assigned roles' codes. */
     @Transactional(readOnly = true)
     public List<String> partnerUserAuthorities(UUID partnerUserId) {

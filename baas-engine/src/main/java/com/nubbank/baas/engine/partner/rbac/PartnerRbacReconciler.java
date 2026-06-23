@@ -6,9 +6,7 @@ import com.nubbank.baas.engine.tenant.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.SmartInitializingSingleton;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Component
@@ -35,10 +33,9 @@ public class PartnerRbacReconciler implements SmartInitializingSingleton {
      * Migrate the tenant schema (idempotent), set the PartnerContext, then grant existing
      * users PARTNER_ADMIN and grandfather empty API keys to ["*"].
      *
-     * NOT @Transactional itself — the PartnerContext must be set BEFORE Hibernate opens
-     * a connection (which happens at the @Transactional proxy boundary). The actual DB
-     * work is delegated to {@link #doReconcile(PartnerOrganization)} which IS transactional
-     * and is invoked only after the context is in place.
+     * NOT @Transactional — the PartnerContext must be set BEFORE Hibernate opens a connection
+     * so that the Hibernate schema interceptor can route queries to the correct tenant schema.
+     * {@link #doReconcile(PartnerOrganization)} is invoked only after the context is in place.
      */
     public void reconcileOrg(PartnerOrganization org) {
         provisioning.migrateTenant(org.getSchemaName()); // Flyway: idempotent, own connections
@@ -52,10 +49,14 @@ public class PartnerRbacReconciler implements SmartInitializingSingleton {
     }
 
     /**
-     * Transactional DB work — called only after PartnerContext is set so Hibernate routes
-     * all queries to the correct tenant schema.
+     * DB work — called only after PartnerContext is set so Hibernate routes all queries to
+     * the correct tenant schema.
+     *
+     * NOT @Transactional: each grant/grandfather is an independent, idempotent write executed
+     * in its own Spring Data repository transaction. A mid-loop failure therefore leaves a
+     * partially-but-safely reconciled org; a re-run of {@link #reconcileOrg} completes the
+     * remaining entries without duplicating the ones already written.
      */
-    @Transactional
     public void doReconcile(PartnerOrganization org) {
         Role admin = roleRepo.findByName(PartnerRoles.ADMIN).orElseThrow();
         for (PartnerUser u : userRepo.findByOrganization_Id(org.getId())) {

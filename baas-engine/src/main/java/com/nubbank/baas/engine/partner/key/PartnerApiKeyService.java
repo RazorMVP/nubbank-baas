@@ -4,14 +4,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nubbank.baas.engine.common.BaasException;
 import com.nubbank.baas.engine.partner.*;
 import com.nubbank.baas.engine.partner.key.dto.*;
+import com.nubbank.baas.engine.role.UserRoleRepository;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +23,27 @@ public class PartnerApiKeyService {
     private final PartnerApiKeyRepository keyRepo;
     private final PartnerOrganizationRepository orgRepo;
     private final ObjectMapper objectMapper;
+    private final UserRoleRepository userRoleRepo;
+
+    // ── caller identity helpers ──────────────────────────────────────────────
+
+    private UUID callerUserId() {
+        return UUID.fromString(
+            (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
+    }
+
+    private Set<String> callerAuthorities() {
+        return SecurityContextHolder.getContext().getAuthentication()
+            .getAuthorities().stream()
+            .map(a -> a.getAuthority())
+            .collect(Collectors.toSet());
+    }
+
+    private boolean callerIsSuperuser() {
+        return userRoleRepo.existsSuperuserRoleByUserId(callerUserId());
+    }
+
+    // ── service methods ──────────────────────────────────────────────────────
 
     @Transactional
     public IssuedApiKeyResponse issue(IssueApiKeyRequest req) {
@@ -32,6 +56,20 @@ public class PartnerApiKeyService {
         String raw = "cba_" + Base64.getUrlEncoder().withoutPadding().encodeToString(rand);
 
         List<String> scopes = req.scopes() == null ? List.of() : req.scopes();
+
+        // FIX C2 — non-superuser callers cannot issue wildcard keys or scope beyond their own authority
+        if (!callerIsSuperuser()) {
+            Set<String> mine = callerAuthorities();
+            for (String s : scopes) {
+                if ("*".equals(s))
+                    throw BaasException.forbidden("PRIVILEGE_ESCALATION",
+                        "Only a superuser can issue a wildcard (full-authority) API key");
+                if (!mine.contains(s))
+                    throw BaasException.forbidden("PRIVILEGE_ESCALATION",
+                        "Cannot scope a key beyond your own authority: " + s);
+            }
+        }
+
         String scopesJson;
         try {
             scopesJson = objectMapper.writeValueAsString(scopes);

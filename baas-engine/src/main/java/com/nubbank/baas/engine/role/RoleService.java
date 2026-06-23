@@ -4,9 +4,11 @@ import com.nubbank.baas.engine.common.BaasException;
 import com.nubbank.baas.engine.role.dto.*;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -16,9 +18,33 @@ public class RoleService {
     private final PermissionRepository permRepo;
     private final UserRoleRepository userRoleRepo;
 
+    // ── caller identity helpers ──────────────────────────────────────────────
+
+    private UUID callerUserId() {
+        return UUID.fromString(
+            (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
+    }
+
+    private Set<String> callerAuthorities() {
+        return SecurityContextHolder.getContext().getAuthentication()
+            .getAuthorities().stream()
+            .map(a -> a.getAuthority())
+            .collect(Collectors.toSet());
+    }
+
+    private boolean callerIsSuperuser() {
+        return userRoleRepo.existsSuperuserRoleByUserId(callerUserId());
+    }
+
+    // ── service methods ──────────────────────────────────────────────────────
+
     @Transactional
     public Role createRole(RoleRequest req) {
         requireContext();
+        // FIX M3 — reject reserved built-in role names
+        if (Set.of(PartnerRoles.ADMIN, PartnerRoles.MAKER, PartnerRoles.APPROVER, PartnerRoles.VIEWER)
+                .contains(req.name()))
+            throw BaasException.conflict("RESERVED_ROLE_NAME", "Role name is reserved");
         Role r = Role.builder().name(req.name()).description(req.description())
             .builtIn(false).roleScope(PartnerRoles.SCOPE_PARTNER).superuser(false).build();
         return roleRepo.save(r);
@@ -45,10 +71,25 @@ public class RoleService {
         requireContext();
         Role role = roleRepo.findById(roleId)
             .orElseThrow(() -> BaasException.notFound("ROLE_NOT_FOUND", "Role not found"));
-        Set<Permission> resolved = permRepo.findByIdIn(req.permissionIds());
+
+        // FIX I1a — built-in roles cannot have their permission set replaced
+        if (role.isBuiltIn())
+            throw BaasException.conflict("BUILT_IN_ROLE", "Built-in roles cannot be modified");
+
+        Set<Permission> newPermissions = permRepo.findByIdIn(req.permissionIds());
+
+        // FIX I1b — a non-superuser caller cannot grant permissions they do not hold
+        if (!callerIsSuperuser()) {
+            Set<String> mine = callerAuthorities();
+            for (Permission p : newPermissions)
+                if (!mine.contains(p.getCode()))
+                    throw BaasException.forbidden("PRIVILEGE_ESCALATION",
+                        "Cannot grant a permission you do not hold: " + p.getCode());
+        }
+
         // Replace-all pattern
         role.getPermissions().clear();
-        role.getPermissions().addAll(resolved);
+        role.getPermissions().addAll(newPermissions);
         return roleRepo.save(role);
     }
 

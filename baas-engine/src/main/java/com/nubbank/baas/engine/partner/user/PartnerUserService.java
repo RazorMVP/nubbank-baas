@@ -58,6 +58,9 @@ public class PartnerUserService {
                     .contains(x.getRoleScope()))
                 .orElseThrow(() -> BaasException.notFound("ROLE_NOT_FOUND", "Role " + id + " not found"));
             if (!superuser) {
+                if (r.isSuperuser())
+                    throw BaasException.forbidden("PRIVILEGE_ESCALATION",
+                        "Cannot assign a superuser role");
                 Set<String> roleCodes = r.getPermissions().stream()
                     .map(Permission::getCode).collect(Collectors.toSet());
                 if (!mine.containsAll(roleCodes))

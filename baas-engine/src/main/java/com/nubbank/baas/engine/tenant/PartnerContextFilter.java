@@ -66,8 +66,18 @@ public class PartnerContextFilter extends OncePerRequestFilter {
                 }
                 codes = authorityResolver.operatorAuthorities(operatorId);
             }
-            case "JWT" -> codes = authorityResolver.partnerUserAuthorities(UUID.fromString(ctx.userId()));
-            case "API_KEY" -> codes = authorityResolver.apiKeyAuthorities(UUID.fromString(ctx.userId()));
+            case "JWT" -> {
+                UUID uid;
+                try { uid = UUID.fromString(ctx.userId()); }
+                catch (Exception ex) { log.warn("Partner JWT subject is not a valid UUID — denying"); return; }
+                codes = authorityResolver.partnerUserAuthorities(uid);
+            }
+            case "API_KEY" -> {
+                UUID kid;
+                try { kid = UUID.fromString(ctx.userId()); }
+                catch (Exception ex) { log.warn("API key id is not a valid UUID — denying"); return; }
+                codes = authorityResolver.apiKeyAuthorities(kid);
+            }
             default -> { return; } // unknown authMode → deny (no blanket-full fallback)
         }
 

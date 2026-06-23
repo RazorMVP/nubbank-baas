@@ -54,7 +54,9 @@ class AuthorityResolverTest extends AbstractIntegrationTest {
         PartnerContext.set(new PartnerContext(org.getId().toString(), schema, "BASIC",
             "PRODUCTION", "API_KEY", null));
         try {
-            assertThat(authorityResolver.fullTenantAuthorities())
+            // fullTenantAuthorities() was removed (no production caller); delegate directly to the
+            // permission repo, which is what apiKeyAuthorities("*" scope) calls internally.
+            assertThat(permRepo.findAllCodes())
                 .contains("READ_CUSTOMER", "CREATE_CUSTOMER", "APPROVE_LOAN");
         } finally { PartnerContext.clear(); }
     }
