@@ -113,6 +113,8 @@ public class RoleService {
         Role r = roleRepo.findById(id)
             .orElseThrow(() -> BaasException.notFound("ROLE_NOT_FOUND", "Role not found"));
         if (r.isBuiltIn()) throw BaasException.conflict("BUILT_IN_ROLE", "Built-in roles cannot be deleted");
+        if (userRoleRepo.existsByRoleId(id))
+            throw BaasException.conflict("ROLE_IN_USE", "Role is assigned to one or more users; unassign it first");
         roleRepo.deleteById(id);
     }
 

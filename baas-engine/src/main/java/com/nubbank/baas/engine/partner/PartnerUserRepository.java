@@ -9,4 +9,5 @@ public interface PartnerUserRepository extends JpaRepository<PartnerUser, UUID> 
     boolean existsByEmail(String email);
     java.util.List<PartnerUser> findByOrganization_Id(java.util.UUID orgId);
     long countByOrganization_IdAndActiveTrue(java.util.UUID orgId);
+    long countByIdInAndActiveTrue(java.util.Collection<java.util.UUID> ids);
 }

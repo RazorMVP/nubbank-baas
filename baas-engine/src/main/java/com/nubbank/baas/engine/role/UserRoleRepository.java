@@ -27,4 +27,6 @@ public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> 
     @org.springframework.data.jpa.repository.Query(
         "select ur.userId from UserRole ur join ur.role r where r.name = :roleName")
     java.util.List<java.util.UUID> findUserIdsByRoleName(String roleName);
+
+    boolean existsByRoleId(java.util.UUID roleId);
 }

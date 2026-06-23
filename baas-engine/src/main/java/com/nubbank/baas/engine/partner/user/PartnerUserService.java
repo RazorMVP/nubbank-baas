@@ -103,11 +103,11 @@ public class PartnerUserService {
     public PartnerUserResponse replaceRoles(UUID id, UpdateUserRolesRequest req) {
         requireOwnOrg(id);
         List<Role> roles = resolveAssignableRoles(req.roleIds());
-        boolean removingAdmin = userRoleRepo.findByUserId(id).stream()
-            .anyMatch(ur -> ur.getRole().getName().equals(PartnerRoles.ADMIN))
-            && roles.stream().noneMatch(r -> r.getName().equals(PartnerRoles.ADMIN));
-        if (removingAdmin && userRoleRepo.countDistinctUsersWithRole(PartnerRoles.ADMIN) <= 1)
-            throw BaasException.conflict("LAST_ADMIN", "Cannot remove the last PARTNER_ADMIN");
+        boolean currentlyAdmin = holdsAdmin(id);
+        boolean willBeAdmin = roles.stream().anyMatch(r -> r.getName().equals(PartnerRoles.ADMIN));
+        boolean targetActive = userRepo.findById(id).map(PartnerUser::isActive).orElse(false);
+        if (currentlyAdmin && !willBeAdmin && targetActive && activeAdminCount() <= 1)
+            throw BaasException.conflict("LAST_ADMIN", "Cannot remove the last active PARTNER_ADMIN");
         userRoleRepo.deleteByUserId(id);
         roles.forEach(r -> userRoleRepo.save(UserRole.builder().userId(id).role(r).build()));
         return toResponse(requireOwnOrg(id));
@@ -116,12 +116,20 @@ public class PartnerUserService {
     @Transactional
     public void setActive(UUID id, boolean active) {
         PartnerUser u = requireOwnOrg(id);
-        if (!active && userRoleRepo.findByUserId(id).stream()
-                .anyMatch(ur -> ur.getRole().getName().equals(PartnerRoles.ADMIN))
-            && userRoleRepo.countDistinctUsersWithRole(PartnerRoles.ADMIN) <= 1)
-            throw BaasException.conflict("LAST_ADMIN", "Cannot deactivate the last PARTNER_ADMIN");
+        if (!active && u.isActive() && holdsAdmin(id) && activeAdminCount() <= 1)
+            throw BaasException.conflict("LAST_ADMIN", "Cannot deactivate the last active PARTNER_ADMIN");
         u.setActive(active);
         userRepo.save(u);
+    }
+
+    /** Number of ACTIVE users holding PARTNER_ADMIN in the current tenant. */
+    private long activeAdminCount() {
+        List<UUID> ids = userRoleRepo.findUserIdsByRoleName(PartnerRoles.ADMIN);
+        return ids.isEmpty() ? 0 : userRepo.countByIdInAndActiveTrue(ids);
+    }
+
+    private boolean holdsAdmin(UUID userId) {
+        return userRoleRepo.findRoleNamesByUserId(userId).contains(PartnerRoles.ADMIN);
     }
 
     private PartnerUser requireOwnOrg(UUID id) {
