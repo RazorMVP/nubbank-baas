@@ -807,6 +807,225 @@
   </p>
 </section>
 
+<section id="partner-rbac">
+  <h2>Partner RBAC — Users, Roles &amp; API Keys <span class="pill">baas-engine · partner-scoped</span></h2>
+  <p>
+    Granular access control for partners who need to give multiple operators restricted access to the BaaS
+    console. Authority is now resolved per-request from DB role assignments via the V7 Flyway migration and the
+    startup <code>PartnerRbacReconciler</code> — there is no longer a blanket "first-party gets everything"
+    grant. Existing organisations were back-filled with <code>PARTNER_ADMIN</code> at reconciliation time
+    (DEF-1C-15 resolved on branch <code>feat/partner-rbac</code>).
+  </p>
+
+  <h3>Permission codes</h3>
+  <p>All partner endpoints carry a <code>@PreAuthorize</code> annotation that names the permission code required. Codes are evaluated by the per-request authority resolver against the caller's role assignments.</p>
+  <table>
+    <thead><tr><th>Code</th><th>Grouping</th><th>What it gates</th></tr></thead>
+    <tbody>
+      <tr><td><code>MANAGE_PARTNER_USERS</code></td><td>admin</td><td>Create, list, get, deactivate/reactivate partner users; replace their role assignments.</td></tr>
+      <tr><td><code>MANAGE_ROLES</code></td><td>admin</td><td>Create, list, update, delete custom roles; assign permissions to a role; list all available permissions.</td></tr>
+      <tr><td><code>MANAGE_API_KEYS</code></td><td>admin</td><td>Issue scoped API keys for the caller's organisation.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Built-in partner roles</h3>
+  <p>Seeded by the V7 migration (<code>tenant/V7__partner_rbac.sql</code>). Built-in roles are marked <code>built_in = true</code> and cannot be edited or deleted (→ <code>409 BUILT_IN_ROLE</code>).</p>
+  <table>
+    <thead><tr><th>Role name</th><th>Superuser marker</th><th>Effective permissions</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>PARTNER_ADMIN</code></td>
+        <td>Yes</td>
+        <td>All permissions (resolved dynamically — no stored grants)</td>
+        <td>The authority resolver short-circuits on <code>is_superuser = true</code> and grants the full permission set without reading <code>role_permissions</code>. The reconciler back-fills existing users with this role on startup.</td>
+      </tr>
+      <tr>
+        <td><code>PARTNER_MAKER</code></td>
+        <td>No</td>
+        <td><code>READ_CUSTOMER</code>, <code>CREATE_CUSTOMER</code>, <code>UPDATE_CUSTOMER</code>, <code>READ_ACCOUNT</code>, <code>CREATE_ACCOUNT</code>, <code>DEPOSIT</code>, <code>WITHDRAW</code>, <code>READ_LOAN</code>, <code>CREATE_LOAN</code>, <code>INITIATE_PAYMENT</code>, <code>RUN_REPORT</code></td>
+        <td>Operate and transact; cannot approve maker-checker items (approval gates deferred to Spec B).</td>
+      </tr>
+      <tr>
+        <td><code>PARTNER_APPROVER</code></td>
+        <td>No</td>
+        <td><code>READ_CUSTOMER</code>, <code>READ_ACCOUNT</code>, <code>READ_LOAN</code>, <code>RUN_REPORT</code> (+ <code>APPROVE_*</code> when maker-checker ships — Spec B)</td>
+        <td>Four-eyes checker; read-only until maker-checker migration adds approval grants.</td>
+      </tr>
+      <tr>
+        <td><code>PARTNER_VIEWER</code></td>
+        <td>No</td>
+        <td><code>READ_CUSTOMER</code>, <code>READ_ACCOUNT</code>, <code>READ_LOAN</code>, <code>RUN_REPORT</code></td>
+        <td>Strictly read-only.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Partner Users</h3>
+  <p>All endpoints under <code>/baas/v1/partner-users</code> require <code>MANAGE_PARTNER_USERS</code>. Results are automatically scoped to the caller's organisation; accessing a user belonging to another org returns <code>404</code>.</p>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/partner-users</span></td>
+        <td>Create a partner user in the caller's organisation. Returns <code>201</code>.<br><br>
+            Errors: <code>400</code> on blank / invalid email, password shorter than 8 chars, or empty <code>roleIds</code>; <code>409</code> if the email is already taken in this org.</td>
+        <td>
+          <strong>Request</strong> <code>CreatePartnerUserRequest</code>:
+          <pre>{
+  "email": "maker@fintech.io",   // required, valid email
+  "password": "Str0ng!pw",       // required, min 8 chars
+  "roleIds": ["&lt;uuid&gt;"]          // required, non-empty set of role UUIDs
+}</pre>
+          <strong>Response</strong> <code>PartnerUserResponse</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "email": "maker@fintech.io",
+  "active": true,
+  "roles": ["PARTNER_MAKER"]    // resolved role names
+}</pre>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/partner-users</span></td>
+        <td>List all users in the caller's organisation. Returns <code>200</code>.</td>
+        <td><strong>Response</strong>: <code>List&lt;PartnerUserResponse&gt;</code> (shape above).</td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/partner-users/{id}</span></td>
+        <td>Get a single user by id. Returns <code>200</code> or <code>404</code> (other-org user → 404 to prevent enumeration).</td>
+        <td><strong>Response</strong>: <code>PartnerUserResponse</code> (shape above).</td>
+      </tr>
+      <tr>
+        <td><span class="m put">PUT</span><br><span class="path">/baas/v1/partner-users/{id}/roles</span></td>
+        <td>Replace the user's role assignments atomically. Returns <code>200</code>.<br><br>
+            Errors: <code>400</code> on empty <code>roleIds</code>; <code>404</code> if user not found in this org.</td>
+        <td>
+          <strong>Request</strong> <code>UpdateUserRolesRequest</code>:
+          <pre>{
+  "roleIds": ["&lt;uuid&gt;", "&lt;uuid&gt;"]   // non-empty set of role UUIDs
+}</pre>
+          <strong>Response</strong>: updated <code>PartnerUserResponse</code> with the new <code>roles</code> list.
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/partner-users/{id}/deactivate</span></td>
+        <td>Deactivate a partner user (they can no longer log in). Returns <code>200</code>. Deactivating an already-inactive user is idempotent.</td>
+        <td><strong>Request</strong>: empty body.<br><strong>Response</strong>: <code>data: null</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/partner-users/{id}/reactivate</span></td>
+        <td>Reactivate a deactivated partner user. Returns <code>200</code>. Reactivating an already-active user is idempotent.</td>
+        <td><strong>Request</strong>: empty body.<br><strong>Response</strong>: <code>data: null</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Roles</h3>
+  <p>All endpoints under <code>/baas/v1/roles</code> require <code>MANAGE_ROLES</code>. Custom roles are scoped to <code>PARTNER</code>; the partner cannot create or modify <code>OPERATOR</code>-scoped or <code>SHARED</code>-scoped roles. Built-in roles (<code>built_in = true</code>) cannot be edited or deleted → <code>409 BUILT_IN_ROLE</code>.</p>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/roles</span></td>
+        <td>Create a custom role. Returns <code>201</code>.</td>
+        <td>
+          <strong>Request</strong> <code>RoleRequest</code>:
+          <pre>{
+  "name": "LOAN_OFFICER",              // required, non-blank
+  "description": "Loan-only access"    // optional
+}</pre>
+          <strong>Response</strong>: <code>Role</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "name": "LOAN_OFFICER",
+  "description": "Loan-only access",
+  "disabled": false,
+  "builtIn": false,
+  "roleScope": "PARTNER",
+  "superuser": false,
+  "permissions": []
+}</pre>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/roles</span></td>
+        <td>List all roles visible to the caller (built-in + custom). Returns <code>200</code>.</td>
+        <td><strong>Response</strong>: <code>List&lt;Role&gt;</code> (shape above; <code>permissions</code> list populated).</td>
+      </tr>
+      <tr>
+        <td><span class="m put">PUT</span><br><span class="path">/baas/v1/roles/{id}</span></td>
+        <td>Update a custom role's name and description. Returns <code>200</code>.<br><br>
+            Errors: <code>404</code> not found; <code>409 BUILT_IN_ROLE</code> if the role is built-in.</td>
+        <td>
+          <strong>Request</strong>: <code>RoleRequest</code> (same shape as create).<br>
+          <strong>Response</strong>: updated <code>Role</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m put">PUT</span><br><span class="path">/baas/v1/roles/{id}/permissions</span></td>
+        <td>Replace the permission set on a role atomically. Returns <code>200</code>.<br><br>
+            Errors: <code>404</code> not found; <code>409 BUILT_IN_ROLE</code> if the role is built-in.</td>
+        <td>
+          <strong>Request</strong> <code>UpdatePermissionsRequest</code>:
+          <pre>{
+  "permissionIds": ["&lt;uuid&gt;", "&lt;uuid&gt;"]   // set of permission UUIDs
+}</pre>
+          <strong>Response</strong>: updated <code>Role</code> with new <code>permissions</code> list.
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/roles/permissions</span></td>
+        <td>List all available permission codes (with their UUIDs, grouping, entity, and action). Use these IDs in the <code>UpdatePermissionsRequest</code>. Returns <code>200</code>.</td>
+        <td>
+          <strong>Response</strong>: <code>List&lt;Permission&gt;</code>:
+          <pre>[{
+  "id": "&lt;uuid&gt;",
+  "grouping": "admin",
+  "code": "MANAGE_PARTNER_USERS",
+  "entityName": "PARTNER_USER",
+  "actionName": "MANAGE",
+  "canMakerChecker": false
+}]</pre>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m" style="color:#9b1c1c;font-weight:700;font-size:.78rem;letter-spacing:.03em;">DELETE</span><br><span class="path">/baas/v1/roles/{id}</span></td>
+        <td>Delete a custom role. Returns <code>200</code>.<br><br>
+            Errors: <code>404</code> not found; <code>409 BUILT_IN_ROLE</code> if the role is built-in.</td>
+        <td><strong>Request</strong>: empty body.<br><strong>Response</strong>: <code>data: null</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="note"><strong>Role scope:</strong> <code>PARTNER</code>-scoped roles apply to partner users within a tenant. <code>OPERATOR</code>-scoped roles are Keycloak-backed and are not manageable via this API. <code>SHARED</code> roles (e.g. <code>PARTNER_ADMIN</code>) apply in both contexts.</div>
+
+  <h3>API Keys</h3>
+  <p>Requires <code>MANAGE_API_KEYS</code>. API keys are scoped: <code>["*"]</code> grants the caller's full permission set, an explicit list (e.g. <code>["READ_CUSTOMER","READ_ACCOUNT"]</code>) restricts to those codes only, and an empty list <code>[]</code> denies all. The raw key value is shown <strong>exactly once</strong> at issuance and is never retrievable again (stored BCrypt-hashed).</p>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/partner-api-keys</span></td>
+        <td>Issue a new scoped API key. Returns <code>201</code>. The <code>apiKey</code> field in the response is shown <strong>once only</strong> — store it immediately.</td>
+        <td>
+          <strong>Request</strong> <code>IssueApiKeyRequest</code>:
+          <pre>{
+  "name": "CI/CD pipeline key",      // required, non-blank
+  "scopes": ["READ_CUSTOMER",        // optional list of permission codes;
+             "READ_ACCOUNT"]         // omit or pass ["*"] for full access
+}</pre>
+          <strong>Response</strong> <code>IssuedApiKeyResponse</code>:
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "keyPrefix": "nbk_abc12345",   // first 12 chars — use for key identification
+  "apiKey": "nbk_abc12345..."    // full key value — shown ONCE, never again
+}</pre>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout">API keys are authenticated via <code>Authorization: ApiKey &lt;key&gt;</code>. The authority resolver intersects the key's stored <code>scopes</code> with the issuing user's own authorities — a key cannot escalate beyond what its issuer holds at issuance time.</div>
+</section>
+
 <section id="baas-fep">
     <h2>baas-fep — ISO 8583 Front-End Processor <span class="pill">TCP service</span></h2>
     <p>
@@ -870,7 +1089,7 @@
   </section>
 
 <footer>
-  NubBank BaaS · API Reference · Phase 1C — Customers API (Customers track, Task 9) + Accounts API (Accounts track, Task 11) + <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
+  NubBank BaaS · API Reference · Phase 1C — Customers API (Customers track, Task 9) + Accounts API (Accounts track, Task 11) + <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + Partner RBAC — Users, Roles &amp; API Keys (Session 19, DEF-1C-15 resolved, branch <code>feat/partner-rbac</code>) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
 </footer>
 
 </div>
