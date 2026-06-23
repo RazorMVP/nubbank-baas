@@ -319,9 +319,9 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 15 — 2026-06-10; DEF-1C-28/29 closed across engine + card + backoffice)
+## Confirmed Platform Versions (Session 19 — 2026-06-23; Granular Partner RBAC, DEF-1C-15)
 
-> **Session 15 closed DEF-1C-28 (operator `/me`) + DEF-1C-29 (dashboard summary).** `baas-engine` advanced to `b2f1709` (operations API, 144 tests), `baas-card` to `d647a4f` (`/internal/v1/stats`, 105 tests), `baas-backoffice` to `281739a` (dashboard tiles + PKCE `/me` authorities, 75 tests). `baas-fep` unchanged (`a9e4cfd`). See `baas-log.md` Session 15.
+> **Session 19 closed DEF-1C-15 (Granular Partner RBAC — Spec A).** `baas-engine` advanced to `2dc2f8a` (deny-by-default partner authority, `PARTNER_ADMIN` dynamic superuser, scoped API keys, partner-user/role/api-key APIs, escalation guards; 215 tests). All other services unchanged. See `baas-log.md` Session 19.
 
 ### BaaS Engine (`baas-engine/`)
 
@@ -341,7 +341,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
 | **Internal money seam** | Stage 5 | `/internal/v1/{card-debit,card-credit,account-lookup}` (HMAC); atomic idempotent debit/credit keyed by `card_auth_debit.auth_key`; engine→card provisioning trigger in `TenantProvisioningService` |
-| **Last git commit** | `b2f1709` | Session 15 — operations API: `/operators/me` + `/dashboard/summary` (DEF-1C-28/29); 144 tests passing |
+| **Last git commit** | `2dc2f8a` | Session 19 — Granular Partner RBAC (DEF-1C-15); 215 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -637,6 +637,34 @@ maps the decision to DE39. Built against a **mocked `CardClient`** — live Card
 
 > EMV/HSM/scheme-packagers/settlement/tokenization are correctly **absent** — deferred (DEF-1C-01..07).
 
+### Completed in Session 19 — Granular Partner RBAC (Spec A, DEF-1C-15)
+
+**Deny-by-default partner authority, `PARTNER_ADMIN` dynamic superuser, scoped API keys, partner-user/role/api-key management APIs, escalation guards. ✅ 215 tests.**
+
+| Module | Package | Status |
+|--------|---------|--------|
+| Deny-by-default `PartnerContextFilter` (removed blanket-full fallback) | `tenant/` | ✅ Built |
+| `AuthorityResolver` — `PARTNER_ADMIN` dynamic superuser (`is_superuser` → `findAllCodes()` per request; covers partner users AND operators) | `auth/` | ✅ Built |
+| Built-in + custom hybrid roles (`role_scope: PARTNER\|SHARED`; built-in protection; `MANAGE_ROLES` gate) | `role/` | ✅ Built |
+| Scoped API key issuance (`cba_` prefix, SHA-256 hash, `scopes` JSONB, `@JdbcTypeCode(SqlTypes.JSON)`) | `auth/` | ✅ Built |
+| `PartnerRbacReconciler` (idempotent provision-time + `ApplicationReadyEvent` startup backfill) | `auth/` | ✅ Built |
+| Partner-user management API (`/baas/v1/partner-users`: create, list, get, roles, assign-role, deactivate) | `partner/` | ✅ Built |
+| Partner API-key management API (`/baas/v1/partner-api-keys`: issue; revoke via existing `/api-keys/{id}`) | `auth/` | ✅ Built |
+| Service-level privilege-escalation guards (superuser-role assignment, wildcard-scope key, over-grant) | `role/`, `partner/`, `auth/` | ✅ Built |
+| `AbstractIntegrationTest` helpers `adminJwt` / `grantAdmin` for deny-by-default test setup | `test/` | ✅ Built |
+| V7 public migration (`is_superuser`, `role_scope`, delete `PARTNER_ADMIN` static grants, new permission codes) | `db/migration/public/V7` | ✅ Built |
+
+**New permission codes (Session 19):** `MANAGE_PARTNER_USERS`, `MANAGE_ROLES`, `MANAGE_API_KEYS`
+
+**New endpoints (Session 19):**
+- `POST/GET /baas/v1/partner-users` — create + list partner users
+- `GET /baas/v1/partner-users/{id}` — partner user detail
+- `GET /baas/v1/partner-users/{id}/roles` — assigned roles
+- `POST /baas/v1/partner-users/{id}/roles` — assign role (escalation-guarded)
+- `POST /baas/v1/partner-users/{id}/deactivate` — deactivate user
+- `POST /baas/v1/partner-api-keys` — issue scoped API key (key shown once)
+- `GET/POST/PUT/DELETE /baas/v1/roles` — now gated `MANAGE_ROLES`
+
 ### Pending (Later sub-plans)
 
 | Module | Sub-plan | Status |
@@ -821,6 +849,13 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | **(baas-backoffice / local dev) the engine has NO CORS and NO `dev-token` bypass in 1C** — running the backoffice against a local engine fails two ways: (1) a browser calling the engine cross-origin (`:3001`→`:8080`) is CORS-blocked; (2) the frontend placeholder `dev-token` is not a valid JWT, so the engine 401s every `/baas/v1/**` call. | Use the committed Vite **dev proxy**: set `VITE_API_BASE_URL` empty so requests are relative, and `vite.config.ts` forwards `/baas/**` to `VITE_ENGINE_ORIGIN` (default `:8080`) — same-origin, no CORS. Then register a partner (`POST /baas/v1/auth/register`) and put the returned partner JWT in `VITE_DEV_TOKEN` (its `schema_name` claim routes the tenant). Full runbook: `docs/backoffice-local-dev.md` (Session 18, PR #36). |
 | **(baas-backoffice) dev authorities live in THREE files that must stay in sync** — adding a new permission to gate UI requires updating all of: `src/lib/rbac.ts` (`PERMISSIONS` constant the UI gates on), `playwright.config.ts` (e2e `VITE_DEV_AUTHORITIES`), AND `.env.example` (`VITE_DEV_AUTHORITIES` the local `cp .env.example .env` workflow uses). | The Accounts track added `UPDATE_ACCOUNT` to the first two but not `.env.example`, so local `npm run dev` silently hid the freeze/unfreeze/close buttons (the buttons gate on `UPDATE_ACCOUNT`). Fixed Session 18 (PR #35). When you add a UI-gating permission, grep all three. |
 | **(baas-backoffice / local infra) the nubbank local stack must avoid the CoreBanking docker ports** — on this machine the `cba-*` stack owns `:5432` (postgres), `:8080` (cba-backend), `:6379` (redis). Reusing them collides. | Run nubbank Postgres/Redis/engine on alternate host ports (e.g. `5442`/`6390`/`8090`) and pass `DATASOURCE_URL` / `REDIS_PORT` / `SERVER_PORT` to the engine + `VITE_ENGINE_ORIGIN` to the backoffice to match. Engine boot has no datasource/secret defaults (fails fast): `ENCRYPTION_KEY` is SHA-256-derived (any length), `JWT_SECRET` needs ≥32 chars (HS256), the rate limiter fails-open without Redis (Session 18). |
+| **(Session 19) Deny-by-default cutover breaks `@PreAuthorize`-gated controller tests** — removing the blanket-full fallback means a partner JWT whose `sub` has no DB role now 403s on any `@PreAuthorize`-protected endpoint, failing existing integration tests that relied on the fallback. | Use the `AbstractIntegrationTest.adminJwt(org, schema)` / `grantAdmin(schema, userId)` helpers to grant `PARTNER_ADMIN` to the JWT subject before calling the endpoint. This mirrors the production backfill path and keeps tests aligned with real access semantics (Session 19). |
+| **(Session 19) `@JdbcTypeCode(SqlTypes.JSON)` is required to write a `String` to a `jsonb` column** (Hibernate 6) — `@Column(columnDefinition="jsonb")` alone causes `column is of type jsonb but expression is of type character varying` at runtime. | Add `@JdbcTypeCode(SqlTypes.JSON)` to the field (e.g. `PartnerApiKey.scopes`). No third-party library needed — this is Hibernate 6 native (same pattern as `partner_webhooks.events`). |
+| **(Session 19) `@Transactional`-before-context pitfall (multi-tenancy).** A `@Transactional` method opens the Hibernate session — and resolves the tenant schema via `PartnerTenantResolver` — at the Spring proxy boundary, BEFORE the method body runs. If the body is what calls `PartnerContext.set(...)`, the resolver returns `public` and tenant tables aren't found. | Set `PartnerContext` in a NON-transactional outer method, then delegate all DB work to a `@Transactional` method on a SEPARATE bean. Self-invocation (`this.doWork()`) does NOT create a transaction boundary — Spring AOP is bypassed — and the `@Transactional` is silently non-atomic. Extract to a dedicated inner service bean. |
+| **(Session 19) `@ManyToOne(LAZY)` accessed after the repository transaction closes throws `LazyInitializationException`** (open-in-view=false). `PartnerContextFilter` reads `apiKey.getOrganization()` after the lookup transaction has closed. | Use a `JOIN FETCH` query (`findByKeyHashAndActiveTrue`) so the associated `PartnerOrganization` is eagerly initialized within the same transaction. Never access lazy associations outside a transaction boundary when open-in-view is disabled (Session 19). |
+| **(Session 19) `PARTNER_ADMIN` is a dual-purpose dynamic superuser marker — BOTH authority-resolution paths must honour it.** `is_superuser=true` triggers `findAllCodes()` per request (replaces static `role_permissions`). If only `partnerUserAuthorities` checks the flag but `operatorAuthorities` does not, an operator holding `PARTNER_ADMIN` resolves to empty authority — a silent regression. | In `AuthorityResolver`, check `is_superuser` in BOTH the `OPERATOR_JWT` branch AND the partner-JWT branch. Any future authority-resolution code path added must also consult the flag before falling back to DB role lookups. |
+| **(Session 19) Privilege-escalation guards belong at the SERVICE layer, not just `@PreAuthorize`.** A delegate with `MANAGE_ROLES` passes the controller gate but must not be able to self-promote: assigning an `is_superuser` role, minting `["*"]` wildcard API key scopes, or granting a permission the caller doesn't itself hold. `@PreAuthorize` only checks that the permission code exists in the caller's set — it cannot compare caller's grants against the grant being requested. | Implement escalation checks in `RoleService`/`PartnerUserService`/`PartnerApiKeyService`: (1) reject `is_superuser` role assignment unless caller is superuser; (2) reject `["*"]` scopes unless caller is superuser; (3) reject granting permission P unless caller's own authority set contains P (Session 19). |
+| **(Session 19) `PartnerStatus` has NO `PRODUCTION` value** — the enum is `SANDBOX / PENDING_REVIEW / BASIC / PRO / ENTERPRISE / SUSPENDED`. `PartnerEnvironment.PRODUCTION` does exist (separate enum). Confusing the two causes compile errors or wrong status comparisons. Also: Spring Data path-traversal for a `@ManyToOne` field requires the underscore (`findByOrganization_Id`), not camelCase (`findByOrganizationId`), to navigate the association correctly. | Always distinguish `PartnerStatus` (tier/lifecycle) from `PartnerEnvironment` (SANDBOX/PRODUCTION). Use `findByOrganization_Id` (underscore) for `@ManyToOne` path traversal in Spring Data repositories (Session 19). |
 
 ---
 
