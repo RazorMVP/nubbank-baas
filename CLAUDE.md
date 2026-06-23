@@ -321,7 +321,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ## Confirmed Platform Versions (Session 19 — 2026-06-23; Granular Partner RBAC, DEF-1C-15)
 
-> **Session 19 closed DEF-1C-15 (Granular Partner RBAC — Spec A).** `baas-engine` advanced to `2dc2f8a` (deny-by-default partner authority, `PARTNER_ADMIN` dynamic superuser, scoped API keys, partner-user/role/api-key APIs, escalation guards; 215 tests). All other services unchanged. See `baas-log.md` Session 19.
+> **Session 19 closed DEF-1C-15 (Granular Partner RBAC — Spec A).** `baas-engine` advanced to `9d51e96` (deny-by-default partner authority, `PARTNER_ADMIN` dynamic superuser, scoped API keys, partner-user/role/api-key APIs, escalation guards; 218 tests). All other services unchanged. See `baas-log.md` Session 19.
 
 ### BaaS Engine (`baas-engine/`)
 
