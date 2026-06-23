@@ -9,7 +9,7 @@
 
 | Sub-system | Status | Last Session |
 |------------|--------|-------------|
-| `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline + Granular Partner RBAC | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**; **Granular Partner RBAC (Spec A, DEF-1C-15) — Session 19; 215 tests, deny-by-default, PARTNER_ADMIN dynamic superuser, scoped API keys**) | Session 19 (`2dc2f8a`) |
+| `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline + Granular Partner RBAC | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**; **Granular Partner RBAC (Spec A, DEF-1C-15) — Session 19; 218 tests, deny-by-default, PARTNER_ADMIN dynamic superuser, scoped API keys**) | Session 19 (`9d51e96`) |
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
 | `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
@@ -200,7 +200,7 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ## Change History
 
 ### Session 19 — 2026-06-23
-**Granular Partner RBAC (Spec A, DEF-1C-15) on `feat/partner-rbac` (PR #40). Final commit `2dc2f8a`. Engine: 215 tests, 0 failures.**
+**Granular Partner RBAC (Spec A, DEF-1C-15) on `feat/partner-rbac` (PR #40). Final commit `9d51e96`. Engine: 218 tests, 0 failures.**
 
 Removed the blanket-full authority fallback from `PartnerContextFilter` — partner JWTs are now deny-by-default; authorities come only from their DB role assignments. `PARTNER_ADMIN` is a dynamic superuser marker: `is_superuser=true` triggers `findAllCodes()` per request (for both partner users AND operators, preventing an operator-holding-PARTNER_ADMIN regression). Hybrid built-in + custom role support added (`ROLE_SCOPE`: `PARTNER` or `SHARED`). Scoped API key issuance (`cba_` prefix, SHA-256 hash, `scopes` JSONB column gated by `@JdbcTypeCode(SqlTypes.JSON)`). Idempotent provision-time + startup backfill via `PartnerRbacReconciler`. Partner-user / role / API-key management APIs added. Service-level privilege-escalation guards block a non-superuser delegate from assigning `is_superuser` roles, minting `["*"]` API keys, or granting a permission it doesn't itself hold. V7 Flyway migration deletes `PARTNER_ADMIN`'s static `role_permissions` rows (replaced by dynamic `findAllCodes()`). **CBN surface unchanged.**
 
@@ -229,9 +229,10 @@ Removed the blanket-full authority fallback from `PartnerContextFilter` — part
 - **`PARTNER_ADMIN` is a dual-purpose dynamic superuser marker.** `is_superuser=true` → `findAllCodes()` per request; V7 deletes its static `role_permissions`. BOTH `partnerUserAuthorities` AND `operatorAuthorities` paths in `AuthorityResolver` must honor the marker — an operator holding `PARTNER_ADMIN` would otherwise resolve to empty authority.
 - **Privilege-escalation guards live at the SERVICE layer, not just `@PreAuthorize`.** A delegate holding `MANAGE_*` passes the controller gate; the service additionally blocks: assigning an `is_superuser` role (non-superuser caller), minting `["*"]` API key scopes, granting a permission the caller doesn't itself hold.
 - **`PartnerStatus` has NO `PRODUCTION` value** (`SANDBOX/PENDING_REVIEW/BASIC/PRO/ENTERPRISE/SUSPENDED`). `PartnerEnvironment.PRODUCTION` does exist. Spring Data path-traversal requires the underscore for `@ManyToOne` traversal (`findByOrganization_Id`).
+- **Adversarial security review — ALL findings resolved in-session, no deferrals (per standing user preference).** The review caught two privilege-escalation paths + an enabler (a delegated `MANAGE_*` holder could assign `PARTNER_ADMIN`, mint a `["*"]` key, or grant unheld permissions) and minors. Fixes: service-layer escalation guards (C1/C2/I1), fail-closed UUID parsing (M1), reserved-role-name guard (M3), removed dead `fullTenantAuthorities` (N1), honest non-transactional reconciler (I2), **last-admin guard counts only ACTIVE admins (M2)**, and **`DELETE /roles/{id}` → 409 when the role is in use**. Proven by `EscalationGuardsTest` + `LastAdminAndRoleDeleteTest`.
 
 #### Build Verification
-- `baas-engine`: **Tests run: 215, Failures: 0** — BUILD SUCCESS
+- `baas-engine`: **Tests run: 218, Failures: 0** — BUILD SUCCESS
 - No other service files changed this session.
 
 #### Confirmed Platform Versions
@@ -242,7 +243,7 @@ Removed the blanket-full authority fallback from `PartnerContextFilter` — part
 | Spring Boot | 3.5.0 | unchanged |
 | Java | 21 | unchanged |
 | Nimbus JOSE+JWT | 9.37.3 | unchanged |
-| Last git commit | `2dc2f8a` | Session 19 — Granular Partner RBAC; 215 tests |
+| Last git commit | `9d51e96` | Session 19 — Granular Partner RBAC; 218 tests |
 
 **BaaS Card (`baas-card/`):** unchanged this session — last commit `d647a4f` (Session 15).
 **BaaS FEP (`baas-fep/`):** unchanged this session — last commit `a9e4cfd` (Session 12).

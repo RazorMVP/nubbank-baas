@@ -341,7 +341,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
 | **Internal money seam** | Stage 5 | `/internal/v1/{card-debit,card-credit,account-lookup}` (HMAC); atomic idempotent debit/credit keyed by `card_auth_debit.auth_key`; engine→card provisioning trigger in `TenantProvisioningService` |
-| **Last git commit** | `2dc2f8a` | Session 19 — Granular Partner RBAC (DEF-1C-15); 215 tests passing |
+| **Last git commit** | `9d51e96` | Session 19 — Granular Partner RBAC (DEF-1C-15); 218 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -639,7 +639,7 @@ maps the decision to DE39. Built against a **mocked `CardClient`** — live Card
 
 ### Completed in Session 19 — Granular Partner RBAC (Spec A, DEF-1C-15)
 
-**Deny-by-default partner authority, `PARTNER_ADMIN` dynamic superuser, scoped API keys, partner-user/role/api-key management APIs, escalation guards. ✅ 215 tests.**
+**Deny-by-default partner authority, `PARTNER_ADMIN` dynamic superuser, scoped API keys, partner-user/role/api-key management APIs, escalation guards. ✅ 218 tests. All security-review findings closed in-session (no deferrals).**
 
 | Module | Package | Status |
 |--------|---------|--------|
