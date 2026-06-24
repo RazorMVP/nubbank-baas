@@ -32,14 +32,13 @@ class AccountSchemaV6Test extends AbstractIntegrationTest {
             Integer.class);
         assertThat(perm).isEqualTo(1);
 
-        // PARTNER_ADMIN must hold the new permission (V3 granted only the V1/V2 codes).
-        Integer grant = jdbc.queryForObject(
-            "SELECT count(*) FROM " + schema + ".role_permissions rp "
-            + "JOIN " + schema + ".roles r ON r.id = rp.role_id "
-            + "JOIN " + schema + ".permissions p ON p.id = rp.permission_id "
-            + "WHERE r.name = 'PARTNER_ADMIN' AND p.code = 'UPDATE_ACCOUNT'",
+        // PARTNER_ADMIN is the superuser role (V7 promotes it via is_superuser=true and drops
+        // explicit permission rows — authority is resolved by the is_superuser flag, not by
+        // individual role_permissions rows, so UPDATE_ACCOUNT is implicitly covered).
+        Integer isSuperuser = jdbc.queryForObject(
+            "SELECT count(*) FROM " + schema + ".roles WHERE name = 'PARTNER_ADMIN' AND is_superuser = true",
             Integer.class);
-        assertThat(grant).isEqualTo(1);
+        assertThat(isSuperuser).isEqualTo(1);
 
         // ACCOUNT_OFFICER must also hold the new permission (V6 grants it to both roles).
         Integer grantOfficer = jdbc.queryForObject(

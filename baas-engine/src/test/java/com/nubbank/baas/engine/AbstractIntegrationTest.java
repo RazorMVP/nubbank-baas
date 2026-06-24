@@ -1,5 +1,11 @@
 package com.nubbank.baas.engine;
 
+import com.nubbank.baas.engine.auth.PartnerJwtService;
+import com.nubbank.baas.engine.partner.PartnerOrganization;
+import com.nubbank.baas.engine.role.RoleRepository;
+import com.nubbank.baas.engine.role.UserRole;
+import com.nubbank.baas.engine.role.UserRoleId;
+import com.nubbank.baas.engine.role.UserRoleRepository;
 import com.nubbank.baas.engine.tenant.PartnerContext;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +15,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
+import java.util.UUID;
 
 /**
  * Base class for integration tests.
@@ -51,8 +58,39 @@ public abstract class AbstractIntegrationTest {
     @Autowired
     protected TestRestTemplate restTemplate;
 
+    @Autowired protected RoleRepository roleRepo;
+    @Autowired protected UserRoleRepository userRoleRepo;
+    @Autowired protected PartnerJwtService partnerJwtService;
+
     @AfterEach
     void clearTenantContext() {
         PartnerContext.clear();
+    }
+
+    /**
+     * Grant a (JWT-subject) user PARTNER_ADMIN in the tenant schema — the test equivalent of the
+     * production backfill, so a partner JWT for that user resolves to full authority.
+     */
+    protected void grantAdmin(String schema, UUID userId) {
+        PartnerContext.set(
+            new PartnerContext(null, schema, "SANDBOX", "SANDBOX", "JWT", null));
+        try {
+            com.nubbank.baas.engine.role.Role admin =
+                roleRepo.findByName("PARTNER_ADMIN").orElseThrow();
+            if (userRoleRepo.findById(new UserRoleId(userId, admin.getId())).isEmpty())
+                userRoleRepo.save(UserRole.builder().userId(userId).role(admin).build());
+        } finally {
+            PartnerContext.clear();
+        }
+    }
+
+    /**
+     * Provision a granted PARTNER_ADMIN user and return a JWT for it (matches the org's tier/env).
+     */
+    protected String adminJwt(PartnerOrganization org, String schema) {
+        UUID userId = UUID.randomUUID();
+        grantAdmin(schema, userId);
+        return partnerJwtService.issue(userId.toString(), "admin@test.local", "PARTNER_ADMIN",
+            org.getId().toString(), org.getName(), schema, org.getTier().name(), org.getEnvironment().name());
     }
 }

@@ -1,7 +1,6 @@
 package com.nubbank.baas.engine.customer;
 
 import com.nubbank.baas.engine.AbstractIntegrationTest;
-import com.nubbank.baas.engine.auth.PartnerJwtService;
 import com.nubbank.baas.engine.partner.*;
 import com.nubbank.baas.engine.tenant.*;
 import org.junit.jupiter.api.*;
@@ -12,7 +11,6 @@ import static org.assertj.core.api.Assertions.*;
 
 class CustomerControllerTest extends AbstractIntegrationTest {
 
-    @Autowired private PartnerJwtService jwtService;
     @Autowired private PartnerOrganizationRepository orgRepo;
     @Autowired private TenantProvisioningService provisioningService;
 
@@ -31,9 +29,7 @@ class CustomerControllerTest extends AbstractIntegrationTest {
         orgId = org.getId();
         provisioningService.provision(org.getId(), schemaName);
 
-        jwt = jwtService.issue(UUID.randomUUID().toString(), "test@partner.com",
-            "PARTNER_ADMIN", org.getId().toString(), "Customer Test Partner",
-            schemaName, "SANDBOX", "SANDBOX");
+        jwt = adminJwt(org, schemaName);
     }
 
     @Test

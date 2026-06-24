@@ -18,7 +18,7 @@ Structure: `ID | Item | Why deferred | Earliest phase | Source`. Append new defe
 | DEF-1C-12 | Routing-by-annotation vs by-chain | Start by-chain | Phase 1C/2 | spec §6.3 |
 | DEF-1C-13 | Maker-checker UI beyond engine support | Engine support is the constraint | Phase 3 | spec §13 |
 | DEF-1C-14 | TRADE_FINANCE_OFFICER role | No corporate partner in 1C | on corporate onboard | spec §14 |
-| DEF-1C-15 | Granular RBAC for HMAC partner-login users | First-party creds get full tenant authority in 1C | Phase 2 | Foundation Task 5 |
+| DEF-1C-15 | ✅ **RESOLVED (Session 19).** Granular RBAC for HMAC partner-login users — partner users and API keys now resolve authority from DB role assignments (via V7 migration + `PartnerRbacReconciler` startup backfill); `PARTNER_ADMIN` is a superuser marker, `PARTNER_MAKER`/`APPROVER`/`VIEWER` are explicit permission bundles; API keys carry a `scopes` JSON column (`["*"]`=full, explicit codes, or `[]`=deny); implemented on branch `feat/partner-rbac`. | First-party creds get full tenant authority in 1C | Phase 2 | Foundation Task 5 |
 | DEF-1C-16 | @PreAuthorize rollout across all controllers | Demonstrated on CustomerController; rolled out per module | Phase 1C (per track) | Foundation Task 6 |
 | DEF-1C-17 | Live Keycloak directory + cross-schema reconciliation sweep | Stub directory in 1C | Phase 2 | Foundation Task 8 |
 | DEF-1C-18 | Authority caching (per-request DB hit today) | Acceptable load in 1C | Phase 2 | Foundation Task 5 |

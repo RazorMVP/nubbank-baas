@@ -2,7 +2,6 @@ package com.nubbank.baas.engine.loan;
 
 import com.nubbank.baas.engine.AbstractIntegrationTest;
 import com.nubbank.baas.engine.account.*;
-import com.nubbank.baas.engine.auth.PartnerJwtService;
 import com.nubbank.baas.engine.customer.*;
 import com.nubbank.baas.engine.partner.*;
 import com.nubbank.baas.engine.product.*;
@@ -16,7 +15,6 @@ import static org.assertj.core.api.Assertions.*;
 
 class LoanControllerTest extends AbstractIntegrationTest {
 
-    @Autowired private PartnerJwtService jwtService;
     @Autowired private PartnerOrganizationRepository orgRepo;
     @Autowired private TenantProvisioningService provisioningService;
     @Autowired private CustomerRepository customerRepo;
@@ -37,9 +35,7 @@ class LoanControllerTest extends AbstractIntegrationTest {
             .environment(PartnerEnvironment.SANDBOX).schemaName(schemaName)
             .contactEmail("loan@test.com").build());
         provisioningService.provision(org.getId(), schemaName);
-        jwt = jwtService.issue(UUID.randomUUID().toString(), "loan@test.com",
-            "PARTNER_ADMIN", org.getId().toString(), "Loan Test",
-            schemaName, "SANDBOX", "SANDBOX");
+        jwt = adminJwt(org, schemaName);
 
         PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST", null));
         var customer = customerRepo.save(Customer.builder()

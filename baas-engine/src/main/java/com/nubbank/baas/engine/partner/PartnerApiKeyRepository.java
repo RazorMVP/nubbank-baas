@@ -9,6 +9,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface PartnerApiKeyRepository extends JpaRepository<PartnerApiKey, UUID> {
+    /**
+     * Eagerly fetches organization to avoid LazyInitializationException in PartnerContextFilter,
+     * which accesses key.getOrganization().getId() and key.getOrganization().getSchemaName()
+     * outside of a transaction.
+     */
+    @Query("SELECT k FROM PartnerApiKey k JOIN FETCH k.organization WHERE k.keyHash = :keyHash AND k.active = true")
     Optional<PartnerApiKey> findByKeyHashAndActiveTrue(String keyHash);
     List<PartnerApiKey> findByOrganizationIdAndActiveTrueOrderByCreatedAtDesc(UUID orgId);
 

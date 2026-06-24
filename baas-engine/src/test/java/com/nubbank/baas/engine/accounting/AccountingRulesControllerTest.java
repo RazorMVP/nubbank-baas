@@ -1,7 +1,6 @@
 package com.nubbank.baas.engine.accounting;
 
 import com.nubbank.baas.engine.AbstractIntegrationTest;
-import com.nubbank.baas.engine.auth.PartnerJwtService;
 import com.nubbank.baas.engine.partner.*;
 import com.nubbank.baas.engine.tenant.*;
 import org.junit.jupiter.api.*;
@@ -12,7 +11,6 @@ import static org.assertj.core.api.Assertions.*;
 
 class AccountingRulesControllerTest extends AbstractIntegrationTest {
 
-    @Autowired private PartnerJwtService jwtService;
     @Autowired private PartnerOrganizationRepository orgRepo;
     @Autowired private TenantProvisioningService provisioningService;
     @Autowired private GlAccountRepository glAccountRepo;
@@ -29,9 +27,7 @@ class AccountingRulesControllerTest extends AbstractIntegrationTest {
             .environment(PartnerEnvironment.SANDBOX).schemaName(schemaName)
             .contactEmail("rules@test.com").build());
         provisioningService.provision(org.getId(), schemaName);
-        jwt = jwtService.issue(UUID.randomUUID().toString(), "rules@test.com",
-            "PARTNER_ADMIN", org.getId().toString(), "Rules Test",
-            schemaName, "SANDBOX", "SANDBOX");
+        jwt = adminJwt(org, schemaName);
 
         PartnerContext.set(new PartnerContext(org.getId().toString(), schemaName, "SANDBOX", "SANDBOX", "TEST", null));
         debitGlId = glAccountRepo.save(GlAccount.builder()

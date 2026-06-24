@@ -9,7 +9,7 @@
 
 | Sub-system | Status | Last Session |
 |------------|--------|-------------|
-| `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**) | Session 8 (`1010ca9`) |
+| `baas-engine` — Phase 1A + 1A-ext + 1F-0 baseline + Granular Partner RBAC | ✅ Complete (Phase 1A: 16 tasks; Phase 1A-ext: 29 banking modules + 12 critical security fixes; security baseline added Session 5; **Phase 1C Foundation — operator identity + Hybrid RBAC — Session 8; 111 tests passing**; **Granular Partner RBAC (Spec A, DEF-1C-15) — Session 19; 218 tests, deny-by-default, PARTNER_ADMIN dynamic superuser, scoped API keys**) | Session 19 (`9d51e96`) |
 | `baas-ncube` — Phase 1B + 1F-0 baseline | ✅ Complete (9 tasks, **49 tests**, smoke test live; security baseline added Session 5) | Session 2; security baseline Session 5 |
 | `baas-card` — Phase 1C Track-Card (D6) + seam hardening | ✅ Complete (card spine: products, issuance + lifecycle, per-card limits, public BIN lookup, internal authorize + reversal; currency scaling, currency-aware limits, idempotency, DE90 reversal; **76 tests**) | Session 11 (`c8c5f28`) |
 | `baas-fep` — Phase 1C Track-FEP (D7) + seam hardening | ✅ Complete (stateless ISO 8583 FEP — Netty TCP + jPOS + MTI router + BIN routing + auth flow + DE90 reversal; **51 tests**, live Card wiring Stage 5) | Session 11 (`5a463cf`) |
@@ -198,6 +198,62 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 ---
 
 ## Change History
+
+### Session 19 — 2026-06-23
+**Granular Partner RBAC (Spec A, DEF-1C-15) on `feat/partner-rbac` (PR #40). Final commit `9d51e96`. Engine: 218 tests, 0 failures.**
+
+Removed the blanket-full authority fallback from `PartnerContextFilter` — partner JWTs are now deny-by-default; authorities come only from their DB role assignments. `PARTNER_ADMIN` is a dynamic superuser marker: `is_superuser=true` triggers `findAllCodes()` per request (for both partner users AND operators, preventing an operator-holding-PARTNER_ADMIN regression). Hybrid built-in + custom role support added (`ROLE_SCOPE`: `PARTNER` or `SHARED`). Scoped API key issuance (`cba_` prefix, SHA-256 hash, `scopes` JSONB column gated by `@JdbcTypeCode(SqlTypes.JSON)`). Idempotent provision-time + startup backfill via `PartnerRbacReconciler`. Partner-user / role / API-key management APIs added. Service-level privilege-escalation guards block a non-superuser delegate from assigning `is_superuser` roles, minting `["*"]` API keys, or granting a permission it doesn't itself hold. V7 Flyway migration deletes `PARTNER_ADMIN`'s static `role_permissions` rows (replaced by dynamic `findAllCodes()`). **CBN surface unchanged.**
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-engine/.../auth/PartnerContextFilter.java` | Deny-by-default: removed blanket-full fallback; `OPERATOR_JWT` → RBAC scoped; `API_KEY`/`JWT` → DB role lookup |
+| `baas-engine/.../auth/AuthorityResolver.java` | `PARTNER_ADMIN` dynamic superuser: `is_superuser=true` → `findAllCodes()` per request; applies to both partner users AND operators |
+| `baas-engine/.../role/RoleService.java` | Built-in role protection; scope (`PARTNER`/`SHARED`) enforcement; escalation guards (superuser-role assignment, wildcard key, over-grant) |
+| `baas-engine/.../role/RoleController.java` | CRUD gated by `MANAGE_ROLES` permission |
+| `baas-engine/.../partner/PartnerUserService.java` | Partner-user creation/deactivation/role-assignment with escalation guards |
+| `baas-engine/.../partner/PartnerUserController.java` | NEW — `/baas/v1/partner-users` (6 endpoints: create, list, get, roles, assign-role, deactivate) |
+| `baas-engine/.../auth/PartnerApiKeyService.java` | Scoped key issuance; `@JdbcTypeCode(SqlTypes.JSON)` on `PartnerApiKey.scopes`; key value shown once |
+| `baas-engine/.../auth/PartnerApiKeyController.java` | NEW — `/baas/v1/partner-api-keys` (1 endpoint: issue; revoke lives on `/api-keys/{id}`) |
+| `baas-engine/.../auth/PartnerRbacReconciler.java` | NEW — idempotent reconciliation: provision-time backfill + `@EventListener(ApplicationReadyEvent)` startup backfill |
+| `baas-engine/db/migration/public/V7__partner_rbac.sql` | `is_superuser` column; `role_scope` column; `PARTNER_ADMIN` static grants deleted; permission codes: `MANAGE_PARTNER_USERS`, `MANAGE_ROLES`, `MANAGE_API_KEYS` |
+| `baas-engine/src/test/…/AbstractIntegrationTest.java` | `adminJwt(org, schema)` + `grantAdmin(schema, userId)` helpers — grant `PARTNER_ADMIN` for deny-by-default tests |
+| `CLAUDE.md` | Confirmed Platform Versions → Session 19; Partner RBAC module in Module Catalogue; 7 new Known Gotchas |
+| `baas-log.md` | This entry |
+
+#### Key Decisions
+- **Deny-by-default breaks `@PreAuthorize`-gated controller tests.** Removing the blanket-full fallback means a partner JWT for a userId with no DB role now 403s. Fix: `AbstractIntegrationTest.adminJwt(org, schema)` / `grantAdmin(schema, userId)` helpers grant `PARTNER_ADMIN` to the JWT subject — the test mirror of the production backfill.
+- **`@JdbcTypeCode(SqlTypes.JSON)` is required to write a `String` to a `jsonb` column (Hibernate 6).** `@Column(columnDefinition="jsonb")` alone throws `column is of type jsonb but expression is of type character varying`. Applied to `PartnerApiKey.scopes`.
+- **`@Transactional`-before-context pitfall (multi-tenancy).** A `@Transactional` method opens the Hibernate session (and resolves the tenant schema) at the Spring proxy boundary, BEFORE the method body sets `PartnerContext`. Fix: set context in a NON-transactional outer method, then delegate DB work to a `@Transactional` method on a SEPARATE bean (self-invocation bypasses AOP silently and is non-atomic).
+- **`@ManyToOne(LAZY)` after repo tx closes → `LazyInitializationException`** (open-in-view is false). `PartnerContextFilter` reads `apiKey.getOrganization()` after lookup. Fix: use a `JOIN FETCH` query (`findByKeyHashAndActiveTrue`) so the org is initialized in-tx.
+- **`PARTNER_ADMIN` is a dual-purpose dynamic superuser marker.** `is_superuser=true` → `findAllCodes()` per request; V7 deletes its static `role_permissions`. BOTH `partnerUserAuthorities` AND `operatorAuthorities` paths in `AuthorityResolver` must honor the marker — an operator holding `PARTNER_ADMIN` would otherwise resolve to empty authority.
+- **Privilege-escalation guards live at the SERVICE layer, not just `@PreAuthorize`.** A delegate holding `MANAGE_*` passes the controller gate; the service additionally blocks: assigning an `is_superuser` role (non-superuser caller), minting `["*"]` API key scopes, granting a permission the caller doesn't itself hold.
+- **`PartnerStatus` has NO `PRODUCTION` value** (`SANDBOX/PENDING_REVIEW/BASIC/PRO/ENTERPRISE/SUSPENDED`). `PartnerEnvironment.PRODUCTION` does exist. Spring Data path-traversal requires the underscore for `@ManyToOne` traversal (`findByOrganization_Id`).
+- **Adversarial security review — ALL findings resolved in-session, no deferrals (per standing user preference).** The review caught two privilege-escalation paths + an enabler (a delegated `MANAGE_*` holder could assign `PARTNER_ADMIN`, mint a `["*"]` key, or grant unheld permissions) and minors. Fixes: service-layer escalation guards (C1/C2/I1), fail-closed UUID parsing (M1), reserved-role-name guard (M3), removed dead `fullTenantAuthorities` (N1), honest non-transactional reconciler (I2), **last-admin guard counts only ACTIVE admins (M2)**, and **`DELETE /roles/{id}` → 409 when the role is in use**. Proven by `EscalationGuardsTest` + `LastAdminAndRoleDeleteTest`.
+
+#### Build Verification
+- `baas-engine`: **Tests run: 218, Failures: 0** — BUILD SUCCESS
+- No other service files changed this session.
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):**
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Spring Boot | 3.5.0 | unchanged |
+| Java | 21 | unchanged |
+| Nimbus JOSE+JWT | 9.37.3 | unchanged |
+| Last git commit | `9d51e96` | Session 19 — Granular Partner RBAC; 218 tests |
+
+**BaaS Card (`baas-card/`):** unchanged this session — last commit `d647a4f` (Session 15).
+**BaaS FEP (`baas-fep/`):** unchanged this session — last commit `a9e4cfd` (Session 12).
+**BaaS Backoffice (`baas-backoffice/`):** unchanged this session — last commit `e96407e` (Session 18).
+**BaaS Ncube (`baas-ncube/`):** unchanged this session — last commit `f102ae0` (Session 6).
+
+#### Figma designs (SESSION COMPLETION GATE item 7)
+No `baas-backoffice/src/**` screen changed this session (engine-only RBAC feature). Item 7 is exempt.
+
+---
 
 ### Session 18 — 2026-06-17
 **Local-review + dev-experience session for the Accounts track. No `baas-engine` Java changed (the engine was only *run*, not modified). Two small frontend/devex PRs: `UPDATE_ACCOUNT` added to `.env.example` dev authorities (PR #35, MERGED `e96407e`) and a committed Vite dev proxy + `docs/backoffice-local-dev.md` for running the backoffice against a local engine (PR #36, OPEN). The Accounts console was stood up and verified end-to-end against a live local engine. CBN surface unchanged.**
