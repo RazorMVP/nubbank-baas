@@ -129,6 +129,7 @@ public class MakerCheckerTaskService {
 
     @Transactional(readOnly = true)
     public List<MakerCheckerTask> list(TaskStatus status, String commandType) {
+        if (commandType != null) registry.require(commandType);  // 400 UNKNOWN_COMMAND_TYPE on a bad filter (symmetry with the status enum)
         if (status != null && commandType != null)
             return taskRepo.findByStatusAndCommandTypeOrderByMadeAtDesc(status, commandType);
         if (status != null)      return taskRepo.findByStatusOrderByMadeAtDesc(status);
