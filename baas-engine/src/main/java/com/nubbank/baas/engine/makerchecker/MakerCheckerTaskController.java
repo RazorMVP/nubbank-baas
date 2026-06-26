@@ -17,6 +17,10 @@ public class MakerCheckerTaskController {
 
     private final MakerCheckerTaskService service;
 
+    // Inbox reads (list/get) are org-scoped via tenant-schema isolation: any authenticated partner
+    // principal in the tenant may read ITS OWN org's tasks (design §9). Task payloads expose nothing
+    // a READ_* role can't already see within the org. The per-command APPROVE_* is enforced
+    // dynamically in the service on the action endpoints below.
     @GetMapping("/tasks")
     public ResponseEntity<ApiResponse<List<TaskResponse>>> list(
             @RequestParam(required = false) TaskStatus status,

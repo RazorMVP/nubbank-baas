@@ -107,6 +107,26 @@ class MakerCheckerTaskServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void guarded_apiKeyMaker_isRejected_noTaskPersisted() {
+        provision();
+        UUID cust = seedCustomer();
+        enableAccountOpen();
+        UUID apiKeyId = UUID.randomUUID();
+        // API_KEY auth mode → caller is not a partner user → ineligible to be a maker.
+        PartnerContext.set(new PartnerContext(org.getId().toString(), schema, "PRO", "PRODUCTION", "API_KEY", apiKeyId.toString()));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+            apiKeyId.toString(), null, List.of(new SimpleGrantedAuthority("CREATE_ACCOUNT"))));
+        try {
+            assertThatThrownBy(() -> service.submitIfGuarded("ACCOUNT_OPEN", req(cust)))
+                .isInstanceOf(BaasException.class).hasMessageContaining("partner user");
+        } finally { SecurityContextHolder.clearContext(); PartnerContext.clear(); }
+        // nothing was persisted
+        PartnerContext.set(new PartnerContext(org.getId().toString(), schema, "PRO", "PRODUCTION", "JWT", null));
+        try { assertThat(service.list(TaskStatus.PENDING, null)).isEmpty(); }
+        finally { PartnerContext.clear(); }
+    }
+
+    @Test
     void guarded_persistsPendingTask_noAccountCreated() {
         provision();
         UUID maker = makeUser(PartnerRoles.MAKER);

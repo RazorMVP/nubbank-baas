@@ -41,6 +41,16 @@ public class MakerCheckerTaskService {
         MakerCheckerCommandHandler handler = registry.require(commandType);
         if (!isGuarded(commandType)) return Optional.empty();
 
+        // Four-eyes requires a partner-user maker who can be re-validated (active + still authorised)
+        // at approve time. Operator-JWT and API-key callers are not partner users, so a guarded
+        // command from them could never be approved — reject up front instead of persisting a
+        // permanently un-approvable PENDING task.
+        PartnerContext ctx = PartnerContext.get();
+        if (ctx == null || !"JWT".equals(ctx.authMode()))
+            throw BaasException.forbidden("MAKER_MUST_BE_PARTNER_USER",
+                "A guarded command must be submitted by a partner user (auth mode "
+                + (ctx == null ? "none" : ctx.authMode()) + " cannot be a maker)");
+
         // Authorize before validating, so an unauthorized caller cannot probe domain state
         // (e.g. customer existence) via the differing validation error.
         if (!currentAuthorities().contains(handler.requiredAuthorityToSubmit()))

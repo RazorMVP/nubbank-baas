@@ -1043,8 +1043,17 @@
     first (and currently only) guarded command is <code>ACCOUNT_OPEN</code> — see the changed
     <a href="#accounts"><code>POST /baas/v1/accounts</code></a> contract below. Every request is automatically
     scoped to the caller's partner schema, so a task id belonging to another organisation naturally returns
-    <code>404</code> (enumeration-safe via tenant-schema isolation).
+    <code>404</code> (enumeration-safe via tenant-schema isolation). The <strong>approvals inbox</strong>
+    (<code>GET /maker-checker/tasks</code> and <code>/tasks/{id}</code>) is likewise <strong>org-scoped</strong>: any
+    authenticated partner user may read their own organisation's tasks via tenant-schema isolation.
   </p>
+  <div class="callout">
+    <strong>The maker must be a partner user.</strong> A guarded command must be submitted by a partner user, because
+    on approval the framework re-validates that the original maker is still active and still authorised. Operator-JWT
+    and API-key callers are not partner users — a guarded command they submitted could never be re-validated or
+    approved — so a submit from such a caller is rejected up front with <code>403 MAKER_MUST_BE_PARTNER_USER</code>
+    (no permanently un-approvable <code>PENDING</code> task is persisted).
+  </div>
   <div class="callout">
     <strong>Command-first replay.</strong> When a guarded command is submitted, <strong>nothing</strong> is written
     to the domain tables — a <code>PENDING</code> task is recorded instead. On approval, the framework replays the
