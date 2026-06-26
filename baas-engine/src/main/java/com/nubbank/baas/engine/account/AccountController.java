@@ -2,6 +2,10 @@ package com.nubbank.baas.engine.account;
 
 import com.nubbank.baas.engine.account.dto.*;
 import com.nubbank.baas.engine.common.ApiResponse;
+import com.nubbank.baas.engine.makerchecker.MakerCheckerCommandType;
+import com.nubbank.baas.engine.makerchecker.MakerCheckerTask;
+import com.nubbank.baas.engine.makerchecker.MakerCheckerTaskService;
+import com.nubbank.baas.engine.makerchecker.dto.TaskResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -9,6 +13,7 @@ import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -17,13 +22,18 @@ import java.util.UUID;
 public class AccountController {
 
     private final AccountService accountService;
+    private final MakerCheckerTaskService makerChecker;
 
     @PreAuthorize("hasAuthority('CREATE_ACCOUNT')")
     @PostMapping
-    public ResponseEntity<ApiResponse<AccountDetailResponse>> open(
-            @Valid @RequestBody OpenAccountRequest req) {
+    public ResponseEntity<ApiResponse<Object>> open(@Valid @RequestBody OpenAccountRequest req) {
+        Optional<MakerCheckerTask> deferred = makerChecker.submitIfGuarded(MakerCheckerCommandType.ACCOUNT_OPEN, req);
+        if (deferred.isPresent()) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(ApiResponse.<Object>ok(TaskResponse.of(deferred.get())));
+        }
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.ok(accountService.open(req)));
+            .body(ApiResponse.<Object>ok(accountService.open(req)));
     }
 
     @PreAuthorize("hasAuthority('READ_ACCOUNT')")

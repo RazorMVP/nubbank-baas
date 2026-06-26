@@ -29,4 +29,14 @@ public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> 
     java.util.List<java.util.UUID> findUserIdsByRoleName(String roleName);
 
     boolean existsByRoleId(java.util.UUID roleId);
+
+    /** Count distinct users who hold a permission code through any assigned role. */
+    @org.springframework.data.jpa.repository.Query(
+        "select count(distinct ur.userId) from UserRole ur join ur.role r join r.permissions p where p.code = :code")
+    long countDistinctUsersWithPermission(String code);
+
+    /** Count distinct users holding a superuser role (they hold every permission implicitly). */
+    @org.springframework.data.jpa.repository.Query(
+        "select count(distinct ur.userId) from UserRole ur join ur.role r where r.superuser = true")
+    long countDistinctSuperusers();
 }

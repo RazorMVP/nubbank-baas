@@ -607,6 +607,13 @@
           An optional <code>openingDeposit</code> (must be <code>&ge; 0</code>; a negative value → <code>400</code>) is applied atomically with account
           creation — a positive deposit writes one <code>CREDIT</code> transaction with reference
           <code>OPENING_DEPOSIT</code>.
+          <br><br>
+          <strong>Maker-checker (four-eyes):</strong> when this command is <em>guarded</em> — the partner has enabled
+          <code>ACCOUNT_OPEN</code> in <a href="#maker-checker">maker-checker config</a> <em>and</em> the environment is
+          <code>PRODUCTION</code> — the endpoint instead returns <code>202 ACCEPTED</code> with a pending
+          <code>TaskResponse</code> (<code>{ id, status: "PENDING", commandType, madeBy, … }</code>) and
+          <strong>no account is created</strong> until a second operator approves the task. Otherwise the behaviour is
+          unchanged: <code>201 CREATED</code> + the account.
         </td>
         <td>
           <strong>Request</strong> <code>OpenAccountRequest</code>:
@@ -1026,6 +1033,197 @@
   <div class="callout">API keys are authenticated via <code>Authorization: ApiKey &lt;key&gt;</code>. The authority resolver intersects the key's stored <code>scopes</code> with the issuing user's own authorities — a key cannot escalate beyond what its issuer holds at issuance time.</div>
 </section>
 
+<section id="maker-checker">
+  <h2>Maker-Checker (Four-Eyes) <span class="pill">baas-engine · partner-scoped</span></h2>
+  <p>
+    A command-first maker-checker (four-eyes) framework that lets a partner require a second operator to approve
+    a state-changing command before it executes (closes DEF-1C-13). Enforcement is <strong>per-partner,
+    per-command, opt-in, and PRODUCTION-only</strong>: a command is guarded only when the partner has enabled it
+    in <code>maker-checker/config</code> <em>and</em> the caller's environment is <code>PRODUCTION</code>. The
+    first (and currently only) guarded command is <code>ACCOUNT_OPEN</code> — see the changed
+    <a href="#accounts"><code>POST /baas/v1/accounts</code></a> contract below. Every request is automatically
+    scoped to the caller's partner schema, so a task id belonging to another organisation naturally returns
+    <code>404</code> (enumeration-safe via tenant-schema isolation). The <strong>approvals inbox</strong>
+    (<code>GET /maker-checker/tasks</code> and <code>/tasks/{id}</code>) is likewise <strong>org-scoped</strong>: any
+    authenticated partner user may read their own organisation's tasks via tenant-schema isolation.
+  </p>
+  <div class="callout">
+    <strong>The maker must be a partner user.</strong> A guarded command must be submitted by a partner user, because
+    on approval the framework re-validates that the original maker is still active and still authorised. Operator-JWT
+    and API-key callers are not partner users — a guarded command they submitted could never be re-validated or
+    approved — so a submit from such a caller is rejected up front with <code>403 MAKER_MUST_BE_PARTNER_USER</code>
+    (no permanently un-approvable <code>PENDING</code> task is persisted).
+  </div>
+  <div class="callout">
+    <strong>Command-first replay.</strong> When a guarded command is submitted, <strong>nothing</strong> is written
+    to the domain tables — a <code>PENDING</code> task is recorded instead. On approval, the framework replays the
+    <em>identical</em> service method the synchronous path uses (<code>AccountService.open</code> for
+    <code>ACCOUNT_OPEN</code>) — never a stripped re-implementation. The replay + status change commit in one
+    transaction; if the replay throws, the whole transaction rolls back and the task stays <code>PENDING</code>.
+    Execute-exactly-once is enforced by a pessimistic row lock (<code>findByIdForUpdate</code>) + <code>@Version</code>
+    optimistic guard + a status precondition.
+  </div>
+
+  <h3>Permissions</h3>
+  <table>
+    <thead><tr><th>Code</th><th>Grouping</th><th>What it gates</th></tr></thead>
+    <tbody>
+      <tr><td><code>APPROVE_ACCOUNT</code></td><td>accounts</td><td>Approve / reject a pending <code>ACCOUNT_OPEN</code> task (the command's <code>APPROVE_*</code> authority). Carried by the built-in <code>PARTNER_APPROVER</code> role (Spec A).</td></tr>
+      <tr><td><code>MANAGE_MAKER_CHECKER</code></td><td>admin</td><td>Read and update the per-command maker-checker config (<code>GET</code> / <code>PUT /maker-checker/config</code>).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Approvals inbox &amp; task lifecycle</h3>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Auth</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/maker-checker/tasks</span></td>
+        <td>any authenticated partner user</td>
+        <td>
+          Approvals inbox — list tasks in the caller's organisation, newest-first. Returns <code>200</code>.
+          <br><br>
+          <strong>Query params:</strong>
+          <ul>
+            <li><code>status</code> — optional <code>TaskStatus</code> filter: <code>PENDING</code> | <code>APPROVED</code> | <code>REJECTED</code> | <code>WITHDRAWN</code></li>
+            <li><code>type</code> — optional command-type filter (e.g. <code>ACCOUNT_OPEN</code>). An unknown command type → <code>400 UNKNOWN_COMMAND_TYPE</code></li>
+          </ul>
+        </td>
+        <td>
+          <strong>Response</strong>: <code>List&lt;TaskResponse&gt;</code>:
+          <pre>[{
+  "id": "&lt;uuid&gt;",
+  "commandType": "ACCOUNT_OPEN",
+  "status": "PENDING",          // PENDING | APPROVED | REJECTED | WITHDRAWN
+  "madeBy": "&lt;uuid&gt;",
+  "madeAt": "&lt;timestamp&gt;",
+  "checkedBy": null,            // set once approved/rejected
+  "checkedAt": null,
+  "resultId": null,            // id of the created resource on approval
+  "rejectReason": null
+}]</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/maker-checker/tasks/{id}</span></td>
+        <td>any authenticated partner user</td>
+        <td>
+          Task detail, including a live <strong>dry-run</strong> of the handler's validation against current state.
+          Returns <code>200</code> or <code>404 TASK_NOT_FOUND</code> (other-org id → 404 to prevent enumeration).
+        </td>
+        <td>
+          <strong>Response</strong> <code>TaskDetailResponse</code> (adds <code>payload</code> + the dry-run fields):
+          <pre>{
+  "id": "&lt;uuid&gt;",
+  "commandType": "ACCOUNT_OPEN",
+  "payload": "{ ...serialized command... }",
+  "status": "PENDING",
+  "madeBy": "&lt;uuid&gt;", "madeAt": "&lt;timestamp&gt;",
+  "checkedBy": null, "checkedAt": null,
+  "resultId": null, "rejectReason": null,
+  "valid": true,               // dry-run validation against current state
+  "wouldFailBecause": null     // failure message when valid=false
+}</pre>
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/maker-checker/tasks/{id}/approve</span></td>
+        <td><code>APPROVE_ACCOUNT</code> <span class="muted">(the command's <code>APPROVE_*</code>)</span></td>
+        <td>
+          Checker approves the task; the real service is replayed and the task moves to <code>APPROVED</code>.
+          Returns <code>200</code> with the updated <code>TaskResponse</code> (<code>resultId</code> populated).
+          <br><br>
+          Enforces <strong>four-eyes</strong> (<code>checker &ne; maker</code>) <em>and</em> re-checks that the
+          original maker is still active and still holds the submit authority (closes the revocation backdoor).
+          <br><br>
+          Errors: <code>403 SELF_APPROVAL</code> (caller is the maker); <code>403 MISSING_APPROVE_AUTHORITY</code>;
+          <code>403 MAKER_NO_LONGER_AUTHORISED</code>; <code>409 TASK_NOT_PENDING</code> if the task is not
+          <code>PENDING</code>; <code>404 TASK_NOT_FOUND</code>.
+        </td>
+        <td><strong>Request</strong>: empty body.<br><strong>Response</strong>: updated <code>TaskResponse</code> with <code>status: "APPROVED"</code>.</td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/maker-checker/tasks/{id}/reject</span></td>
+        <td><code>APPROVE_ACCOUNT</code> <span class="muted">(the command's <code>APPROVE_*</code>)</span></td>
+        <td>
+          Checker rejects the task. Returns <code>200</code>. No domain side-effect — the deferred command never runs.
+          <br><br>
+          Errors: <code>403 MISSING_APPROVE_AUTHORITY</code>; <code>409 TASK_NOT_PENDING</code>; <code>404 TASK_NOT_FOUND</code>.
+        </td>
+        <td>
+          <strong>Request</strong> <code>RejectRequest</code> (optional body):
+          <pre>{ "reason": "Insufficient supporting documents" }</pre>
+          <strong>Response</strong>: updated <code>TaskResponse</code> with <code>status: "REJECTED"</code> and the <code>rejectReason</code>.
+        </td>
+      </tr>
+
+      <tr>
+        <td><span class="m post">POST</span><br><span class="path">/baas/v1/maker-checker/tasks/{id}/withdraw</span></td>
+        <td>original maker only</td>
+        <td>
+          The maker withdraws their own pending task. Returns <code>200</code>.
+          <br><br>
+          Errors: <code>403 NOT_TASK_MAKER</code> (caller is not the maker); <code>409 TASK_NOT_PENDING</code>; <code>404 TASK_NOT_FOUND</code>.
+        </td>
+        <td><strong>Request</strong>: empty body.<br><strong>Response</strong>: updated <code>TaskResponse</code> with <code>status: "WITHDRAWN"</code>.</td>
+      </tr>
+
+    </tbody>
+  </table>
+
+  <h3>Configuration</h3>
+  <table>
+    <thead><tr><th>Method &amp; Path</th><th>Auth</th><th>Description</th><th>Request / Response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="m get">GET</span><br><span class="path">/baas/v1/maker-checker/config</span></td>
+        <td><code>MANAGE_MAKER_CHECKER</code></td>
+        <td>List the per-command maker-checker config rows. Returns <code>200</code>. <code>ACCOUNT_OPEN</code> is seeded present but <code>enabled: false</code> (opt-in, back-compatible).</td>
+        <td>
+          <strong>Response</strong>: <code>List&lt;ConfigResponse&gt;</code>:
+          <pre>[{
+  "commandType": "ACCOUNT_OPEN",
+  "enabled": false
+}]</pre>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="m put">PUT</span><br><span class="path">/baas/v1/maker-checker/config</span></td>
+        <td><code>MANAGE_MAKER_CHECKER</code></td>
+        <td>
+          Enable / disable maker-checker for a command. Returns <code>200</code>.
+          <br><br>
+          <strong>Viability guard:</strong> enabling a command with <strong>no eligible approver</strong> (no user holds
+          its <code>APPROVE_*</code> permission) → <code>409 NO_ELIGIBLE_APPROVER</code> — this prevents locking a
+          command behind an approval nobody can grant.
+        </td>
+        <td>
+          <strong>Request</strong> <code>ConfigUpdateRequest</code>:
+          <pre>{
+  "commandType": "ACCOUNT_OPEN",
+  "enabled": true
+}</pre>
+          <strong>Response</strong>: updated <code>ConfigResponse</code>.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <strong>Distinct from the legacy passive maker-checker.</strong> This command-first framework
+    (<code>/baas/v1/maker-checker</code>, V8 migration, package <code>engine.makerchecker</code>) is separate from
+    the legacy passive <code>social</code> maker-checker registry at <code>/baas/v1/makercheckers</code> (V2). The
+    new beans use distinct simple names (<code>MakerCheckerTaskService</code> / <code>…Controller</code> /
+    <code>…Repository</code>) to avoid a Spring bean-name collision with the legacy <code>social</code> beans. The
+    command-first framework does <em>not</em> read the legacy global <code>enable-maker-checker</code> flag — the
+    per-command <code>maker-checker/config</code> table is the single source of truth for guarding.
+  </div>
+</section>
+
 <section id="baas-fep">
     <h2>baas-fep — ISO 8583 Front-End Processor <span class="pill">TCP service</span></h2>
     <p>
@@ -1089,7 +1287,7 @@
   </section>
 
 <footer>
-  NubBank BaaS · API Reference · Phase 1C — Customers API (Customers track, Task 9) + Accounts API (Accounts track, Task 11) + <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + Partner RBAC — Users, Roles &amp; API Keys (Session 19, DEF-1C-15 resolved, branch <code>feat/partner-rbac</code>) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
+  NubBank BaaS · API Reference · Phase 1C — Customers API (Customers track, Task 9) + Accounts API (Accounts track, Task 11) + <code>baas-engine</code> operations API (Session 15, DEF-1C-28/29) + Partner RBAC — Users, Roles &amp; API Keys (Session 19, DEF-1C-15 resolved, branch <code>feat/partner-rbac</code>) + Maker-Checker / Four-Eyes (Session 20, DEF-1C-13 resolved, branch <code>feat/maker-checker</code>) + <code>baas-card</code> (Session 11, <code>c8c5f28</code>) + <code>baas-fep</code> (Session 11, <code>5a463cf</code>). Shapes match the frozen cross-track interface contract (<code>docs/contracts/phase1c-interfaces.md</code> §2, §2a, and §2b).
 </footer>
 
 </div>
