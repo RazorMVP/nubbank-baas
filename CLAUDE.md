@@ -319,9 +319,9 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 
 ---
 
-## Confirmed Platform Versions (Session 19 — 2026-06-23; Granular Partner RBAC, DEF-1C-15)
+## Confirmed Platform Versions (Session 20 — 2026-06-25; Command-first Maker-Checker / Four-Eyes, DEF-1C-13)
 
-> **Session 19 closed DEF-1C-15 (Granular Partner RBAC — Spec A).** `baas-engine` advanced to `9d51e96` (deny-by-default partner authority, `PARTNER_ADMIN` dynamic superuser, scoped API keys, partner-user/role/api-key APIs, escalation guards; 218 tests). All other services unchanged. See `baas-log.md` Session 19.
+> **Session 20 closed DEF-1C-13 (command-first maker-checker / four-eyes — Spec B).** `baas-engine` advanced to `fd3ddde` (command-first `/baas/v1/maker-checker`, per-partner/per-command/PRODUCTION-only guarding, four-eyes + maker re-check, replay-execute, viability guard; `POST /baas/v1/accounts` now 202-vs-201; `ACCOUNT_OPEN` first guarded command; 246 tests). All other services unchanged. See `baas-log.md` Session 20.
 
 ### BaaS Engine (`baas-engine/`)
 
@@ -341,7 +341,7 @@ Run through this list in order. Do not skip any item, even for tiny changes.
 | **springdoc-openapi** | 2.8.6 | OpenAPI 3.1 |
 | **Testcontainers** | 1.20.1 | PostgreSQL 16 in integration tests; static initializer pattern (not `@Container`) for suite-wide reuse |
 | **Internal money seam** | Stage 5 | `/internal/v1/{card-debit,card-credit,account-lookup}` (HMAC); atomic idempotent debit/credit keyed by `card_auth_debit.auth_key`; engine→card provisioning trigger in `TenantProvisioningService` |
-| **Last git commit** | `9d51e96` | Session 19 — Granular Partner RBAC (DEF-1C-15); 218 tests passing |
+| **Last git commit** | `fd3ddde` | Session 20 — command-first maker-checker / four-eyes (DEF-1C-13); 246 tests passing |
 
 ### BaaS Ncube (`baas-ncube/`)
 
@@ -665,6 +665,33 @@ maps the decision to DE39. Built against a **mocked `CardClient`** — live Card
 - `POST /baas/v1/partner-api-keys` — issue scoped API key (key shown once)
 - `GET/POST/PUT/DELETE /baas/v1/roles` — now gated `MANAGE_ROLES`
 
+### Completed in Session 20 — Command-first Maker-Checker / Four-Eyes (Spec B, DEF-1C-13)
+
+**Command-first maker-checker framework: per-partner, per-command, opt-in, PRODUCTION-only guarding; four-eyes (`checker ≠ maker`) + maker-still-active/authorised re-check; replay-execute the IDENTICAL service method on approve; execute-exactly-once (row-lock + `@Version` + status precondition); viability guard. First guarded command: `ACCOUNT_OPEN`. ✅ 246 tests. Closes DEF-1C-13.**
+
+| Module | Package | Status |
+|--------|---------|--------|
+| Maker-checker task entity/repository + per-command config entity/repository | `makerchecker/` | ✅ Built |
+| `MakerCheckerTaskService` — submit-if-guarded / approve (four-eyes + maker re-check + replay) / reject / withdraw / config (viability guard) | `makerchecker/` | ✅ Built |
+| `MakerCheckerTaskController` — `/baas/v1/maker-checker` (7 endpoints); **distinct simple bean names** vs legacy `social.*` | `makerchecker/` | ✅ Built |
+| Command handler interface + registry (`UNKNOWN_COMMAND_TYPE` on bad type) | `makerchecker/` | ✅ Built |
+| `AccountOpenCommandHandler` — replays the IDENTICAL `AccountService.open` on approve | `account/` | ✅ Built |
+| `AccountController.open` — 202 task when guarded, else 201 account | `account/` | ✅ Built |
+| `UserRoleRepository` approver-count queries (`countDistinctUsersWithPermission`, `countDistinctSuperusers`) for the viability guard | `role/` | ✅ Built |
+| V8 tenant migration (`maker_checker_tasks`, `maker_checker_config`; `ACCOUNT_OPEN` seeded OFF; `APPROVE_ACCOUNT` + `MANAGE_MAKER_CHECKER` permissions; grant to `PARTNER_APPROVER`) | `db/migration/tenant/V8` | ✅ Built |
+
+**New permission codes (Session 20):** `APPROVE_ACCOUNT`, `MANAGE_MAKER_CHECKER` (`PARTNER_APPROVER` now carries `APPROVE_ACCOUNT`).
+
+**New endpoints (Session 20):**
+- `GET /baas/v1/maker-checker/tasks?status=&type=` — approvals inbox (any authenticated partner user; unknown `type` → 400)
+- `GET /baas/v1/maker-checker/tasks/{id}` — task detail incl. live `valid` / `wouldFailBecause` dry-run
+- `POST /baas/v1/maker-checker/tasks/{id}/approve` — checker approves (requires `APPROVE_ACCOUNT`, `checker ≠ maker`; 403 self-approval/missing-authority/maker-revoked; 409 not-PENDING)
+- `POST /baas/v1/maker-checker/tasks/{id}/reject` — checker rejects (requires `APPROVE_ACCOUNT`; optional `{reason}`)
+- `POST /baas/v1/maker-checker/tasks/{id}/withdraw` — maker only (else 403 `NOT_TASK_MAKER`)
+- `GET/PUT /baas/v1/maker-checker/config` — per-command opt-in switch (requires `MANAGE_MAKER_CHECKER`; 409 `NO_ELIGIBLE_APPROVER` on enable with no approver)
+
+**Changed contract:** `POST /baas/v1/accounts` returns **202 ACCEPTED** + a PENDING task (instead of 201 + account) when `ACCOUNT_OPEN` is enabled in config AND environment is PRODUCTION; otherwise unchanged 201.
+
 ### Pending (Later sub-plans)
 
 | Module | Sub-plan | Status |
@@ -856,6 +883,7 @@ All POST mutation endpoints accept `Idempotency-Key` header (UUID v4). 24-hour w
 | **(Session 19) `PARTNER_ADMIN` is a dual-purpose dynamic superuser marker — BOTH authority-resolution paths must honour it.** `is_superuser=true` triggers `findAllCodes()` per request (replaces static `role_permissions`). If only `partnerUserAuthorities` checks the flag but `operatorAuthorities` does not, an operator holding `PARTNER_ADMIN` resolves to empty authority — a silent regression. | In `AuthorityResolver`, check `is_superuser` in BOTH the `OPERATOR_JWT` branch AND the partner-JWT branch. Any future authority-resolution code path added must also consult the flag before falling back to DB role lookups. |
 | **(Session 19) Privilege-escalation guards belong at the SERVICE layer, not just `@PreAuthorize`.** A delegate with `MANAGE_ROLES` passes the controller gate but must not be able to self-promote: assigning an `is_superuser` role, minting `["*"]` wildcard API key scopes, or granting a permission the caller doesn't itself hold. `@PreAuthorize` only checks that the permission code exists in the caller's set — it cannot compare caller's grants against the grant being requested. | Implement escalation checks in `RoleService`/`PartnerUserService`/`PartnerApiKeyService`: (1) reject `is_superuser` role assignment unless caller is superuser; (2) reject `["*"]` scopes unless caller is superuser; (3) reject granting permission P unless caller's own authority set contains P (Session 19). |
 | **(Session 19) `PartnerStatus` has NO `PRODUCTION` value** — the enum is `SANDBOX / PENDING_REVIEW / BASIC / PRO / ENTERPRISE / SUSPENDED`. `PartnerEnvironment.PRODUCTION` does exist (separate enum). Confusing the two causes compile errors or wrong status comparisons. Also: Spring Data path-traversal for a `@ManyToOne` field requires the underscore (`findByOrganization_Id`), not camelCase (`findByOrganizationId`), to navigate the association correctly. | Always distinguish `PartnerStatus` (tier/lifecycle) from `PartnerEnvironment` (SANDBOX/PRODUCTION). Use `findByOrganization_Id` (underscore) for `@ManyToOne` path traversal in Spring Data repositories (Session 19). |
+| **(Session 20) New maker-checker beans MUST use distinct simple class names** — a `MakerCheckerService` / `MakerCheckerController` in `engine.makerchecker` collides with the legacy passive `engine.social.MakerCheckerService` / `MakerCheckerController` (route `/baas/v1/makercheckers`). Spring keys beans by simple class name by default, so two same-named beans throw `ConflictingBeanDefinitionException` at startup. | Name the command-first beans `MakerCheckerTaskService` / `MakerCheckerTaskController` / `MakerCheckerTaskRepository` (the `Task` infix disambiguates). The new framework also does NOT read the legacy global `enable-maker-checker` flag — `maker_checker_config` (per-command) is the single source of truth (Session 20). |
 
 ---
 

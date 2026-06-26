@@ -199,6 +199,66 @@ Request: POST /baas/v1/accounts  Authorization: ApiKey cba_baas_xxxx
 
 ## Change History
 
+### Session 20 — 2026-06-25
+**Command-first maker-checker / four-eyes framework on `feat/maker-checker` (closes DEF-1C-13). Engine feature commits up to `fd3ddde`; this session's docs commit is the final commit. Engine: 246 tests, 0 failures.**
+
+Added a command-first maker-checker (four-eyes) framework built on the just-merged Granular Partner RBAC (Spec A). New REST surface at `/baas/v1/maker-checker` (approvals inbox, task detail with live dry-run validity, approve/reject/withdraw, config get/put) plus a changed `POST /baas/v1/accounts` contract: when the command is **guarded** (per-partner config enabled AND environment is PRODUCTION) the endpoint returns **202 ACCEPTED** with a `PENDING` task instead of creating the account; otherwise unchanged **201 CREATED** + account. The first (and currently only) guarded command is `ACCOUNT_OPEN`. New permissions seeded: `APPROVE_ACCOUNT`, `MANAGE_MAKER_CHECKER`; `PARTNER_APPROVER` (Spec A) now carries `APPROVE_ACCOUNT`. Tenant migration `V8__maker_checker_tasks.sql`. **CBN surface unchanged.** This task (Task 7 of 7) is documentation + build verification only — no production-code changes.
+
+#### New/Updated Files
+| File | Change |
+|------|--------|
+| `baas-engine/.../makerchecker/MakerCheckerTask.java` | Task entity — `command_type`, `payload` (JSONB), `made_by`, `status`, `checked_by/at`, `reject_reason`, `result_id`, `@Version` |
+| `baas-engine/.../makerchecker/MakerCheckerTaskRepository.java` | `findByIdForUpdate` (PESSIMISTIC_WRITE) + status/command-type list queries; **distinct simple name** to avoid bean-name collision with legacy `social.*` |
+| `baas-engine/.../makerchecker/MakerCheckerConfig.java` | Per-command opt-in switch entity (`command_type` PK, `enabled`) |
+| `baas-engine/.../makerchecker/MakerCheckerConfigRepository.java` | Config repository |
+| `baas-engine/.../makerchecker/MakerCheckerTaskService.java` | submit-if-guarded / approve (four-eyes + maker re-check + replay) / reject / withdraw / config (viability guard); execute-exactly-once via row-lock + `@Version` + status precondition |
+| `baas-engine/.../makerchecker/MakerCheckerTaskController.java` | NEW — `/baas/v1/maker-checker` (7 endpoints); **distinct simple name** |
+| `baas-engine/.../makerchecker/MakerCheckerCommandHandler.java` | Handler interface — `requiredAuthorityToSubmit/Approve`, `validate`, `execute`, `payloadType` |
+| `baas-engine/.../makerchecker/MakerCheckerCommandRegistry.java` | Registry of handlers keyed by command type; `require()` → 400 `UNKNOWN_COMMAND_TYPE` |
+| `baas-engine/.../makerchecker/MakerCheckerCommandType.java` | `ACCOUNT_OPEN` constant |
+| `baas-engine/.../makerchecker/TaskStatus.java` | enum `PENDING/APPROVED/REJECTED/WITHDRAWN` |
+| `baas-engine/.../makerchecker/dto/{TaskResponse,TaskDetailResponse,ConfigResponse,ConfigUpdateRequest,RejectRequest}.java` | DTOs; `TaskDetailResponse` carries `valid` / `wouldFailBecause` (dry-run) |
+| `baas-engine/.../account/AccountOpenCommandHandler.java` | NEW — replays the IDENTICAL `AccountService.open` on approve (never a stripped re-implementation) |
+| `baas-engine/.../account/AccountController.java` | `open()` now defers to `MakerCheckerTaskService.submitIfGuarded` → 202 task when guarded, else 201 account |
+| `baas-engine/.../role/UserRoleRepository.java` | `countDistinctUsersWithPermission` + `countDistinctSuperusers` (viability guard) |
+| `baas-engine/db/migration/tenant/V8__maker_checker_tasks.sql` | `maker_checker_tasks` + `maker_checker_config` tables; seeds `ACCOUNT_OPEN` config (OFF); `APPROVE_ACCOUNT` + `MANAGE_MAKER_CHECKER` permissions; grants `APPROVE_ACCOUNT` to `PARTNER_APPROVER` |
+| `docs/api-reference.html` | NEW "Maker-Checker (Four-Eyes)" section (7 endpoints) + 202/201 note cross-referenced from the Accounts section |
+| `CLAUDE.md` | Confirmed Platform Versions → Session 20 (`fd3ddde`); maker-checker module in Module Catalogue (closes DEF-1C-13); 1 new Known Gotcha (bean-name collision) |
+| `baas-log.md` | This entry |
+
+#### Key Decisions
+- **Command-first replay.** The deferred/approve path invokes the IDENTICAL `AccountService.open` the synchronous path uses (`AccountOpenCommandHandler.execute`) — never a stripped re-implementation, so a guarded command behaves exactly like an unguarded one once approved.
+- **Per-partner, per-command, opt-in, PRODUCTION-only enforcement.** A command is guarded only when the partner enabled it in `maker-checker/config` AND the caller's `PartnerContext.environment() == "PRODUCTION"`. Back-compatible: `ACCOUNT_OPEN` is seeded present but OFF.
+- **Four-eyes + maker re-check closes the revocation backdoor.** Approve requires `checker ≠ maker` AND the command's `APPROVE_*` authority, AND re-checks the original maker is still active and still holds the submit authority at approval time — a maker whose access was revoked between submit and approve cannot have their task executed.
+- **Execute-exactly-once.** `findByIdForUpdate` (PESSIMISTIC_WRITE) + `@Version` optimistic guard + a status precondition (`requirePending`) make the approve/reject/withdraw transition idempotent under concurrency; a non-`PENDING` task → `409 TASK_NOT_PENDING`.
+- **Viability guard.** Enabling a command with no eligible approver (no user holds its `APPROVE_*`) → `409 NO_ELIGIBLE_APPROVER`, so a command can never be locked behind an approval nobody can grant. Counts superusers + permission-holders (over-estimate is harmless — it's a `>= 1` predicate, never an exact count).
+- **Enumeration-safety via tenant-schema isolation.** Tasks live in the partner schema, so another org's task id naturally 404s — no cross-org leak, no explicit ownership check needed.
+- **Distinct simple bean names (collision avoidance).** The new beans use `MakerCheckerTaskService` / `MakerCheckerTaskController` / `MakerCheckerTaskRepository`. A `MakerCheckerService` / `MakerCheckerController` in the new package would collide with the legacy passive `social.MakerCheckerService` / `MakerCheckerController` (route `/baas/v1/makercheckers`) → `ConflictingBeanDefinitionException` at startup. The command-first framework also does NOT read the legacy global `enable-maker-checker` flag — `maker-checker/config` is the single source of truth.
+
+#### Build Verification
+- `baas-engine`: **Tests run: 246, Failures: 0, Errors: 0, Skipped: 0** — BUILD SUCCESS (`cd baas-engine && ./mvnw -o test`).
+- No other service files changed this session (docs + build-verify only).
+
+#### Confirmed Platform Versions
+
+**BaaS Engine (`baas-engine/`):**
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Spring Boot | 3.5.0 | unchanged |
+| Java | 21 | unchanged (CI); local JDK 25 for tests |
+| Nimbus JOSE+JWT | 9.37.3 | unchanged |
+| Last git commit | `fd3ddde` | Session 20 — command-first maker-checker / four-eyes (DEF-1C-13); 246 tests (last `baas-engine` commit; Task 7 docs touch no engine files) |
+
+**BaaS Card (`baas-card/`):** unchanged this session — last commit `d647a4f` (Session 15).
+**BaaS FEP (`baas-fep/`):** unchanged this session — last commit `a9e4cfd` (Session 12).
+**BaaS Backoffice (`baas-backoffice/`):** unchanged this session — last commit `e96407e` (Session 18).
+**BaaS Ncube (`baas-ncube/`):** unchanged this session — last commit `f102ae0` (Session 6).
+
+#### Figma designs (SESSION COMPLETION GATE item 7)
+No `baas-backoffice/src/**` screen changed this session (engine-only feature + docs). Item 7 is exempt.
+
+---
+
 ### Session 19 — 2026-06-23
 **Granular Partner RBAC (Spec A, DEF-1C-15) on `feat/partner-rbac` (PR #40). Final commit `9d51e96`. Engine: 218 tests, 0 failures.**
 
